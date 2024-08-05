@@ -271,10 +271,6 @@ func (b *Board) dropPieceInColRow(boardState game.BoardState, animate bool) {
 }
 
 func (b *Board) dropPiece(boardState game.BoardState) {
-	if boardState.GameOver {
-		return
-	}
-
 	b.print(padLeft+2+(cellWidth*(b.inputCol-1)), padTop-1, " ")
 
 	defer func() {
@@ -290,9 +286,7 @@ func (b *Board) dropPiece(boardState game.BoardState) {
 	b.dropPieceInColRow(boardState, true)
 }
 
-func (b *Board) movePlayerPiece(direction string) {
-	boardState := b.gameBoard.ToBoardState()
-
+func (b *Board) movePlayerPiece(boardState game.BoardState, direction string) {
 	if boardState.GameOver {
 		return
 	}

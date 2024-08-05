@@ -83,6 +83,11 @@ func (b *Board) AITurn() BoardState {
 	boardData, blue, red := b.BoardData()
 	b.ai.SaveBoardData(boardData, blue, red, b.gameOver, b.winner)
 
+	defer func() {
+		boardData, blue, red := b.BoardData()
+		b.ai.SaveBoardData(boardData, blue, red, b.gameOver, b.winner)
+	}()
+
 	// -------------------------------------------------------------------------
 	// Find a similar boards from the training data
 
@@ -169,6 +174,11 @@ func (b *Board) UserTurn(column int) BoardState {
 
 	boardData, blue, red := b.BoardData()
 	b.ai.SaveBoardData(boardData, blue, red, b.gameOver, b.winner)
+
+	defer func() {
+		boardData, blue, red := b.BoardData()
+		b.ai.SaveBoardData(boardData, blue, red, b.gameOver, b.winner)
+	}()
 
 	// -------------------------------------------------------------------------
 	// Apply the user's column choice

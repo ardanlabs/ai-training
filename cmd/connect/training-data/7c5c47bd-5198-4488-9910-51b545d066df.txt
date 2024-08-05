@@ -1,0 +1,20 @@
+|🟢|🟢|🟢|🟢|🟢|🟢|🟢|
+|🟢|🟢|🟢|🟢|🟢|🟢|🟢|
+|🟢|🟢|🟢|🟢|🟢|🟢|🟢|
+|🟢|🟢|🔵|🟢|🟢|🟢|🟢|
+|🟢|🟢|🔵|🟢|🔴|🟢|🟢|
+|🟢|🟢|🔵|🔴|🔴|🟢|🟢|
+
+-- State
+Winner: None
+Turn: Blue or Red
+
+-- Blue
+Markers: 3
+Moves: (3)
+Feedback: Will-Win
+
+-- Red
+Markers: 3
+Moves: (3)
+Feedback: Blocked-Win

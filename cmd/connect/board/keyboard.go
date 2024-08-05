@@ -66,10 +66,10 @@ func (b *Board) pollEvents() chan struct{} {
 				}
 
 			case tcell.KeyLeft:
-				b.movePlayerPiece(dirLeft)
+				b.movePlayerPiece(boardState, dirLeft)
 
 			case tcell.KeyRight:
-				b.movePlayerPiece(dirRight)
+				b.movePlayerPiece(boardState, dirRight)
 
 			case tcell.KeyEnter, tcell.KeyDown:
 				boardState = b.userTurn()

@@ -1,0 +1,20 @@
+|🟢|🟢|🟢|🟢|🟢|🟢|🟢|
+|🟢|🟢|🟢|🟢|🟢|🟢|🟢|
+|🟢|🟢|🔵|🟢|🟢|🟢|🟢|
+|🟢|🟢|🔵|🟢|🟢|🟢|🟢|
+|🟢|🟢|🔵|🟢|🔴|🟢|🟢|
+|🟢|🟢|🔵|🔴|🔴|🟢|🟢|
+
+-- State
+Winner: Blue
+Turn: 
+
+-- Blue
+Markers: 4
+Moves: ()
+Feedback: Won-Game
+
+-- Red
+Markers: 3
+Moves: ()
+Feedback: Lost-Game

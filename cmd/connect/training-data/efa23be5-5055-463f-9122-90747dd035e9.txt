@@ -1,0 +1,20 @@
+|🟢|🟢|🟢|🟢|🟢|🟢|🟢|
+|🟢|🟢|🟢|🟢|🟢|🟢|🟢|
+|🟢|🟢|🟢|🟢|🟢|🟢|🟢|
+|🟢|🟢|🟢|🟢|🟢|🟢|🟢|
+|🟢|🟢|🔵|🟢|🔴|🟢|🟢|
+|🟢|🟢|🔵|🟢|🔴|🟢|🟢|
+
+-- State
+Winner: None
+Turn: Blue or Red
+
+-- Blue
+Markers: 2
+Moves: (3,5,4)
+Feedback: Normal-GamePlay
+
+-- Red
+Markers: 2
+Moves: (5,3,4)
+Feedback: Normal-GamePlay

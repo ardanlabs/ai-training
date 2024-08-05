@@ -116,7 +116,8 @@ func (b *Board) newGame() {
 
 func (b *Board) drawInit() {
 	b.drawEmptyGameBoard()
-	b.appyBoardState()
+	boardState := b.gameBoard.ToBoardState()
+	b.appyBoardState(boardState, true)
 }
 
 func (b *Board) drawEmptyGameBoard() {
@@ -161,28 +162,43 @@ func (b *Board) drawEmptyGameBoard() {
 
 	screenWidth, _ := b.screen.Size()
 
-	b.drawBox(boardWidth+3, padTop+3, boardWidth+(screenWidth-boardWidth-2), padTop+3+10)
-	b.print(boardWidth+4, padTop+3, " AI PLAYER ")
+	b.drawBox(boardWidth+3, padTop+1, boardWidth+(screenWidth-boardWidth-2), padTop+3+10)
+	b.print(boardWidth+4, padTop+1, " AI PLAYER ")
 }
 
-func (b *Board) appyBoardState() {
-	boardState := b.gameBoard.ToBoardState()
+func (b *Board) appyBoardState(boardState game.BoardState, renderBoard bool) {
+	if renderBoard {
+		for col := range boardState.Cells {
+			for row := rows - 1; row >= 0; row-- {
+				cell := boardState.Cells[col][row]
+				if !cell.HasPiece {
+					continue
+				}
 
-	// Just drop the pieces again, but without animation.
-	for col := range boardState.Cells {
-		for row := rows - 1; row >= 0; row-- {
-			cell := boardState.Cells[col][row]
-			if !cell.HasPiece {
-				continue
+				boardState := game.BoardState{
+					LastMove: game.LastMove{
+						Column: col + 1,
+						Row:    row + 1,
+						Color:  cell.Color,
+					},
+				}
+
+				b.dropPieceInColRow(boardState, false)
 			}
-
-			b.dropPieceInColRow(col, row, cell.Color, false)
 		}
+	}
+
+	if boardState.GameMessage != "" && boardState.AIMessage != "" {
+		b.printAI(boardState.GameMessage + " CRLF " + boardState.AIMessage)
+	} else if boardState.GameMessage != "" {
+		b.printAI(boardState.GameMessage)
+	} else {
+		b.printAI(boardState.AIMessage)
 	}
 
 	if !boardState.GameOver {
 		switch boardState.LastMove.Color {
-		case colorBlue:
+		case colorRed:
 			b.print(padLeft+2+(cellWidth*(b.inputCol-1)), padTop-1, "🔵")
 		default:
 			b.print(padLeft+2+(cellWidth*(b.inputCol-1)), padTop-1, "🔴")
@@ -190,8 +206,6 @@ func (b *Board) appyBoardState() {
 
 		return
 	}
-
-	b.printAI(boardState.AIMessage)
 
 	var lastWinnerMsg string
 	switch boardState.Winner {
@@ -204,10 +218,28 @@ func (b *Board) appyBoardState() {
 	}
 
 	b.print(12, padTop-1, "Winner "+lastWinnerMsg)
-	b.screen.Show()
 }
 
-func (b *Board) dropPieceInColRow(inputCol int, inputRow int, pieceColor string, animate bool) {
+func (b *Board) aiTurn() game.BoardState {
+	b.printAI("RUNNING AI")
+	boardState := b.gameBoard.AITurn()
+	b.dropPiece(boardState)
+	b.appyBoardState(boardState, false)
+
+	return b.gameBoard.ToBoardState()
+}
+
+func (b *Board) userTurn() game.BoardState {
+	boardState := b.gameBoard.UserTurn(b.inputCol)
+	b.dropPiece(boardState)
+	b.appyBoardState(boardState, false)
+
+	return b.gameBoard.ToBoardState()
+}
+
+func (b *Board) dropPieceInColRow(boardState game.BoardState, animate bool) {
+	inputCol := boardState.LastMove.Column
+	inputRow := boardState.LastMove.Row
 
 	// Identify where the input marker is located in the board.
 	column := padLeft + 2
@@ -216,15 +248,12 @@ func (b *Board) dropPieceInColRow(inputCol int, inputRow int, pieceColor string,
 	}
 	stopRow := padTop + 1
 
-	// We don't use index 0 for the display, so we need to adjust.
-	inputRow++
-
 	// Clear the marker.
 	b.print(column, padTop-1, " ")
 
 	// Drop the marker into that row.
 	for r := 1; r <= inputRow; r++ {
-		switch pieceColor {
+		switch boardState.LastMove.Color {
 		case colorBlue:
 			b.print(column, stopRow, "🔵")
 		case colorRed:
@@ -246,24 +275,19 @@ func (b *Board) dropPiece(boardState game.BoardState) {
 		return
 	}
 
-	inputCol := boardState.LastMove.Column
+	b.print(padLeft+2+(cellWidth*(b.inputCol-1)), padTop-1, " ")
 
-	// Calculate what row to drop the marker in.
-	row := -1
-	for i := rows - 1; i >= 0; i-- {
-		cell := boardState.Cells[inputCol-1][i]
-		if !cell.HasPiece {
-			row = i
-			break
+	defer func() {
+		b.inputCol = 4
+		switch boardState.LastMove.Color {
+		case colorRed:
+			b.print(padLeft+2+(cellWidth*(b.inputCol-1)), padTop-1, "🔵")
+		default:
+			b.print(padLeft+2+(cellWidth*(b.inputCol-1)), padTop-1, "🔴")
 		}
-	}
+	}()
 
-	// Is the column full.
-	if row == -1 {
-		return
-	}
-
-	b.dropPieceInColRow(inputCol, row, boardState.LastMove.Color, true)
+	b.dropPieceInColRow(boardState, true)
 }
 
 func (b *Board) movePlayerPiece(direction string) {
@@ -303,9 +327,9 @@ func (b *Board) movePlayerPiece(direction string) {
 	}
 
 	switch boardState.LastMove.Color {
-	case colorBlue:
-		b.print(column, padTop-1, "🔵")
 	case colorRed:
+		b.print(column, padTop-1, "🔵")
+	default:
 		b.print(column, padTop-1, "🔴")
 	}
 }
@@ -343,7 +367,7 @@ func (b *Board) printAI(message string) {
 	actWidth := (screenWidth - boardWidth - 8)
 
 	row := boardWidth + 5
-	col := padTop + 4
+	col := padTop + 2
 
 	for range 8 {
 		for range actWidth {
@@ -355,7 +379,7 @@ func (b *Board) printAI(message string) {
 	}
 
 	row = boardWidth + 5
-	col = padTop + 4
+	col = padTop + 2
 
 	scanner := bufio.NewScanner(bytes.NewReader([]byte(message)))
 	scanner.Split(bufio.ScanWords)

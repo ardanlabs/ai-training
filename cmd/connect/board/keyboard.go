@@ -14,8 +14,7 @@ func (b *Board) pollEvents() chan struct{} {
 	boardState := b.gameBoard.ToBoardState()
 
 	if boardState.LastMove.Color == colorBlue {
-		boardState = b.gameBoard.AITurn()
-		b.dropPiece(boardState)
+		boardState = b.aiTurn()
 	}
 
 	go func() {
@@ -28,11 +27,8 @@ func (b *Board) pollEvents() chan struct{} {
 		}()
 
 		for {
-			boardState := b.gameBoard.ToBoardState()
-
 			if boardState.LastMove.Color == colorBlue {
-				boardState = b.gameBoard.AITurn()
-				b.dropPiece(boardState)
+				boardState = b.aiTurn()
 			}
 
 			event := b.screen.PollEvent()
@@ -53,8 +49,6 @@ func (b *Board) pollEvents() chan struct{} {
 				}
 			}
 
-			boardState = b.gameBoard.ToBoardState()
-
 			// Only the blue player can control the piece.
 			if !boardState.GameOver && boardState.LastMove.Color == colorBlue {
 				b.screen.Beep()
@@ -68,8 +62,7 @@ func (b *Board) pollEvents() chan struct{} {
 					b.newGame()
 
 				case rune(' '):
-					boardState = b.gameBoard.UserTurn(b.inputCol)
-					b.dropPiece(boardState)
+					boardState = b.userTurn()
 				}
 
 			case tcell.KeyLeft:
@@ -79,8 +72,7 @@ func (b *Board) pollEvents() chan struct{} {
 				b.movePlayerPiece(dirRight)
 
 			case tcell.KeyEnter, tcell.KeyDown:
-				boardState = b.gameBoard.UserTurn(b.inputCol)
-				b.dropPiece(boardState)
+				boardState = b.userTurn()
 			}
 		}
 	}()

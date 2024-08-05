@@ -26,6 +26,7 @@ type Cell struct {
 
 type LastMove struct {
 	Column int
+	Row    int
 	Color  string
 }
 
@@ -52,10 +53,13 @@ func New(ai *ai.AI) (*Board, error) {
 		currentTurn = colorRed
 	}
 
+	currentTurn = colorRed
+
 	board := Board{
 		ai: ai,
 		lastMove: LastMove{
 			Column: 4,
+			Row:    0,
 			Color:  currentTurn,
 		},
 	}
@@ -66,6 +70,7 @@ func New(ai *ai.AI) (*Board, error) {
 // AITurn plays for the AI.
 func (b *Board) AITurn() BoardState {
 	b.gameMessage = ""
+	b.aiMessage = ""
 
 	if b.gameOver {
 		b.gameMessage = "game is over"
@@ -115,11 +120,36 @@ func (b *Board) AITurn() BoardState {
 		}
 	}
 
-	m := ai.ParseBoardText(board)
+	// Calculate what row (6 - 1) to drop the marker in.
+	row := -1
+	for i := rows - 1; i >= 0; i-- {
+		cell := b.cells[choice-1][i]
+		if !cell.HasPiece {
+			row = i
+			break
+		}
+	}
 
-	b.aiMessage = fmt.Sprintf("BOARD: %s CRLF CHOICE: %d - OPTIONS: (%s) - ATTEMPTS: %d CRLF SCORE: %.2f%% CRLF %s", board.ID, choice, m["Red-Moves"], pick.Attmepts, board.Score*100, pick.Reason)
+	if row == -1 {
+		b.gameMessage = fmt.Sprintf("column is full: %d", choice)
+		return b.ToBoardState()
+	}
+
+	// Set this piece in the cells.
+	b.cells[choice-1][row].HasPiece = true
+	b.cells[choice-1][row].Color = colorRed
+
+	// Mark this last move.
 	b.lastMove.Color = colorRed
 	b.lastMove.Column = choice
+	b.lastMove.Row = row + 1
+
+	// Provide final state for display.
+	m := ai.ParseBoardText(board)
+	b.aiMessage = fmt.Sprintf("BOARD: %s CRLF CHOICE: %d - OPTIONS: (%s) - ATTEMPTS: %d CRLF SCORE: %.2f%% CRLF %s", board.ID, choice, m["Red-Moves"], pick.Attmepts, board.Score*100, pick.Reason)
+
+	// Check if this move allowed the AI player to win the game.
+	b.checkForWinner(choice, row+1)
 
 	return b.ToBoardState()
 }
@@ -127,6 +157,7 @@ func (b *Board) AITurn() BoardState {
 // UserTurn plays the user's choice.
 func (b *Board) UserTurn(column int) BoardState {
 	b.gameMessage = ""
+	b.aiMessage = ""
 
 	if b.gameOver {
 		b.gameMessage = "game is over"
@@ -142,10 +173,9 @@ func (b *Board) UserTurn(column int) BoardState {
 	// -------------------------------------------------------------------------
 	// Apply the user's column choice
 
-	// We ask for the column number from 1 - 7.
 	column--
 
-	// Calculate what row (5 - 0) to drop the marker in.
+	// Calculate what row (6 - 1) to drop the marker in.
 	row := -1
 	for i := rows - 1; i >= 0; i-- {
 		cell := b.cells[column][i]
@@ -164,18 +194,19 @@ func (b *Board) UserTurn(column int) BoardState {
 	b.cells[column][row].HasPiece = true
 	b.cells[column][row].Color = colorBlue
 
-	// Save the last move.
+	// Mark this last move.
 	b.lastMove.Color = colorBlue
-	b.lastMove.Column = column
+	b.lastMove.Column = column + 1
+	b.lastMove.Row = row + 1
 
 	// Check if this move allowed the player to win the game.
-	b.checkForWinner(column, row)
+	b.checkForWinner(column+1, row+1)
 
 	return b.ToBoardState()
 }
 
 // CreateAIMessage produces an AI message for the opponent.
-func (b *Board) CreateAIMessage(choice int, currentTurn string, board ai.SimilarBoard) {
+func (b *Board) CreateAIMessage(column int, currentTurn string, board ai.SimilarBoard) {
 	b.gameMessage = ""
 	b.aiMessage = ""
 
@@ -187,7 +218,7 @@ func (b *Board) CreateAIMessage(choice int, currentTurn string, board ai.Similar
 		return
 	}
 
-	response, err := b.ai.CreateAIResponse(boards[0], currentTurn, choice)
+	response, err := b.ai.CreateAIResponse(boards[0], currentTurn, column)
 	if err != nil {
 		b.gameMessage = err.Error()
 		return
@@ -226,13 +257,16 @@ func (b *Board) BoardData() (boardData string, blue int, red int) {
 
 // =============================================================================
 
-func (b *Board) checkForWinner(col int, row int) bool {
+func (b *Board) checkForWinner(colInput int, rowInput int) bool {
 	defer func() {
 		if b.winner != "" {
 			b.gameMessage = "there is a winner"
 			b.gameOver = true
 		}
 	}()
+
+	colInput--
+	rowInput--
 
 	// -------------------------------------------------------------------------
 	// Is there a winner in the specified row.
@@ -241,13 +275,13 @@ func (b *Board) checkForWinner(col int, row int) bool {
 	var blue int
 
 	for col := 0; col < cols; col++ {
-		if !b.cells[col][row].HasPiece {
+		if !b.cells[col][rowInput].HasPiece {
 			red = 0
 			blue = 0
 			continue
 		}
 
-		switch b.cells[col][row].Color {
+		switch b.cells[col][rowInput].Color {
 		case colorBlue:
 			blue++
 			red = 0
@@ -273,13 +307,13 @@ func (b *Board) checkForWinner(col int, row int) bool {
 	blue = 0
 
 	for row := 0; row < rows; row++ {
-		if !b.cells[col][row].HasPiece {
+		if !b.cells[colInput][row].HasPiece {
 			red = 0
 			blue = 0
 			continue
 		}
 
-		switch b.cells[col][row].Color {
+		switch b.cells[colInput][row].Color {
 		case colorBlue:
 			blue++
 			red = 0
@@ -305,8 +339,8 @@ func (b *Board) checkForWinner(col int, row int) bool {
 	blue = 0
 
 	// Walk up in a diagonal until we hit column 0.
-	useRow := row
-	useCol := col
+	useRow := rowInput
+	useCol := colInput
 	for useCol != 0 && useRow != 0 {
 		useRow--
 		useCol--
@@ -350,8 +384,8 @@ func (b *Board) checkForWinner(col int, row int) bool {
 	blue = 0
 
 	// Walk up in a diagonal until we hit column 0.
-	useRow = row
-	useCol = col
+	useRow = rowInput
+	useCol = colInput
 	for useCol != cols-1 && useRow != 0 {
 		useRow--
 		useCol++

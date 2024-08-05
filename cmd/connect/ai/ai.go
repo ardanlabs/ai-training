@@ -102,50 +102,6 @@ func New(client *mongo.Client, embed *ollama.LLM, chat *ollama.LLM) (*AI, error)
 	return &ai, nil
 }
 
-// CreateAIResponse is a blocking call that sends the prompt to the LLM for a
-// game remark. This should be called by a Goroutine during game play.
-func (ai *AI) CreateAIResponse(feedBack string, blueMarkerCount string, redMarkerCounted string, currentTurnColor string, lastMove int) (string, error) {
-	var prompt string
-
-	var nextTurn = "Red"
-	if currentTurnColor == "Red" {
-		nextTurn = "Blue"
-	}
-
-	switch feedBack {
-	case "Normal-GamePlay":
-		prompt = fmt.Sprintf(promptNormalGamePlay, blueMarkerCount, redMarkerCounted, nextTurn, currentTurnColor, lastMove)
-	case "Will-Win":
-		if currentTurnColor == "Red" {
-			prompt = fmt.Sprintf(promptRedWonGame, blueMarkerCount, redMarkerCounted, nextTurn, currentTurnColor, lastMove)
-		} else {
-			prompt = fmt.Sprintf(promptBlueWonGame, blueMarkerCount, redMarkerCounted, nextTurn, currentTurnColor, lastMove)
-		}
-	case "Won-Game":
-		if currentTurnColor == "Red" {
-			prompt = fmt.Sprintf(promptRedWonGame, blueMarkerCount, redMarkerCounted, nextTurn, currentTurnColor, lastMove)
-		} else {
-			prompt = fmt.Sprintf(promptBlueWonGame, blueMarkerCount, redMarkerCounted, nextTurn, currentTurnColor, lastMove)
-		}
-	case "Lost-Game":
-		prompt = fmt.Sprintf(promptLostGame, blueMarkerCount, redMarkerCounted, nextTurn, currentTurnColor, lastMove)
-	case "Tie-Game":
-		prompt = fmt.Sprintf(promptTieGame, blueMarkerCount, redMarkerCounted, nextTurn, currentTurnColor, lastMove)
-	default:
-		return "", fmt.Errorf("unknown feedback: %s", feedBack)
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Second)
-	defer cancel()
-
-	response, err := ai.chat.Call(ctx, prompt, llms.WithMaxTokens(5000))
-	if err != nil {
-		return "", fmt.Errorf("call: %w", err)
-	}
-
-	return response, nil
-}
-
 // CalculateEmbedding takes a given board data and produces the vector embedding.
 func (ai *AI) CalculateEmbedding(boardData string) ([]float32, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -171,7 +127,7 @@ type PickResponse struct {
 }
 
 // LLMPick perform a review of the game board and makes a choice.
-func (ai *AI) LLMPick(boardData string, redMoves string) (PickResponse, error) {
+func (ai *AI) LLMPick(boardData string, board SimilarBoard) (PickResponse, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Second)
 	defer cancel()
 
@@ -194,6 +150,8 @@ func (ai *AI) LLMPick(boardData string, redMoves string) (PickResponse, error) {
 	}
 
 	// Generate the prompt to use to ask the LLM to pick a column.
+	m := ParseBoardText(board)
+	redMoves := m["Red-Moves"]
 	prompt := fmt.Sprintf(promptPick, redMoves, grid)
 
 	var pick PickResponse
@@ -263,6 +221,8 @@ func (ai *AI) FindSimilarBoard(boardData string) ([]SimilarBoard, error) {
 		},
 	}
 
+	// TODO: We only red boards.
+
 	cur, err := ai.col.Aggregate(ctx, pipeline)
 	if err != nil {
 		return nil, fmt.Errorf("aggregate: %w", err)
@@ -277,8 +237,58 @@ func (ai *AI) FindSimilarBoard(boardData string) ([]SimilarBoard, error) {
 	return results, nil
 }
 
+// CreateAIResponse is a blocking call that sends the prompt to the LLM for a
+// game remark. This should be called by a Goroutine during game play.
+func (ai *AI) CreateAIResponse(board SimilarBoard, currentTurnColor string, lastMove int) (string, error) {
+	var prompt string
+
+	m := ParseBoardText(board)
+
+	feedBack := m["Red-Feedback"]
+	blueMarkerCount := m["Blue-Markers"]
+	redMarkerCounted := m["Red-Markers"]
+
+	var nextTurn = "Red"
+	if currentTurnColor == "Red" {
+		nextTurn = "Blue"
+	}
+
+	switch feedBack {
+	case "Normal-GamePlay":
+		prompt = fmt.Sprintf(promptNormalGamePlay, blueMarkerCount, redMarkerCounted, nextTurn, currentTurnColor, lastMove)
+	case "Will-Win":
+		if currentTurnColor == "Red" {
+			prompt = fmt.Sprintf(promptRedWonGame, blueMarkerCount, redMarkerCounted, nextTurn, currentTurnColor, lastMove)
+		} else {
+			prompt = fmt.Sprintf(promptBlueWonGame, blueMarkerCount, redMarkerCounted, nextTurn, currentTurnColor, lastMove)
+		}
+	case "Won-Game":
+		if currentTurnColor == "Red" {
+			prompt = fmt.Sprintf(promptRedWonGame, blueMarkerCount, redMarkerCounted, nextTurn, currentTurnColor, lastMove)
+		} else {
+			prompt = fmt.Sprintf(promptBlueWonGame, blueMarkerCount, redMarkerCounted, nextTurn, currentTurnColor, lastMove)
+		}
+	case "Lost-Game":
+		prompt = fmt.Sprintf(promptLostGame, blueMarkerCount, redMarkerCounted, nextTurn, currentTurnColor, lastMove)
+	case "Tie-Game":
+		prompt = fmt.Sprintf(promptTieGame, blueMarkerCount, redMarkerCounted, nextTurn, currentTurnColor, lastMove)
+	default:
+		return "", fmt.Errorf("unknown feedback: %s", feedBack)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Second)
+	defer cancel()
+
+	response, err := ai.chat.Call(ctx, prompt, llms.WithMaxTokens(5000))
+	if err != nil {
+		return "", fmt.Errorf("call: %w", err)
+	}
+
+	return response, nil
+}
+
 // SaveBoardData knows how to write a board file with the following information.
-func (ai *AI) SaveBoardData(boardData string, blue int, red int, gameOver bool, lastWinner string) string {
+func (ai *AI) SaveBoardData(boardData string, blue int, red int, gameOver bool, lastWinner string) error {
 
 	// -------------------------------------------------------------------------
 	// Check if we have captured this board alread.
@@ -328,7 +338,7 @@ func (ai *AI) SaveBoardData(boardData string, blue int, red int, gameOver bool, 
 	fs.WalkDir(fsys, ".", fn)
 
 	if foundMatch {
-		return ""
+		return nil
 	}
 
 	// -------------------------------------------------------------------------
@@ -374,10 +384,10 @@ Feedback: Normal-GamePlay, Blocked-Win, Will-Win, Won-Game, Lost-Game, Tie-Game
 
 	_, err := fmt.Fprintf(f, template, boardData, winner, turn, blue, red)
 	if err != nil {
-		return err.Error()
+		return err
 	}
 
-	return fmt.Sprintf("NEW TRAINING DATA GENERATED: %s", fileID)
+	return nil
 }
 
 // ProcessBoardFiles reads the training data directory and saved the AI data needed
@@ -439,6 +449,8 @@ func (ai *AI) ProcessBoardFiles() error {
 
 	return nil
 }
+
+// =============================================================================
 
 func (ai *AI) findBoard(ctx context.Context, boardID string) (Board, error) {
 	filter := bson.D{{Key: "board_id", Value: boardID}}

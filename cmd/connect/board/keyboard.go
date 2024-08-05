@@ -11,13 +11,11 @@ import (
 func (b *Board) pollEvents() chan struct{} {
 	quit := make(chan struct{})
 
-	boardData, display := b.saveTrainingData()
+	boardState := b.gameBoard.ToBoardState()
 
-	if b.currentTurn == colorRed {
-		b.runAISupport(boardData, display)
-		if b.dropPiece(true) {
-			b.saveTrainingData()
-		}
+	if boardState.LastMove.Color == colorBlue {
+		boardState = b.gameBoard.AITurn()
+		b.dropPiece(boardState)
 	}
 
 	go func() {
@@ -30,12 +28,11 @@ func (b *Board) pollEvents() chan struct{} {
 		}()
 
 		for {
-			if b.currentTurn == colorRed {
-				boardData, display := b.saveTrainingData()
-				b.runAISupport(boardData, display)
-				if b.dropPiece(true) {
-					b.saveTrainingData()
-				}
+			boardState := b.gameBoard.ToBoardState()
+
+			if boardState.LastMove.Color == colorBlue {
+				boardState = b.gameBoard.AITurn()
+				b.dropPiece(boardState)
 			}
 
 			event := b.screen.PollEvent()
@@ -48,8 +45,6 @@ func (b *Board) pollEvents() chan struct{} {
 
 			keyType := ev.Key()
 
-			b.saveTrainingData()
-
 			// Allow the user to quit the game at any time.
 			if keyType == tcell.KeyRune {
 				if ev.Rune() == rune('q') {
@@ -58,8 +53,10 @@ func (b *Board) pollEvents() chan struct{} {
 				}
 			}
 
+			boardState = b.gameBoard.ToBoardState()
+
 			// Only the blue player can control the piece.
-			if !b.gameOver && b.currentTurn == colorRed {
+			if !boardState.GameOver && boardState.LastMove.Color == colorBlue {
 				b.screen.Beep()
 				continue
 			}
@@ -71,9 +68,8 @@ func (b *Board) pollEvents() chan struct{} {
 					b.newGame()
 
 				case rune(' '):
-					if b.dropPiece(true) {
-						b.saveTrainingData()
-					}
+					boardState = b.gameBoard.UserTurn(b.inputCol)
+					b.dropPiece(boardState)
 				}
 
 			case tcell.KeyLeft:
@@ -83,9 +79,8 @@ func (b *Board) pollEvents() chan struct{} {
 				b.movePlayerPiece(dirRight)
 
 			case tcell.KeyEnter, tcell.KeyDown:
-				if b.dropPiece(true) {
-					b.saveTrainingData()
-				}
+				boardState = b.gameBoard.UserTurn(b.inputCol)
+				b.dropPiece(boardState)
 			}
 		}
 	}()

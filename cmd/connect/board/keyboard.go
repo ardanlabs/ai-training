@@ -59,7 +59,7 @@ func (b *Board) pollEvents() chan struct{} {
 			case tcell.KeyRune:
 				switch ev.Rune() {
 				case rune('n'):
-					b.newGame()
+					boardState = b.newGame()
 
 				case rune(' '):
 					boardState = b.userTurn()

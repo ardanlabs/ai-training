@@ -100,7 +100,9 @@ func (b *Board) Run() chan struct{} {
 	return b.pollEvents()
 }
 
-func (b *Board) newGame() {
+// =============================================================================
+
+func (b *Board) newGame() game.BoardState {
 	gameBoard, _ := game.New(b.ai)
 
 	*b = Board{
@@ -112,6 +114,8 @@ func (b *Board) newGame() {
 	}
 
 	b.drawInit()
+
+	return b.gameBoard.ToBoardState()
 }
 
 func (b *Board) drawInit() {

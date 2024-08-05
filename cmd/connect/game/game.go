@@ -53,8 +53,6 @@ func New(ai *ai.AI) (*Board, error) {
 		currentTurn = colorRed
 	}
 
-	currentTurn = colorRed
-
 	board := Board{
 		ai: ai,
 		lastMove: LastMove{

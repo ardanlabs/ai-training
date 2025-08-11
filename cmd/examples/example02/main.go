@@ -100,7 +100,7 @@ func main() {
 	kingSubManPlusWoman := vector.Add(kingSubMan, dataPoints[2].Vector())
 	queen := dataPoints[4].Vector()
 
-	// Now compare a (king - Man + Woman) to a Queen.
+	// Now compare a (King - Man + Woman) to a Queen.
 	result := vector.CosineSimilarity(kingSubManPlusWoman, queen)
 	fmt.Printf("King - Man + Woman ~= Queen similarity: %.3f%%\n", result*100)
 }

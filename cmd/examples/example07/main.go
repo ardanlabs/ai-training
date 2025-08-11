@@ -9,7 +9,7 @@
 //
 // # This requires running the following commands:
 //
-//  $ make compose-up // This starts MongoDB and OpenWebIU in docker compose.
+//  $ make compose-up // This starts MongoDB and OpenWebUI in docker compose.
 //  $ make ollama-up  // This starts the Ollama service.
 //	$ make example6   // This creates the book.embeddings file
 
@@ -88,7 +88,7 @@ func vectorSearch(ctx context.Context, question string) ([]searchResult, error) 
 	}
 
 	// Get the vector embedding for the question.
-	embedding, err := llm.CreateEmbedding(context.Background(), []string{question})
+	embedding, err := llm.CreateEmbedding(ctx, []string{question})
 	if err != nil {
 		return nil, fmt.Errorf("create embedding: %w", err)
 	}

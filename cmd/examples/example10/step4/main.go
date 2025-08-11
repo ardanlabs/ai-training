@@ -82,7 +82,7 @@ func run() error {
 
 // =============================================================================
 
-// Tool defines the interface that all tools must implement.
+// Tool describes the features which all tools must implement.
 type Tool interface {
 	Call(ctx context.Context, toolCall client.ToolCall) client.D
 }

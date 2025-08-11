@@ -68,9 +68,9 @@ func run() error {
 
 // =============================================================================
 
-// DEFINE A TOOL INTERFACE TO DEFINE WHAT A TOOL NEEDS TO PROVIDE.
+// DEFINE A TOOL INTERFACE TO DESCRIBE WHAT A TOOL NEEDS TO PROVIDE.
 
-// Tool defines the interface that all tools must implement.
+// Tool describes the features which all tools must implement.
 type Tool interface {
 	Call(ctx context.Context, toolCall client.ToolCall) client.D
 }

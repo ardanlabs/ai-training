@@ -1,4 +1,4 @@
-// Package client provides support to access the Prediction Guard API service.
+// Package client provides support to access an OpenAI-compatible API service.
 package client
 
 import (
@@ -14,8 +14,7 @@ import (
 	"time"
 )
 
-// TODO: Maintain this version when a new tag is created.
-const version = "v2.0.0"
+const version = "v1.0.0"
 
 var ErrUnauthorized = errors.New("api understands the request but refuses to authorize it")
 
@@ -165,7 +164,7 @@ func do(ctx context.Context, cln *Client, method string, endpoint string, body a
 	req.Header.Set("Cache-Control", "no-cache")
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", fmt.Sprintf("Prediction Guard Go Client: %s", version))
+	req.Header.Set("User-Agent", fmt.Sprintf("Ardan Labs AI Training Sample Go Client: %s", version))
 
 	resp, err := cln.http.Do(req)
 	if err != nil {

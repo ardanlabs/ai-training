@@ -80,7 +80,7 @@ func questionResponse(ctx context.Context) error {
 	for writing generic function and types in Go which will be available in
 	version 118 of Go The book is written in the first person to drive home the
 	idea that this is my book of notes from the Ultimate Go class The first
-	\chapter provides a set of design philosophies quotes and extra reading to
+	chapter provides a set of design philosophies quotes and extra reading to
 	help prepare your mind for the material Chapters 213 provide the core content
 	from the class Chapter 14 provides a reediting of important blog posts Ive
 	written in the past These posts are presented here to enhance some of the

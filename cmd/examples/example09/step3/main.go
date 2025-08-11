@@ -310,15 +310,10 @@ func updateDatabase(fileName string, description string, vector []float32) error
 
 func storeDocuments(ctx context.Context, col *mongo.Collection, fileName string, description string, vector []float32) error {
 
-	// If these records already exist, we don't need to add them again.
-	findRes, err := col.Find(ctx, bson.D{})
-	if err != nil {
+	// If this record already exist, we don't need to add it again.
+	findRes := col.FindOne(ctx, bson.D{{Key: "file_name", Value: d.FileName}})
+	if findRes.Err() != nil && !errors.Is(res.Err(), mongo.ErrNoDocuments) {
 		return fmt.Errorf("find: %w", err)
-	}
-	defer findRes.Close(ctx)
-
-	if findRes.RemainingBatchLength() != 0 {
-		return nil
 	}
 
 	// -------------------------------------------------------------------------

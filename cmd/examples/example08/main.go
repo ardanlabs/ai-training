@@ -7,7 +7,7 @@
 //
 // # This requires running the following commands:
 //
-//	$ make compose-up // This starts MongoDB and OpenWebIU in docker compose.
+//	$ make compose-up // This starts MongoDB and OpenWebUI in docker compose.
 //  $ make ollama-up  // This starts the Ollama service.
 
 package main

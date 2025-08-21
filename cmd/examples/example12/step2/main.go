@@ -22,10 +22,12 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/ardanlabs/ai-training/foundation/client"
 	"github.com/ardanlabs/ai-training/foundation/mongodb"
+	"github.com/ardanlabs/ai-training/foundation/vector"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
@@ -46,6 +48,8 @@ const (
 	dbName     = "example12"
 	colName    = "frame-2"
 	dimensions = 1024
+
+	similarityThreshold = 0.80
 )
 
 func main() {
@@ -67,12 +71,13 @@ func run() error {
 		Do not describe the image.
 		Make sure that ALL the text is in the image.
 		Make sure that you include any text editor/IDE tool too.
-		Output the text in a valid JSON format similar to this:
+	
+		Output the text in a valid JSON format MATCHING this format:
 		{
 			"text": "<Text that can be found in this image>"
 		}
-				
-				If no text is found, output:
+
+		If no text is found, output MUST BE:
 		{
 			"error": "NO TEXT FOUND"
 		}
@@ -112,8 +117,31 @@ func run() error {
 		return fmt.Errorf("get files from directory: %w", err)
 	}
 
+	previousEmbedding := make([]float64, dimensions)
+
 	for _, fileName := range files {
 		fmt.Printf("\nProcessing image: %s\n", fileName)
+
+		findRes := col.FindOne(ctx, bson.D{{Key: "file_name", Value: fileName}})
+		if findRes.Err() == nil {
+			fmt.Println("  - Image already exists")
+
+			// If the image already exists, we'll use the existing embedding as
+			// a value for the "previousEmbedding" variable.
+			d1 := document{}
+			err := findRes.Decode(&d1)
+			if err != nil {
+				return fmt.Errorf(" - Failed to decode document from DB: %w", err)
+			}
+
+			// Assign the embedding of this document to the "previousEmbedding" variable.
+			copy(previousEmbedding, d1.Embedding)
+
+			continue
+		}
+
+		// -------------------------------------------------------------------------
+
 		image, mimeType, err := readImage(fileName)
 		if err != nil {
 			return fmt.Errorf("read image: %w", err)
@@ -128,14 +156,33 @@ func run() error {
 
 		// -------------------------------------------------------------------------
 
+		if strings.Contains(results, "\"error\": \"NO TEXT FOUND\"") {
+			fmt.Println("  - No text found in image")
+			continue
+		}
+
+		// -------------------------------------------------------------------------
+
 		fmt.Println("\nGenerating embeddings for the image description:")
 
-		vector, err := llmEmbed.EmbedText(ctx, results)
+		embedding, err := llmEmbed.EmbedText(ctx, results)
 		if err != nil {
 			return fmt.Errorf("llm.EmbedText: %w", err)
 		}
 
-		fmt.Printf("%v...%v\n", vector[0:3], vector[len(vector)-3:])
+		fmt.Printf("%v...%v\n", embedding[0:3], embedding[len(embedding)-3:])
+
+		// -------------------------------------------------------------------------
+
+		similarity := vector.CosineSimilarity(previousEmbedding, embedding)
+		fmt.Printf("  - Image similarity compared to the previous image: %.6f\n", similarity)
+
+		if similarity > similarityThreshold {
+			fmt.Println("  - Image is similar to previous image")
+			continue
+		}
+
+		copy(previousEmbedding, embedding)
 
 		// -------------------------------------------------------------------------
 
@@ -144,7 +191,7 @@ func run() error {
 		d1 := document{
 			FileName:    fileName,
 			Description: results,
-			Embedding:   vector,
+			Embedding:   embedding,
 		}
 
 		res, err := col.InsertOne(ctx, d1)
@@ -233,7 +280,7 @@ func initDB(ctx context.Context, client *mongo.Client) (*mongo.Collection, error
 
 	unique := true
 	indexModel := mongo.IndexModel{
-		Keys:    bson.D{{Key: "id", Value: 1}},
+		Keys:    bson.D{{Key: "file_name", Value: 1}},
 		Options: &options.IndexOptions{Unique: &unique},
 	}
 	col.Indexes().CreateOne(ctx, indexModel)

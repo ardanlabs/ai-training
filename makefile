@@ -151,6 +151,10 @@ example12-step2:
 	rm -rf cmd/samples/videos/frames/* && \
 	go run cmd/examples/example12/step2/main.go
 
+example12-step3:
+	rm -rf cmd/samples/videos/frames/* && \
+	go run cmd/examples/example12/step3/*.go
+
 talk:
 	export OLLAMA_CONTEXT_LENGTH=$(OLLAMA_CONTEXT_LENGTH) && \
 	go run cmd/talk/main.go

@@ -1,11 +1,9 @@
-// This example builds on example12-step1 and shows you how to
-// process the extracted frames from a video using an LLM.
-// Before images are inserted in the DB, we'll check if they are
-// similar and how similar they are.
+// This example builds on example12-step2 and shows you how to
+// interact with the data via the database.
 //
 // # Running the example:
 //
-//	$ make example12-step2
+//	$ make example12-step3
 //
 // # This requires running the following commands:
 //
@@ -15,6 +13,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"log"
@@ -33,24 +32,46 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
+// =============================================================================
+
 type document struct {
 	FileName    string    `bson:"file_name"`
 	Description string    `bson:"description"`
 	Embedding   []float64 `bson:"embedding"`
 }
 
+// =============================================================================
+
+type searchResult struct {
+	FileName    string    `bson:"file_name" json:"file_name"`
+	Description string    `bson:"description" json:"image_description"`
+	Embedding   []float64 `bson:"embedding" json:"-"`
+	Score       float64   `bson:"score" json:"-"`
+}
+
+// =============================================================================
+
 const (
-	urlChat    = "http://localhost:11434/v1/chat/completions"
-	urlEmbed   = "http://localhost:11434/v1/embeddings"
-	modelChat  = "qwen2.5vl:latest"
-	modelEmbed = "bge-m3:latest"
+	urlChat  = "http://localhost:11434/v1/chat/completions"
+	urlEmbed = "http://localhost:11434/v1/embeddings"
+
+	modelChat   = "gpt-oss:latest"
+	modelVision = "qwen2.5vl:latest"
+	modelEmbed  = "bge-m3:latest"
 
 	dbName     = "example12"
-	colName    = "step-2"
+	colName    = "step-3"
 	dimensions = 1024
 
 	similarityThreshold = 0.80
 )
+
+// =============================================================================
+
+// The context window represents the maximum number of tokens that can be sent
+// and received by the model. The default for Ollama is 8K. In the makefile
+// it has been increased to 64K.
+var contextWindow = 1024 * 8
 
 func main() {
 	if err := run(); err != nil {
@@ -59,6 +80,18 @@ func main() {
 }
 
 func run() error {
+	if err := ingestVideo(); err != nil {
+		return fmt.Errorf("ingest video: %w", err)
+	}
+
+	if err := chatLoop(); err != nil {
+		return fmt.Errorf("chat loop: %w", err)
+	}
+
+	return nil
+}
+
+func ingestVideo() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 240*time.Second)
 	defer cancel()
 
@@ -107,7 +140,7 @@ func run() error {
 
 	// -------------------------------------------------------------------------
 
-	llmChat := client.NewLLM(urlChat, modelChat)
+	llmChat := client.NewLLM(urlChat, modelVision)
 	llmEmbed := client.NewLLM(urlEmbed, modelEmbed)
 
 	// -------------------------------------------------------------------------
@@ -286,4 +319,28 @@ func initDB(ctx context.Context, client *mongo.Client) (*mongo.Collection, error
 	col.Indexes().CreateOne(ctx, indexModel)
 
 	return col, nil
+}
+
+func chatLoop() error {
+	// -------------------------------------------------------------------------
+	// Declare a function that can accept user input which the agent will use
+	// when it's the users turn.
+
+	scanner := bufio.NewScanner(os.Stdin)
+	getUserMessage := func() (string, bool) {
+		if !scanner.Scan() {
+			return "", false
+		}
+		return scanner.Text(), true
+	}
+
+	// -------------------------------------------------------------------------
+	// Construct the agent and get it started.
+
+	agent, err := NewAgent(getUserMessage)
+	if err != nil {
+		return fmt.Errorf("failed to create agent: %w", err)
+	}
+
+	return agent.Run(context.TODO())
 }

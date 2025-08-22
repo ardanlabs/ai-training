@@ -13,7 +13,6 @@
 
 cmd/notes/*
 cmd/samples/videos/frames/*
-cmd/samples/videos/training.mp4
 zarf/data/book.embeddings
 zarf/data/example3.*
 zarf/docker/db_data/

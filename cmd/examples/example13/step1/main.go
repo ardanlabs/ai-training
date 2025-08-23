@@ -163,9 +163,9 @@ func run() error {
 				fmt.Println("  - Image is similar to previous image")
 				continue
 			}
-
-			uniqueFrames = append(uniqueFrames, f)
 		}
+
+		uniqueFrames = append(uniqueFrames, f)
 	}
 
 	// -------------------------------------------------------------------------
@@ -184,7 +184,7 @@ func processVideo() error {
 	fmt.Println("Processing Video ...")
 	defer fmt.Println("\nDONE Processing Video")
 
-	ffmpegCommand := "ffmpeg -i zarf/samples/videos/chunk_0089.mp4 -vf \"select='eq(pict_type,I)'\" -loglevel error -vsync vfr zarf/samples/videos/frames/frame-%03d.jpg"
+	ffmpegCommand := "ffmpeg -i zarf/samples/videos/output_0089.mp4 -vf \"select='eq(pict_type,I)'\" -loglevel error -vsync vfr zarf/samples/videos/frames/frame-%03d.jpg"
 	_, err := exec.Command("/bin/sh", "-c", ffmpegCommand).Output()
 	if err != nil {
 		return fmt.Errorf("error while running ffmpeg: %w", err)

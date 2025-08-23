@@ -155,17 +155,21 @@ func run() error {
 			continue
 		}
 
+		var isDuplicate bool
 		for _, previousFrame := range uniqueFrames {
 			similarity := vector.CosineSimilarity(previousFrame.embedding, f.embedding)
 			fmt.Printf("  - Image similarity compared to the previous image: %.6f\n", similarity)
 
 			if similarity > similarityThreshold {
+				isDuplicate = true
 				fmt.Println("  - Image is similar to previous image")
-				continue
+				break
 			}
 		}
 
-		uniqueFrames = append(uniqueFrames, f)
+		if !isDuplicate {
+			uniqueFrames = append(uniqueFrames, f)
+		}
 	}
 
 	// -------------------------------------------------------------------------

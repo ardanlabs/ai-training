@@ -16,17 +16,25 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"time"
+	"strings"
 
 	"github.com/ardanlabs/ai-training/foundation/client"
 	"github.com/ardanlabs/ai-training/foundation/vector"
 )
+
+type frame struct {
+	fileName       string
+	description    string
+	classification string
+	embedding      []float64
+}
 
 const (
 	urlChat    = "http://localhost:11434/v1/chat/completions"
@@ -46,8 +54,7 @@ func main() {
 }
 
 func run() error {
-	ctx, cancel := context.WithTimeout(context.Background(), 240*time.Second)
-	defer cancel()
+	ctx := context.Background()
 
 	if err := processVideo(); err != nil {
 		return fmt.Errorf("process video: %w", err)
@@ -57,12 +64,12 @@ func run() error {
 
 	const prompt = `
 		Provide a detailed description of this image in 300 words or less.
-		Also, classify this image as: "source code", "diagram", or "other" depending on the content it features the most.
+		Also, classify this image as: "source code", "diagram", "terminal", or "other" depending on the content it features the most.
 		
 		Output the text in a valid JSON format MATCHING this format:
 		{
-			"text": "<Description of the image>",
-			"classification": ["source_code", "diagram", "other"]
+			"text": "<image description>",
+			"classification": "<image classification>"
 		}
 
 		Encode any special characters in the JSON output.
@@ -84,9 +91,13 @@ func run() error {
 		return fmt.Errorf("get files from directory: %w", err)
 	}
 
-	previousEmbedding := make([]float64, dimensions)
+	frames := make([]frame, 0, len(files))
 
 	for _, fileName := range files {
+		f := frame{
+			fileName: fileName,
+		}
+
 		fmt.Printf("\nProcessing image: %s\n", fileName)
 
 		// -------------------------------------------------------------------------
@@ -98,46 +109,70 @@ func run() error {
 
 		// -------------------------------------------------------------------------
 
-		results, err := llmChat.ChatCompletions(ctx, prompt, client.WithImage(mimeType, image))
+		description, err := llmChat.ChatCompletions(ctx, prompt, client.WithImage(mimeType, image))
 		if err != nil {
 			return fmt.Errorf("chat completions: %w", err)
 		}
 
-		fmt.Printf("LLM RESPONSE: %s\n", results)
+		description = strings.Trim(description, "`")
+		description = strings.TrimPrefix(description, "json")
+
+		fmt.Printf("LLM RESPONSE: %s\n", description)
+
+		var descr struct {
+			Text           string `json:"text"`
+			Classification string `json:"classification"`
+		}
+		if err := json.Unmarshal([]byte(description), &descr); err != nil {
+			return fmt.Errorf("unmarshal: %w", err)
+		}
+
+		f.description = descr.Text
+		f.classification = descr.Classification
 
 		// -------------------------------------------------------------------------
 
 		fmt.Println("\nGenerating embeddings for the image description:")
 
-		embedding, err := llmEmbed.EmbedText(ctx, results)
+		embedding, err := llmEmbed.EmbedText(ctx, description)
 		if err != nil {
 			return fmt.Errorf("llm.EmbedText: %w", err)
 		}
 
 		fmt.Printf("%v...%v\n", embedding[0:3], embedding[len(embedding)-3:])
 
-		// -------------------------------------------------------------------------
+		copy(f.embedding, embedding)
 
-		similarity := vector.CosineSimilarity(previousEmbedding, embedding)
-		fmt.Printf("  - Image similarity compared to the previous image: %.6f\n", similarity)
-
-		if similarity > similarityThreshold {
-			fmt.Println("  - Image is similar to previous image")
-			continue
-		}
-
-		copy(previousEmbedding, embedding)
-
-		// -------------------------------------------------------------------------
-
-		fmt.Println("\nInserting frame information into the database:")
-
-		// We need to give mongodb some time to index the document.
-		// There is no way to know when this gets done.
-		time.Sleep(time.Second)
+		frames = append(frames, f)
 	}
 
 	// -------------------------------------------------------------------------
+
+	var uniqueFrames []frame
+	for idx, f := range frames {
+		if idx == 0 {
+			uniqueFrames = append(uniqueFrames, f)
+			continue
+		}
+
+		for _, previousFrame := range uniqueFrames {
+			similarity := vector.CosineSimilarity(previousFrame.embedding, f.embedding)
+			fmt.Printf("  - Image similarity compared to the previous image: %.6f\n", similarity)
+
+			if similarity > similarityThreshold {
+				fmt.Println("  - Image is similar to previous image")
+				continue
+			}
+		}
+	}
+
+	// -------------------------------------------------------------------------
+
+	fmt.Println("\nUnique Frames:")
+
+	for _, f := range uniqueFrames {
+		fmt.Printf("\t- FileName: %s\n", f.fileName)
+	}
 
 	fmt.Println("\nDONE")
 	return nil

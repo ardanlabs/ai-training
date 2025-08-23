@@ -128,6 +128,11 @@ func run() error {
 			return fmt.Errorf("unmarshal: %w", err)
 		}
 
+		if descr.Classification == "icon" {
+			fmt.Println("  - Icon classification detected, skipping...")
+			continue
+		}
+
 		f.description = descr.Text
 		f.classification = descr.Classification
 

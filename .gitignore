@@ -12,7 +12,7 @@
 *.so
 
 cmd/notes/*
-cmd/samples/videos/frames/*
+zarf/samples/videos/frames/*
 zarf/data/book.embeddings
 zarf/data/example3.*
 zarf/docker/db_data/

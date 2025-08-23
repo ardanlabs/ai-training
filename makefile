@@ -144,15 +144,15 @@ example11-step2:
 	go run cmd/examples/example11/step2/*.go
 
 example12-step1:
-	rm -rf cmd/samples/videos/frames/* && \
+	rm -rf zarf/samples/videos/frames/* && \
 	go run cmd/examples/example12/step1/main.go
 
 example12-step2:
-	rm -rf cmd/samples/videos/frames/* && \
+	rm -rf zarf/samples/videos/frames/* && \
 	go run cmd/examples/example12/step2/main.go
 
 example12-step3:
-	rm -rf cmd/samples/videos/frames/* && \
+	rm -rf zarf/samples/videos/frames/* && \
 	go run cmd/examples/example12/step3/*.go
 
 talk:

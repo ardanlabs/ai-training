@@ -27,7 +27,7 @@ const (
 	urlEmbed   = "http://localhost:11434/v1/embeddings"
 	modelChat  = "qwen2.5vl:latest"
 	modelEmbed = "bge-m3:latest"
-	imagePath  = "cmd/samples/gallery/roseimg.png"
+	imagePath  = "zarf/samples/gallery/roseimg.png"
 )
 
 // =============================================================================

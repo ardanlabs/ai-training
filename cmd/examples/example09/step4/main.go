@@ -32,7 +32,7 @@ const (
 	urlEmbed   = "http://localhost:11434/v1/embeddings"
 	modelChat  = "qwen2.5vl:latest"
 	modelEmbed = "bge-m3:latest"
-	imagePath  = "cmd/samples/gallery/roseimg.png"
+	imagePath  = "zarf/samples/gallery/roseimg.png"
 	dbName     = "example9"
 	colName    = "images-4"
 	dimensions = 1024

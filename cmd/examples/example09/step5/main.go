@@ -37,7 +37,7 @@ const (
 	dbName      = "example9"
 	colName     = "images-5"
 	dimensions  = 1024
-	gallaryPath = "cmd/samples/gallery/"
+	gallaryPath = "zarf/samples/gallery/"
 )
 
 // =============================================================================

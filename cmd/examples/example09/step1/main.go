@@ -25,7 +25,7 @@ import (
 const (
 	url       = "http://localhost:11434/v1/chat/completions"
 	model     = "qwen2.5vl:latest"
-	imagePath = "cmd/samples/gallery/roseimg.png"
+	imagePath = "zarf/samples/gallery/roseimg.png"
 )
 
 // =============================================================================

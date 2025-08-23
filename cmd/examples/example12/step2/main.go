@@ -112,7 +112,7 @@ func run() error {
 
 	// -------------------------------------------------------------------------
 
-	files, err := getFilesFromDirectory("cmd/samples/videos/frames")
+	files, err := getFilesFromDirectory("zarf/samples/videos/frames")
 	if err != nil {
 		return fmt.Errorf("get files from directory: %w", err)
 	}
@@ -216,7 +216,7 @@ func processVideo() error {
 	fmt.Println("Processing Video ...")
 	defer fmt.Println("\nDONE Processing Video")
 
-	ffmpegCommand := "ffmpeg -i cmd/samples/videos/training.mp4 -vf \"select='eq(pict_type,I)'\" -vsync vfr cmd/samples/videos/frames/frame-%03d.jpg"
+	ffmpegCommand := "ffmpeg -i zarf/samples/videos/training.mp4 -vf \"select='eq(pict_type,I)'\" -vsync vfr zarf/samples/videos/frames/frame-%03d.jpg"
 	_, err := exec.Command("/bin/sh", "-c", ffmpegCommand).Output()
 	if err != nil {
 		return fmt.Errorf("error while running ffmpeg: %w", err)

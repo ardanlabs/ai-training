@@ -22,7 +22,7 @@ import (
 
 const (
 	urlChat   = "http://localhost:11434/v1/chat/completions"
-	modelChat = "qwen2.5vl:latest"
+	modelChat = "mistral-small3.2:latest"
 )
 
 func main() {
@@ -89,7 +89,7 @@ func processVideo() error {
 	fmt.Println("Processing Video ...")
 	defer fmt.Println("\nDONE Processing Video")
 
-	ffmpegCommand := "ffmpeg -i zarf/samples/videos/training.mp4 -vf \"select='eq(pict_type,I)'\" -vsync vfr zarf/samples/videos/frames/frame-%03d.jpg"
+	ffmpegCommand := "ffmpeg -i zarf/samples/videos/training.mp4 -vf \"select='eq(pict_type,I)'\" -vsync vfr -loglevel error zarf/samples/videos/frames/frame-%03d.jpg"
 	_, err := exec.Command("/bin/sh", "-c", ffmpegCommand).Output()
 	if err != nil {
 		return fmt.Errorf("error while running ffmpeg: %w", err)

@@ -61,7 +61,8 @@ ollama-pull:
 	ollama pull bge-m3:latest
 	ollama pull qwen2.5vl:latest
 	ollama pull gpt-oss:latest
-	ollama pull hf.co/gpustack/bge-reranker-v2-m3-GGUF:Q8_0
+	ollama pull mistral-small3.2:latest
+	ollama pull DC1LEX/nomic-embed-text-v1.5-multimodal:latest
 
 python-install:
 	rm -rf .venv
@@ -144,16 +145,26 @@ example11-step2:
 	go run cmd/examples/example11/step2/*.go
 
 example12-step1:
+	mkdir -p zarf/samples/videos/frames && \
 	rm -rf zarf/samples/videos/frames/* && \
 	go run cmd/examples/example12/step1/main.go
 
 example12-step2:
+	mkdir -p zarf/samples/videos/frames && \
 	rm -rf zarf/samples/videos/frames/* && \
 	go run cmd/examples/example12/step2/main.go
 
 example12-step3:
+	mkdir -p zarf/samples/videos/frames && \
 	rm -rf zarf/samples/videos/frames/* && \
 	go run cmd/examples/example12/step3/*.go
+
+example13-step1:
+	mkdir -p zarf/samples/videos/chunks && \
+	mkdir -p zarf/samples/videos/frames && \
+	rm -rf zarf/samples/videos/chunks/* && \
+	rm -rf zarf/samples/videos/frames/* && \
+	go run cmd/examples/example13/step1/*.go
 
 talk:
 	export OLLAMA_CONTEXT_LENGTH=$(OLLAMA_CONTEXT_LENGTH) && \
@@ -265,6 +276,24 @@ deps-python-outdated:
 	uv pip list --outdated
 
 # ==============================================================================
+# FFMpeg test commands
+
+ffmpeg-extract-chunks:
+	rm -rf zarf/samples/videos/chunks/*
+	ffmpeg -i zarf/samples/videos/test_rag_video.mp4 \
+		-c copy -map 0 -f segment -segment_time 15 -reset_timestamps 1 \
+		-loglevel error \
+		zarf/samples/videos/chunks/output_%04d.mp4
+
+ffmpeg-extract-frames:
+	rm -rf zarf/samples/videos/frames/*
+	ffmpeg -i zarf/samples/videos/chunks/output_0000.mp4 \
+		-vf "select='eq(pict_type,I)'" -vsync vfr \
+		-loglevel error \
+		zarf/samples/videos/frames/frame-%03d.jpg
+
+# ==============================================================================
+# curl test commands
 
 curl-tooling:
 	curl http://localhost:11434/v1/chat/completions \

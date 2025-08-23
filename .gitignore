@@ -11,7 +11,9 @@
 *.dll
 *.so
 
+test_rag_video.mp4
 cmd/notes/*
+zarf/samples/videos/chunks/*
 zarf/samples/videos/frames/*
 zarf/data/book.embeddings
 zarf/data/example3.*

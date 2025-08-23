@@ -22,31 +22,18 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/ardanlabs/ai-training/foundation/client"
-	"github.com/ardanlabs/ai-training/foundation/mongodb"
 	"github.com/ardanlabs/ai-training/foundation/vector"
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
 )
-
-type document struct {
-	FileName    string    `bson:"file_name"`
-	Description string    `bson:"description"`
-	Embedding   []float64 `bson:"embedding"`
-}
 
 const (
 	urlChat    = "http://localhost:11434/v1/chat/completions"
 	urlEmbed   = "http://localhost:11434/v1/embeddings"
-	modelChat  = "qwen2.5vl:latest"
+	modelChat  = "mistral-small3.2:latest"
 	modelEmbed = "bge-m3:latest"
 
-	dbName     = "example12"
-	colName    = "step-2"
 	dimensions = 1024
 
 	similarityThreshold = 0.80
@@ -66,20 +53,16 @@ func run() error {
 		return fmt.Errorf("process video: %w", err)
 	}
 
+	// -------------------------------------------------------------------------
+
 	const prompt = `
-		Give me all the text in the image.
-		Do not describe the image.
-		Make sure that ALL the text is in the image.
-		Make sure that you include any text editor/IDE tool too.
-	
+		Provide a detailed description of this image in 300 words or less.
+		Also, classify this image as: "source code", "diagram", or "other" depending on the content it features the most.
+		
 		Output the text in a valid JSON format MATCHING this format:
 		{
-			"text": "<Text that can be found in this image>"
-		}
-
-		If no text is found, output MUST BE:
-		{
-			"error": "NO TEXT FOUND"
+			"text": "<Description of the image>",
+			"classification": ["source_code", "diagram", "other"]
 		}
 
 		Encode any special characters in the JSON output.
@@ -88,22 +71,6 @@ func run() error {
 		MAKE SURE THAT THE JSON IS VALID.
 		DO NOT INCLUDE ANYTHING ELSE BUT THE JSON DOCUMENT IN THE RESPONSE.
 `
-
-	// -------------------------------------------------------------------------
-
-	fmt.Println("\nConnecting to MongoDB")
-
-	dbClient, err := mongodb.Connect(ctx, "mongodb://localhost:27017", "ardan", "ardan")
-	if err != nil {
-		return fmt.Errorf("connectToMongo: %w", err)
-	}
-
-	fmt.Println("Initializing Database")
-
-	col, err := initDB(ctx, dbClient)
-	if err != nil {
-		return fmt.Errorf("initDB: %w", err)
-	}
 
 	// -------------------------------------------------------------------------
 
@@ -122,24 +89,6 @@ func run() error {
 	for _, fileName := range files {
 		fmt.Printf("\nProcessing image: %s\n", fileName)
 
-		findRes := col.FindOne(ctx, bson.D{{Key: "file_name", Value: fileName}})
-		if findRes.Err() == nil {
-			fmt.Println("  - Image already exists")
-
-			// If the image already exists, we'll use the existing embedding as
-			// a value for the "previousEmbedding" variable.
-			d1 := document{}
-			err := findRes.Decode(&d1)
-			if err != nil {
-				return fmt.Errorf(" - Failed to decode document from DB: %w", err)
-			}
-
-			// Assign the embedding of this document to the "previousEmbedding" variable.
-			copy(previousEmbedding, d1.Embedding)
-
-			continue
-		}
-
 		// -------------------------------------------------------------------------
 
 		image, mimeType, err := readImage(fileName)
@@ -147,19 +96,14 @@ func run() error {
 			return fmt.Errorf("read image: %w", err)
 		}
 
+		// -------------------------------------------------------------------------
+
 		results, err := llmChat.ChatCompletions(ctx, prompt, client.WithImage(mimeType, image))
 		if err != nil {
 			return fmt.Errorf("chat completions: %w", err)
 		}
 
 		fmt.Printf("LLM RESPONSE: %s\n", results)
-
-		// -------------------------------------------------------------------------
-
-		if strings.Contains(results, "\"error\": \"NO TEXT FOUND\"") {
-			fmt.Println("  - No text found in image")
-			continue
-		}
 
 		// -------------------------------------------------------------------------
 
@@ -187,19 +131,6 @@ func run() error {
 		// -------------------------------------------------------------------------
 
 		fmt.Println("\nInserting frame information into the database:")
-
-		d1 := document{
-			FileName:    fileName,
-			Description: results,
-			Embedding:   embedding,
-		}
-
-		res, err := col.InsertOne(ctx, d1)
-		if err != nil {
-			return fmt.Errorf("col.InsertOne: %w", err)
-		}
-
-		fmt.Printf("%s\n", res.InsertedID)
 
 		// We need to give mongodb some time to index the document.
 		// There is no way to know when this gets done.
@@ -256,34 +187,4 @@ func readImage(fileName string) ([]byte, string, error) {
 	default:
 		return nil, "", fmt.Errorf("unsupported file type: %s: filename: %s", mimeType, fileName)
 	}
-}
-
-func initDB(ctx context.Context, client *mongo.Client) (*mongo.Collection, error) {
-	db := client.Database(dbName)
-
-	col, err := mongodb.CreateCollection(ctx, db, colName)
-	if err != nil {
-		return nil, fmt.Errorf("createCollection: %w", err)
-	}
-
-	const indexName = "vector_index"
-
-	settings := mongodb.VectorIndexSettings{
-		NumDimensions: dimensions,
-		Path:          "embedding",
-		Similarity:    "cosine",
-	}
-
-	if err := mongodb.CreateVectorIndex(ctx, col, indexName, settings); err != nil {
-		return nil, fmt.Errorf("createVectorIndex: %w", err)
-	}
-
-	unique := true
-	indexModel := mongo.IndexModel{
-		Keys:    bson.D{{Key: "file_name", Value: 1}},
-		Options: &options.IndexOptions{Unique: &unique},
-	}
-	col.Indexes().CreateOne(ctx, indexModel)
-
-	return col, nil
 }

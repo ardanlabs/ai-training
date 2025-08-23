@@ -11,6 +11,7 @@
 *.dll
 *.so
 
+output_*.mp4
 test_rag_video.mp4
 cmd/notes/*
 zarf/samples/videos/chunks/*

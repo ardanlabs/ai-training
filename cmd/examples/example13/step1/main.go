@@ -65,6 +65,7 @@ func run() error {
 	const prompt = `
 		Provide a detailed description of this image in 300 words or less.
 		Also, classify this image as: "source code", "diagram", "terminal", or "other" depending on the content it features the most.
+		If icons are present in the middle of the image and blocking the main content, classify them as "icon".
 		
 		Output the text in a valid JSON format MATCHING this format:
 		{
@@ -179,7 +180,7 @@ func run() error {
 	fmt.Println("\nUnique Frames:")
 
 	for _, f := range uniqueFrames {
-		fmt.Printf("\t- FileName: %s\n", f.fileName)
+		fmt.Printf("\t- FileName: %s - [%s]\n", f.fileName, f.classification)
 	}
 
 	fmt.Println("\nDONE")

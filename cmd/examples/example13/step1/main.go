@@ -141,6 +141,7 @@ func run() error {
 
 		fmt.Printf("%v...%v\n", embedding[0:3], embedding[len(embedding)-3:])
 
+		f.embedding = make([]float64, dimensions)
 		copy(f.embedding, embedding)
 
 		frames = append(frames, f)
@@ -157,8 +158,9 @@ func run() error {
 
 		var isDuplicate bool
 		for _, previousFrame := range uniqueFrames {
+			fmt.Printf("Checking image similarity between: %s - %s\n", previousFrame.fileName, f.fileName)
 			similarity := vector.CosineSimilarity(previousFrame.embedding, f.embedding)
-			fmt.Printf("  - Image similarity compared to the previous image: %.6f\n", similarity)
+			fmt.Printf("  - Image similarity: %.3f\n", similarity)
 
 			if similarity > similarityThreshold {
 				isDuplicate = true

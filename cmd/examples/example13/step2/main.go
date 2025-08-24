@@ -1,10 +1,10 @@
-// This example builds on example12 and shows you how to
+// This example builds on example13-step1 and shows you how to
 // process a full length video into chunks, then extract
 // all the information for each chunk.
 //
 // # Running the example:
 //
-//	$ make example13-step1
+//	$ make example13-step2
 //
 // # This requires running the following commands:
 //
@@ -32,8 +32,9 @@ import (
 
 type frame struct {
 	fileName       string
-	description    string
 	classification string
+	description    string
+	code           string
 	embedding      []float64
 	startTime      float64
 	duration       float64
@@ -129,6 +130,28 @@ const extractFrameInfoPrompt = `
 		DO NOT INCLUDE ANYTHING ELSE BUT THE JSON DOCUMENT IN THE RESPONSE.
 `
 
+const extractCodePrompt = `
+		Extract all the source code in the image.
+		Do not include any other text.
+		Do not interpret the code in the image.
+		
+		Output the text in a valid JSON format MATCHING this format:
+		{
+			"code": "<source code>"
+		}
+
+		If there is no code in the image, output:
+		{
+			"error": "NO CODE FOUND"
+		}
+
+		Encode any special characters in the JSON output.
+		
+		Make sure that there's no extra whitespace or formatting, or markdown surrounding the json output.
+		MAKE SURE THAT THE JSON IS VALID.
+		DO NOT INCLUDE ANYTHING ELSE BUT THE JSON DOCUMENT IN THE RESPONSE.
+`
+
 func processChunk(ctx context.Context, llmChat *client.LLM, llmEmbed *client.LLM, sourceDir string, sourceFileName string, totalFramesTime float64, duration float64) error {
 	fullPath := filepath.Join(sourceDir, sourceFileName)
 
@@ -207,6 +230,19 @@ func processChunk(ctx context.Context, llmChat *client.LLM, llmEmbed *client.LLM
 
 		f.description = descr.Text
 		f.classification = descr.Classification
+
+		// -------------------------------------------------------------------------
+
+		if descr.Classification == "source code" {
+			fmt.Println("  - Source code classification detected, extracting code...")
+			code, err := llmChat.ChatCompletions(ctx, extractCodePrompt, client.WithImage(mimeType, image))
+			if err != nil {
+				return fmt.Errorf("chat completions: %w", err)
+			}
+
+			f.code = code
+			fmt.Printf("LLM RESPONSE: %s\n", code)
+		}
 
 		// -------------------------------------------------------------------------
 

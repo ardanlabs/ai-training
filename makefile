@@ -166,6 +166,13 @@ example13-step1:
 	rm -rf zarf/samples/videos/frames/* && \
 	go run cmd/examples/example13/step1/*.go
 
+example13-step2:
+	mkdir -p zarf/samples/videos/chunks && \
+	mkdir -p zarf/samples/videos/frames && \
+	rm -rf zarf/samples/videos/chunks/* && \
+	rm -rf zarf/samples/videos/frames/* && \
+	go run cmd/examples/example13/step2/*.go
+
 talk:
 	export OLLAMA_CONTEXT_LENGTH=$(OLLAMA_CONTEXT_LENGTH) && \
 	go run cmd/talk/main.go
@@ -283,14 +290,19 @@ ffmpeg-extract-chunks:
 	ffmpeg -i zarf/samples/videos/test_rag_video.mp4 \
 		-c copy -map 0 -f segment -segment_time 15 -reset_timestamps 1 \
 		-loglevel error \
-		zarf/samples/videos/chunks/output_%04d.mp4
+		zarf/samples/videos/chunks/output_%05d.mp4
 
 ffmpeg-extract-frames:
 	rm -rf zarf/samples/videos/frames/*
-	ffmpeg -i zarf/samples/videos/chunks/output_0000.mp4 \
-		-vf "select='eq(pict_type,I)'" -vsync vfr \
+	ffmpeg -skip_frame nokey -i zarf/samples/videos/chunks/output_00000.mp4 \
+		-frame_pts true -fps_mode vfr \
 		-loglevel error \
-		zarf/samples/videos/frames/frame-%03d.jpg
+		zarf/samples/videos/frames/frame-%05d.jpg
+
+ffmpeg-check-chunk-duration:
+	ffprobe -v quiet -print_format json -show_entries format=duration zarf/samples/videos/chunks/output_00000.mp4
+	ffprobe -v quiet -print_format json -show_entries format=duration zarf/samples/videos/chunks/output_00002.mp4
+	ffprobe -v quiet -print_format json -show_entries format=duration zarf/samples/videos/chunks/output_00003.mp4
 
 # ==============================================================================
 # curl test commands

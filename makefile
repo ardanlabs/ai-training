@@ -52,6 +52,7 @@ install:
 	brew install pgcli
 	brew install uv
 	brew install pkgconf
+	brew install ffmpeg
 
 docker:
 	docker pull mongodb/mongodb-atlas-local

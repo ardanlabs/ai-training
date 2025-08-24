@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
 	"os/exec"
 
 	"github.com/ardanlabs/ai-training/foundation/audio"
@@ -23,7 +24,7 @@ func run() error {
 		return fmt.Errorf("converting video to wav: %w", err)
 	}
 
-	adio, err := audio.New(client.StdoutLogger, "zarf/audio/ggml-tiny.bin", 1)
+	adio, err := audio.New(client.StdoutLogger, "zarf/audio/ggml-tiny.bin", true, true)
 	if err != nil {
 		return fmt.Errorf("starting audio: %w", err)
 	}
@@ -31,7 +32,7 @@ func run() error {
 	audioCfg := audio.Config{
 		SetLanguage:          "en",
 		Translate:            false,
-		Temperature:          0.7,
+		Temperature:          0.1,
 		Prompt:               "",
 		Offset:               0,
 		Duration:             0,
@@ -58,6 +59,9 @@ func run() error {
 func convertVideoToWav(source string) error {
 	fmt.Println("Processing Video ...")
 	defer fmt.Println("\nDONE Processing Video")
+
+	// Ensure there is no previous file to allow ffmpeg to create the new one.
+	_ = os.Remove("zarf/samples/audio/output.wav")
 
 	ffmpegCommand := fmt.Sprintf("ffmpeg -i %s -ar 16000 -ac 1 -c:a pcm_s16le -loglevel error zarf/samples/audio/output.wav", source)
 	out, err := exec.Command("/bin/sh", "-c", ffmpegCommand).CombinedOutput()

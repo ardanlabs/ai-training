@@ -6,6 +6,8 @@ import (
 	"context"
 	"fmt"
 	"time"
+
+	whisper2 "github.com/ardanlabs/ai-training/foundation/audio/whisper.cpp/bindings/go"
 )
 
 type Logger func(ctx context.Context, msg string, args ...any)
@@ -47,25 +49,24 @@ type Config struct {
 
 type Audio struct {
 	log Logger
-	ch  chan *whisp
+	whs *whisp
 }
 
-func New(log Logger, modelPath string, concurrency int) (*Audio, error) {
+func New(log Logger, modelPath string, useGPU bool, flashAttn bool) (*Audio, error) {
 	a := Audio{
 		log: log,
-		ch:  make(chan *whisp, concurrency),
 	}
 
-	for range concurrency {
-		log(context.Background(), "*********************> LOADING MODEL")
+	params := whisper2.DefaultInitParams()
+	params.UseGpu = useGPU
+	params.FlashAttn = flashAttn
 
-		whs, err := newWhisper(log, modelPath)
-		if err != nil {
-			return nil, fmt.Errorf("new: %w", err)
-		}
-
-		a.ch <- whs
+	whs, err := newWhisper(log, modelPath, params)
+	if err != nil {
+		return nil, fmt.Errorf("new: %w", err)
 	}
+
+	a.whs = whs
 
 	return &a, nil
 }
@@ -74,33 +75,5 @@ func (a *Audio) Process(ctx context.Context, cfg Config, audioFile string) (Whis
 	a.log(ctx, "text-processing", "status", "started")
 	defer a.log(ctx, "text-processing", "status", "completed")
 
-	whs, err := a.acquire(ctx)
-	if err != nil {
-		return WhisperResponse{}, fmt.Errorf("acquire: %w", err)
-	}
-	defer func() {
-		a.log(ctx, "text-processing", "status", "releasing whisper model")
-		a.release(whs)
-	}()
-
-	a.log(ctx, "text-processing", "status", "acquired whisper model")
-
-	return whs.Process(ctx, cfg, audioFile)
-}
-
-func (a *Audio) acquire(ctx context.Context) (*whisp, error) {
-	select {
-	case whs := <-a.ch:
-		return whs, nil
-
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	}
-}
-
-func (a *Audio) release(whs *whisp) {
-	select {
-	case a.ch <- whs:
-	default:
-	}
+	return a.whs.Process(ctx, cfg, audioFile)
 }

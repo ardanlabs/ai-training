@@ -9,7 +9,7 @@ import (
 	whisper "github.com/ardanlabs/ai-training/foundation/audio/whisper.cpp/bindings/go"
 )
 
-///////////////////////////////////////////////////////////////////////////////
+// /////////////////////////////////////////////////////////////////////////////
 // TYPES
 
 type model struct {
@@ -20,7 +20,7 @@ type model struct {
 // Make sure model adheres to the interface
 var _ Model = (*model)(nil)
 
-///////////////////////////////////////////////////////////////////////////////
+// /////////////////////////////////////////////////////////////////////////////
 // LIFECYCLE
 
 func New(path string) (Model, error) {
@@ -28,6 +28,21 @@ func New(path string) (Model, error) {
 	if _, err := os.Stat(path); err != nil {
 		return nil, err
 	} else if ctx := whisper.Whisper_init(path); ctx == nil {
+		return nil, ErrUnableToLoadModel
+	} else {
+		model.ctx = ctx
+		model.path = path
+	}
+
+	// Return success
+	return model, nil
+}
+
+func NewWithParams(path string, params whisper.InitParams) (Model, error) {
+	model := new(model)
+	if _, err := os.Stat(path); err != nil {
+		return nil, err
+	} else if ctx := whisper.Whisper_init_with_params(path, params); ctx == nil {
 		return nil, ErrUnableToLoadModel
 	} else {
 		model.ctx = ctx
@@ -59,7 +74,7 @@ func (model *model) Close() error {
 	return nil
 }
 
-///////////////////////////////////////////////////////////////////////////////
+// /////////////////////////////////////////////////////////////////////////////
 // STRINGIFY
 
 func (model *model) String() string {
@@ -70,7 +85,7 @@ func (model *model) String() string {
 	return str + ">"
 }
 
-///////////////////////////////////////////////////////////////////////////////
+// /////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
 // Return true if model is multilingual (language and translation options are supported)

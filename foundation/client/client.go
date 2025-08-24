@@ -39,6 +39,8 @@ var defaultClient = http.Client{
 
 type Logger func(context.Context, string, ...any)
 
+var NoopLogger = func(ctx context.Context, msg string, v ...any) {}
+
 var StdoutLogger = func(ctx context.Context, msg string, v ...any) {
 	s := fmt.Sprintf("msg: %s", msg)
 	for i := 0; i < len(v); i = i + 2 {

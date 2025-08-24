@@ -51,6 +51,7 @@ install:
 	brew install mplayer
 	brew install pgcli
 	brew install uv
+	brew install pkgconf
 
 docker:
 	docker pull mongodb/mongodb-atlas-local
@@ -173,24 +174,8 @@ example13-step2:
 	rm -rf zarf/samples/videos/frames/* && \
 	go run cmd/examples/example13/step2/*.go
 
-example13-step3-build-darwin:
-	CC=/opt/homebrew/Cellar/llvm/20.1.8/bin/clang \
-	CXX=/opt/homebrew/Cellar/llvm/20.1.8/bin/clang++ \
-	CGO_CFLAGS="-I$(CURDIR)/zarf/whisper" \
-	CGO_LDFLAGS="-L./zarf/whisper/darwin" \
-	go build -o ./cmd/examples/example13/step3/audio ./cmd/examples/example13/step3/
-
-example13-step3-darwin: example13-step3-build-darwin
-	DYLD_LIBRARY_PATH="./zarf/whisper/darwin" \
-	./cmd/examples/example13/step3/audio
-
-example13-step3-linux:
-	CCC=/home/linuxbrew/.linuxbrew/bin/clang \
-	CXX=/home/linuxbrew/.linuxbrew/bin/clang++ \
-	CGO_CFLAGS="-I$(CURDIR)/zarf/whisper" \
-	CGO_LDFLAGS="-L./zarf/whisper/linux" \
-	LD_LIBRARY_PATH="./zarf/whisper/linux:/home/linuxbrew/.linuxbrew/opt/libomp/lib/" \
-	go run ./cmd/examples/example13/step3/audio
+example13-step3:
+	go run ./cmd/examples/example13/step3/main.go
 
 # ==============================================================================
 # Manage project

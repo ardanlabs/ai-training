@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	whisper2 "github.com/ardanlabs/ai-training/foundation/audio/whisper.cpp/bindings/go"
 	"github.com/ardanlabs/ai-training/foundation/audio/whisper.cpp/bindings/go/pkg/whisper"
 	"github.com/go-audio/wav"
 )
@@ -49,8 +50,8 @@ type whisp struct {
 	model whisper.Model
 }
 
-func newWhisper(log Logger, modelPath string) (*whisp, error) {
-	model, err := whisper.New(modelPath)
+func newWhisper(log Logger, modelPath string, params whisper2.InitParams) (*whisp, error) {
+	model, err := whisper.NewWithParams(modelPath, params)
 	if err != nil {
 		return nil, fmt.Errorf("new: %w", err)
 	}

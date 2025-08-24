@@ -8,7 +8,7 @@ import (
 	"unsafe"
 )
 
-///////////////////////////////////////////////////////////////////////////////
+// /////////////////////////////////////////////////////////////////////////////
 // CGO
 
 /*
@@ -63,7 +63,7 @@ static struct whisper_full_params whisper_full_default_params_cb(struct whisper_
 */
 import "C"
 
-///////////////////////////////////////////////////////////////////////////////
+// /////////////////////////////////////////////////////////////////////////////
 // TYPES
 
 type (
@@ -74,7 +74,7 @@ type (
 	Params           C.struct_whisper_full_params
 )
 
-///////////////////////////////////////////////////////////////////////////////
+// /////////////////////////////////////////////////////////////////////////////
 // GLOBALS
 
 const (
@@ -97,7 +97,52 @@ var (
 	ErrInvalidLanguage  = errors.New("invalid language")
 )
 
-///////////////////////////////////////////////////////////////////////////////
+// Go enum for alignment heads preset
+type WhisperAlignmentHeadsPreset int
+
+const (
+	WHISPER_AHEADS_NONE WhisperAlignmentHeadsPreset = iota
+	WHISPER_AHEADS_N_TOP_MOST
+	WHISPER_AHEADS_CUSTOM
+	WHISPER_AHEADS_TINY_EN
+	WHISPER_AHEADS_TINY
+	WHISPER_AHEADS_BASE_EN
+	WHISPER_AHEADS_BASE
+	WHISPER_AHEADS_SMALL_EN
+	WHISPER_AHEADS_SMALL
+	WHISPER_AHEADS_MEDIUM_EN
+	WHISPER_AHEADS_MEDIUM
+	WHISPER_AHEADS_LARGE_V1
+	WHISPER_AHEADS_LARGE_V2
+	WHISPER_AHEADS_LARGE_V3
+	WHISPER_AHEADS_LARGE_V3_TURBO
+)
+
+// Go struct for whisper_ahead
+type WhisperAhead struct {
+	NTextLayer int
+	NHead      int
+}
+
+// Go struct for whisper_aheads
+type WhisperAheads struct {
+	NHeads int
+	Heads  []WhisperAhead
+}
+
+// Go struct that mirrors the C whisper_context_params struct
+type InitParams struct {
+	UseGpu             bool
+	FlashAttn          bool
+	GpuDevice          int
+	DtwTokenTimestamps bool
+	DtwAheadsPreset    WhisperAlignmentHeadsPreset
+	DtwNTop            int
+	DtwAheads          WhisperAheads
+	DtwMemSize         int // TODO: remove when C struct removes it
+}
+
+// /////////////////////////////////////////////////////////////////////////////
 // PUBLIC METHODS
 
 // Allocates all memory needed for the model and loads the model from the given file.
@@ -106,6 +151,80 @@ func Whisper_init(path string) *Context {
 	cPath := C.CString(path)
 	defer C.free(unsafe.Pointer(cPath))
 	if ctx := C.whisper_init_from_file_with_params(cPath, C.whisper_context_default_params()); ctx != nil {
+		return (*Context)(ctx)
+	} else {
+		return nil
+	}
+}
+
+// Helper function to create default parameters
+func DefaultInitParams() InitParams {
+	return InitParams{
+		UseGpu:             false,
+		FlashAttn:          false,
+		GpuDevice:          0,
+		DtwTokenTimestamps: false,
+		DtwAheadsPreset:    WHISPER_AHEADS_NONE,
+		DtwNTop:            0,
+		DtwAheads:          WhisperAheads{NHeads: 0, Heads: nil},
+		DtwMemSize:         0,
+	}
+}
+
+// Helper function to convert Go InitParams to C whisper_context_params
+func (p *InitParams) toCParams() C.struct_whisper_context_params {
+	var cParams C.struct_whisper_context_params
+
+	// Convert basic fields
+	cParams.use_gpu = C.bool(p.UseGpu)
+	cParams.flash_attn = C.bool(p.FlashAttn)
+	cParams.gpu_device = C.int(p.GpuDevice)
+	cParams.dtw_token_timestamps = C.bool(p.DtwTokenTimestamps)
+	cParams.dtw_aheads_preset = C.enum_whisper_alignment_heads_preset(p.DtwAheadsPreset)
+	cParams.dtw_n_top = C.int(p.DtwNTop)
+	cParams.dtw_mem_size = C.size_t(p.DtwMemSize)
+
+	// Convert whisper_aheads if there are heads
+	if len(p.DtwAheads.Heads) > 0 {
+		// Allocate C array for heads
+		cHeads := C.malloc(C.size_t(len(p.DtwAheads.Heads)) * C.size_t(unsafe.Sizeof(C.struct_whisper_ahead{})))
+		cHeadsSlice := (*[1 << 30]C.struct_whisper_ahead)(cHeads)[:len(p.DtwAheads.Heads):len(p.DtwAheads.Heads)]
+
+		// Copy heads data
+		for i, head := range p.DtwAheads.Heads {
+			cHeadsSlice[i].n_text_layer = C.int(head.NTextLayer)
+			cHeadsSlice[i].n_head = C.int(head.NHead)
+		}
+
+		cParams.dtw_aheads.n_heads = C.size_t(p.DtwAheads.NHeads)
+		cParams.dtw_aheads.heads = (*C.struct_whisper_ahead)(cHeads)
+	} else {
+		cParams.dtw_aheads.n_heads = 0
+		cParams.dtw_aheads.heads = nil
+	}
+
+	return cParams
+}
+
+// Helper function to free allocated memory in C params
+func freeCParams(cParams *C.struct_whisper_context_params) {
+	if cParams.dtw_aheads.heads != nil {
+		C.free(unsafe.Pointer(cParams.dtw_aheads.heads))
+	}
+}
+
+// Florin: Allow FlashAttention to be used.
+// Allocates all memory needed for the model and loads the model from the given file.
+// Returns NULL on failure.
+func Whisper_init_with_params(path string, params InitParams) *Context {
+	cPath := C.CString(path)
+	defer C.free(unsafe.Pointer(cPath))
+
+	// Convert Go params to C params
+	cParams := params.toCParams()
+	defer freeCParams(&cParams)
+
+	if ctx := C.whisper_init_from_file_with_params(cPath, cParams); ctx != nil {
 		return (*Context)(ctx)
 	} else {
 		return nil
@@ -257,9 +376,9 @@ func (ctx *Context) Whisper_is_multilingual() int {
 }
 
 // The probabilities for the next token
-//func (ctx *Whisper_context) Whisper_get_probs() []float32 {
+// func (ctx *Whisper_context) Whisper_get_probs() []float32 {
 //	return (*[1 << 30]float32)(unsafe.Pointer(C.whisper_get_probs((*C.struct_whisper_context)(ctx))))[:ctx.Whisper_n_vocab()]
-//}
+// }
 
 // Token Id -> String. Uses the vocabulary in the provided context
 func (ctx *Context) Whisper_token_to_str(token Token) string {
@@ -429,7 +548,7 @@ func (ctx *Context) Whisper_full_get_token_p(segment int, token int) float32 {
 	return float32(C.whisper_full_get_token_p((*C.struct_whisper_context)(ctx), C.int(segment), C.int(token)))
 }
 
-///////////////////////////////////////////////////////////////////////////////
+// /////////////////////////////////////////////////////////////////////////////
 // CALLBACKS
 
 var (

@@ -33,6 +33,15 @@ github.com/fatih/set
 # github.com/gigawattio/window v0.0.0-20180317192513-0f5467e35573
 ## explicit
 github.com/gigawattio/window
+# github.com/go-audio/audio v1.0.0
+## explicit
+github.com/go-audio/audio
+# github.com/go-audio/riff v1.0.0
+## explicit; go 1.12
+github.com/go-audio/riff
+# github.com/go-audio/wav v1.1.0
+## explicit; go 1.13
+github.com/go-audio/wav
 # github.com/go-resty/resty/v2 v2.16.5
 ## explicit; go 1.20
 github.com/go-resty/resty/v2

@@ -273,7 +273,7 @@ func splitVideoIntoChunks(source string) error {
 	ffmpegCommand := fmt.Sprintf("ffmpeg -i %s -c copy -map 0 -f segment -segment_time 15 -reset_timestamps 1 -loglevel error zarf/samples/videos/chunks/output_%%05d.mp4", source)
 	out, err := exec.Command("/bin/sh", "-c", ffmpegCommand).CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("error while running ffmpeg: %w\n%s\n", err, string(out))
+		return fmt.Errorf("error while running ffmpeg: %w: %s", err, string(out))
 	}
 
 	return nil
@@ -288,7 +288,7 @@ func extractKeyFramesFromVideo(source string) error {
 
 	out, err := exec.Command("/bin/sh", "-c", ffmpegCommand).CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("error while running ffmpeg: %w\n%s\n", err, string(out))
+		return fmt.Errorf("error while running ffmpeg: %w: %s", err, string(out))
 	}
 
 	return nil

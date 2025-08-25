@@ -52,14 +52,14 @@ type Audio struct {
 	whs *whisp
 }
 
-func New(log Logger, modelPath string, useGPU bool, flashAttn bool) (*Audio, error) {
+func New(log Logger, modelPath string) (*Audio, error) {
 	a := Audio{
 		log: log,
 	}
 
 	params := whisper2.DefaultInitParams()
-	params.UseGpu = useGPU
-	params.FlashAttn = flashAttn
+	params.UseGpu = true
+	params.FlashAttn = true
 
 	whs, err := newWhisper(log, modelPath, params)
 	if err != nil {

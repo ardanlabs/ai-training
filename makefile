@@ -60,11 +60,9 @@ docker:
 	docker pull postgres:17.5
 
 ollama-pull:
-	ollama pull bge-m3:latest
 	ollama pull qwen2.5vl:latest
 	ollama pull gpt-oss:latest
 	ollama pull mistral-small3.2:latest
-	ollama pull DC1LEX/nomic-embed-text-v1.5-multimodal:latest
 
 python-install:
 	rm -rf .venv
@@ -207,6 +205,11 @@ ollama-logs:
 
 ollama-list-models:
 	ollama list
+
+ollama-check-models:
+	ollama run qwen2.5vl:latest 'Hello, model!'
+	ollama run gpt-oss:latest 'Hello, model!'
+	ollama run mistral-small3.2:latest 'Hello, model!'
 
 # ==============================================================================
 # Run Tooling

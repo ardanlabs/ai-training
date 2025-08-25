@@ -24,7 +24,7 @@ func run() error {
 		return fmt.Errorf("converting video to wav: %w", err)
 	}
 
-	adio, err := audio.New(client.StdoutLogger, "zarf/audio/ggml-tiny.bin", true, true)
+	adio, err := audio.New(client.StdoutLogger, "zarf/audio/ggml-tiny.bin")
 	if err != nil {
 		return fmt.Errorf("starting audio: %w", err)
 	}

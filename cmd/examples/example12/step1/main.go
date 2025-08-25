@@ -22,7 +22,7 @@ import (
 
 const (
 	urlChat   = "http://localhost:11434/v1/chat/completions"
-	modelChat = "mistral-small3.2:latest"
+	modelChat = "qwen2.5vl:latest"
 )
 
 func main() {

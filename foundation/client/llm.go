@@ -111,3 +111,30 @@ func (llm *LLM) EmbedText(ctx context.Context, input string) ([]float64, error) 
 
 	return resp.Data[0].Embedding, nil
 }
+
+func (llm *LLM) EmbedWithImage(ctx context.Context, description string, image []byte, mimeType string) ([]float64, error) {
+	dataBase64 := base64.StdEncoding.EncodeToString(image)
+
+	d := D{
+		"model": llm.model,
+		"input": []D{
+			{
+				"type": "image_url",
+				"image_url": D{
+					"url": fmt.Sprintf("data:%s;base64,%s", mimeType, dataBase64),
+				},
+			},
+		},
+	}
+
+	var resp Embedding
+	if err := llm.cln.Do(ctx, http.MethodPost, llm.url, d, &resp); err != nil {
+		return nil, fmt.Errorf("do: %w", err)
+	}
+
+	if len(resp.Data) == 0 {
+		return nil, fmt.Errorf("no embedding")
+	}
+
+	return resp.Data[0].Embedding, nil
+}

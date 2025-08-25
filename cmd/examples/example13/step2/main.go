@@ -32,19 +32,21 @@ import (
 
 type frame struct {
 	fileName       string
-	classification string
 	description    string
 	code           string
+	classification string
 	embedding      []float64
 	startTime      float64
 	duration       float64
+	mimeType       string
+	image          []byte
 }
 
 const (
 	urlChat    = "http://localhost:11434/v1/chat/completions"
-	urlEmbed   = "http://localhost:11434/v1/embeddings"
-	modelChat  = "mistral-small3.2:latest"
-	modelEmbed = "bge-m3:latest"
+	urlEmbed   = "http://localhost:11439/v1/embeddings"
+	modelChat  = "hf.co/mradermacher/NuMarkdown-8B-Thinking-GGUF:Q4_K_M"
+	modelEmbed = "nomic-embed-vision-v1.5"
 
 	dimensions = 1024
 
@@ -203,52 +205,15 @@ func processChunk(ctx context.Context, llmChat *client.LLM, llmEmbed *client.LLM
 			return fmt.Errorf("read image: %w", err)
 		}
 
-		// -------------------------------------------------------------------------
-
-		description, err := llmChat.ChatCompletions(ctx, extractFrameInfoPrompt, client.WithImage(mimeType, image))
-		if err != nil {
-			return fmt.Errorf("chat completions: %w", err)
-		}
-
-		description = strings.Trim(description, "`")
-		description = strings.TrimPrefix(description, "json")
-
-		fmt.Printf("LLM RESPONSE: %s\n", description)
-
-		var descr struct {
-			Text           string `json:"text"`
-			Classification string `json:"classification"`
-		}
-		if err := json.Unmarshal([]byte(description), &descr); err != nil {
-			return fmt.Errorf("unmarshal: %w", err)
-		}
-
-		if descr.Classification == "icon" {
-			fmt.Println("  - Icon classification detected, skipping...")
-			continue
-		}
-
-		f.description = descr.Text
-		f.classification = descr.Classification
-
-		// -------------------------------------------------------------------------
-
-		if descr.Classification == "source code" {
-			fmt.Println("  - Source code classification detected, extracting code...")
-			code, err := llmChat.ChatCompletions(ctx, extractCodePrompt, client.WithImage(mimeType, image))
-			if err != nil {
-				return fmt.Errorf("chat completions: %w", err)
-			}
-
-			f.code = code
-			fmt.Printf("LLM RESPONSE: %s\n", code)
-		}
+		f.mimeType = mimeType
+		f.image = make([]byte, len(image))
+		copy(f.image, image)
 
 		// -------------------------------------------------------------------------
 
 		fmt.Println("\nGenerating embeddings for the image description:")
 
-		embedding, err := llmEmbed.EmbedText(ctx, description)
+		embedding, err := llmEmbed.EmbedWithImage(ctx, "", image, mimeType)
 		if err != nil {
 			return fmt.Errorf("llm.EmbedText: %w", err)
 		}
@@ -257,6 +222,8 @@ func processChunk(ctx context.Context, llmChat *client.LLM, llmEmbed *client.LLM
 
 		f.embedding = make([]float64, dimensions)
 		copy(f.embedding, embedding)
+
+		// -------------------------------------------------------------------------
 
 		frames = append(frames, f)
 	}
@@ -290,6 +257,61 @@ func processChunk(ctx context.Context, llmChat *client.LLM, llmEmbed *client.LLM
 
 	// -------------------------------------------------------------------------
 
+	fmt.Printf("\nUnique Frames: %d\n", len(uniqueFrames))
+	for _, f := range uniqueFrames {
+		fmt.Printf("  - FileName: %s - [%.4f, %.4f]\n", f.fileName, f.startTime, f.duration)
+	}
+
+	// -------------------------------------------------------------------------
+
+	fmt.Println("\nExtracting frame descriptions:")
+
+	for _, f := range uniqueFrames {
+		fmt.Printf("Extracting description for image: %s\n", f.fileName)
+
+		description, err := llmChat.ChatCompletions(ctx, extractFrameInfoPrompt, client.WithImage(f.mimeType, f.image))
+		if err != nil {
+			return fmt.Errorf("chat completions: %w", err)
+		}
+
+		description = strings.Trim(description, "`")
+		description = strings.TrimPrefix(description, "json")
+
+		fmt.Printf("LLM RESPONSE: %s\n", description)
+
+		var descr struct {
+			Text           string `json:"text"`
+			Classification string `json:"classification"`
+		}
+		if err := json.Unmarshal([]byte(description), &descr); err != nil {
+			return fmt.Errorf("unmarshal: %w", err)
+		}
+
+		if descr.Classification == "icon" {
+			fmt.Println("  - Icon classification detected, skipping...")
+			continue
+		}
+
+		f.description = descr.Text
+		f.classification = descr.Classification
+		// -------------------------------------------------------------------------
+
+		// -------------------------------------------------------------------------
+
+		if descr.Classification == "source code" {
+			fmt.Println("  - Source code classification detected, extracting code...")
+			code, err := llmChat.ChatCompletions(ctx, extractCodePrompt, client.WithImage(f.mimeType, f.image))
+			if err != nil {
+				return fmt.Errorf("chat completions: %w", err)
+			}
+
+			f.code = code
+			fmt.Printf("LLM RESPONSE: %s\n", code)
+		}
+	}
+
+	// -------------------------------------------------------------------------
+
 	fmt.Println("\nUnique Frames:")
 
 	for _, f := range uniqueFrames {
@@ -309,7 +331,7 @@ func splitVideoIntoChunks(source string) error {
 	ffmpegCommand := fmt.Sprintf("ffmpeg -i %s -c copy -map 0 -f segment -segment_time 15 -reset_timestamps 1 -loglevel error zarf/samples/videos/chunks/output_%%05d.mp4", source)
 	out, err := exec.Command("/bin/sh", "-c", ffmpegCommand).CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("error while running ffmpeg: %w\n%s\n", err, string(out))
+		return fmt.Errorf("error while running ffmpeg: %w: %s", err, string(out))
 	}
 
 	return nil
@@ -324,7 +346,7 @@ func extractKeyFramesFromVideo(source string) error {
 
 	out, err := exec.Command("/bin/sh", "-c", ffmpegCommand).CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("error while running ffmpeg: %w\n%s\n", err, string(out))
+		return fmt.Errorf("error while running ffmpeg: %w: %s", err, string(out))
 	}
 
 	return nil

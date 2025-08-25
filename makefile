@@ -62,11 +62,14 @@ docker:
 ollama-pull:
 	ollama pull qwen2.5vl:latest
 	ollama pull gpt-oss:latest
-	ollama pull mistral-small3.2:latest
+	ollama pull hf.co/mradermacher/NuMarkdown-8B-Thinking-GGUF:Q4_K_M
 
 python-install:
 	rm -rf .venv
-	uv venv --python 3.12 && uv lock && uv sync
+	uv venv --python 3.12 && \
+	uv lock && \
+	uv sync && \
+	uv pip install -r cmd/embedding/requirements.txt
 
 # ==============================================================================
 # Ollama Settings
@@ -190,6 +193,12 @@ compose-down:
 
 compose-logs:
 	docker compose logs -n 100
+
+# ==============================================================================
+# Embedding tooling
+
+embedding-server:
+	uv run cmd/embedding/embedding.py
 
 # ==============================================================================
 # Ollama tooling

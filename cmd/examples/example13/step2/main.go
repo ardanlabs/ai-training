@@ -48,7 +48,7 @@ const (
 	modelChat  = "hf.co/mradermacher/NuMarkdown-8B-Thinking-GGUF:Q4_K_M"
 	modelEmbed = "nomic-embed-vision-v1.5"
 
-	dimensions = 1024
+	dimensions = 768
 
 	similarityThreshold = 0.80
 )

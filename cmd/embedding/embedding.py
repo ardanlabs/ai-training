@@ -13,7 +13,6 @@ from transformers import AutoTokenizer, AutoModel, AutoImageProcessor
 from PIL import Image
 import base64
 import io
-import numpy as np
 import uvicorn
 import logging
 from contextlib import asynccontextmanager

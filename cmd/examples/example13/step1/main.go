@@ -54,7 +54,7 @@ const (
 	// modelChat  = "hf.co/unsloth/Qwen2.5-VL-7B-Instruct-GGUF:Q4_K_M" // ~14 seconds / image
 	modelEmbed = "nomic-embed-vision-v1.5"
 
-	dimensions = 1024
+	dimensions = 768
 
 	similarityThreshold = 0.80
 )
@@ -200,6 +200,10 @@ func processChunk(ctx context.Context, llmChat *client.LLM, llmEmbed *client.LLM
 		embedding, err := llmEmbed.EmbedWithImage(ctx, "", image, mimeType)
 		if err != nil {
 			return fmt.Errorf("llm.EmbedText: %w", err)
+		}
+
+		if len(embedding) != dimensions {
+			return fmt.Errorf("embedding length (%d) is not equal to %d", len(embedding), dimensions)
 		}
 
 		fmt.Printf("%v...%v\n", embedding[0:3], embedding[len(embedding)-3:])

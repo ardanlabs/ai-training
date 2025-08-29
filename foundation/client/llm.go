@@ -4,22 +4,36 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"log"
 	"net/http"
+	"os"
+	"strconv"
 )
 
 type LLM struct {
-	cln    *Client
-	clnSSE *SSEClient[ChatSSE]
-	url    string
-	model  string
+	cln           *Client
+	clnSSE        *SSEClient[ChatSSE]
+	url           string
+	model         string
+	contextWindow int
 }
 
 func NewLLM(url string, model string) *LLM {
+	contextWindow := 1024 * 4
+	if v := os.Getenv("OLLAMA_CONTEXT_LENGTH"); v != "" {
+		var err error
+		contextWindow, err = strconv.Atoi(v)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+
 	return &LLM{
-		cln:    New(StdoutLogger),
-		clnSSE: NewSSE[ChatSSE](StdoutLogger),
-		url:    url,
-		model:  model,
+		cln:           New(StdoutLogger),
+		clnSSE:        NewSSE[ChatSSE](StdoutLogger),
+		url:           url,
+		model:         model,
+		contextWindow: contextWindow,
 	}
 }
 
@@ -55,6 +69,7 @@ func (llm *LLM) ChatCompletions(ctx context.Context, text string, options ...D) 
 		"temperature": 1.0,
 		"top_p":       0.5,
 		"top_k":       20,
+		"max_tokens":  llm.contextWindow,
 	}
 
 	var chat Chat
@@ -82,6 +97,7 @@ func (llm *LLM) ChatCompletionsSSE(ctx context.Context, content string) (chan Ch
 		"top_p":       0.5,
 		"top_k":       20,
 		"stream":      true,
+		"max_tokens":  llm.contextWindow,
 	}
 
 	ch := make(chan ChatSSE, 100)

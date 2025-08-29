@@ -22,13 +22,32 @@ import (
 	"github.com/ardanlabs/ai-training/foundation/client"
 )
 
-const (
+var (
 	urlChat    = "http://localhost:11434/v1/chat/completions"
 	urlEmbed   = "http://localhost:11434/v1/embeddings"
 	modelChat  = "qwen2.5vl:latest"
 	modelEmbed = "bge-m3:latest"
-	imagePath  = "zarf/samples/gallery/roseimg.png"
+
+	imagePath = "zarf/samples/gallery/roseimg.png"
 )
+
+func init() {
+	if v := os.Getenv("LLM_CHAT_SERVER"); v != "" {
+		urlChat = v
+	}
+
+	if v := os.Getenv("LLM_EMBED_SERVER"); v != "" {
+		urlEmbed = v
+	}
+
+	if v := os.Getenv("LLM_CHAT_MODEL"); v != "" {
+		modelChat = v
+	}
+
+	if v := os.Getenv("LLM_EMBED_MODEL"); v != "" {
+		modelEmbed = v
+	}
+}
 
 // =============================================================================
 

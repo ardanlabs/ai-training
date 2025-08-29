@@ -28,16 +28,35 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
-const (
-	urlChat     = "http://localhost:11434/v1/chat/completions"
-	urlEmbed    = "http://localhost:11434/v1/embeddings"
-	modelChat   = "qwen2.5vl:latest"
-	modelEmbed  = "bge-m3:latest"
+var (
+	urlChat    = "http://localhost:11434/v1/chat/completions"
+	urlEmbed   = "http://localhost:11434/v1/embeddings"
+	modelChat  = "qwen2.5vl:latest"
+	modelEmbed = "bge-m3:latest"
+
 	dbName      = "example9"
 	colName     = "images-5"
 	dimensions  = 1024
 	gallaryPath = "zarf/samples/gallery/"
 )
+
+func init() {
+	if v := os.Getenv("LLM_CHAT_SERVER"); v != "" {
+		urlChat = v
+	}
+
+	if v := os.Getenv("LLM_EMBED_SERVER"); v != "" {
+		urlEmbed = v
+	}
+
+	if v := os.Getenv("LLM_CHAT_MODEL"); v != "" {
+		modelChat = v
+	}
+
+	if v := os.Getenv("LLM_EMBED_MODEL"); v != "" {
+		modelEmbed = v
+	}
+}
 
 // =============================================================================
 

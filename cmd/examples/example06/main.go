@@ -43,13 +43,24 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-const (
-	url        = "http://localhost:11434/v1/embeddings"
-	model      = "bge-m3:latest"
+var (
+	url   = "http://localhost:11434/v1/embeddings"
+	model = "bge-m3:latest"
+
 	dbName     = "example06"
 	colName    = "book"
 	dimensions = 1024
 )
+
+func init() {
+	if v := os.Getenv("LLM_SERVER"); v != "" {
+		url = v
+	}
+
+	if v := os.Getenv("LLM_MODEL"); v != "" {
+		model = v
+	}
+}
 
 // =============================================================================
 

@@ -32,26 +32,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-// =============================================================================
-
-type document struct {
-	FileName    string    `bson:"file_name"`
-	Description string    `bson:"description"`
-	Embedding   []float64 `bson:"embedding"`
-}
-
-// =============================================================================
-
-type searchResult struct {
-	FileName    string    `bson:"file_name" json:"file_name"`
-	Description string    `bson:"description" json:"image_description"`
-	Embedding   []float64 `bson:"embedding" json:"-"`
-	Score       float64   `bson:"score" json:"-"`
-}
-
-// =============================================================================
-
-const (
+var (
 	urlChat  = "http://localhost:11434/v1/chat/completions"
 	urlEmbed = "http://localhost:11434/v1/embeddings"
 
@@ -64,14 +45,47 @@ const (
 	dimensions = 1024
 
 	similarityThreshold = 0.80
+
+	// The context window represents the maximum number of tokens that can be sent
+	// and received by the model. The default for Ollama is 8K. In the makefile
+	// it has been increased to 64K.
+	contextWindow = 1024 * 4
 )
+
+func init() {
+	if v := os.Getenv("LLM_CHAT_SERVER"); v != "" {
+		urlChat = v
+	}
+
+	if v := os.Getenv("LLM_CHAT_MODEL"); v != "" {
+		modelChat = v
+	}
+
+	if v := os.Getenv("LLM_EMBED_SERVER"); v != "" {
+		urlEmbed = v
+	}
+
+	if v := os.Getenv("LLM_EMBED_MODEL"); v != "" {
+		modelEmbed = v
+	}
+}
 
 // =============================================================================
 
-// The context window represents the maximum number of tokens that can be sent
-// and received by the model. The default for Ollama is 8K. In the makefile
-// it has been increased to 64K.
-var contextWindow = 1024 * 8
+type document struct {
+	FileName    string    `bson:"file_name"`
+	Description string    `bson:"description"`
+	Embedding   []float64 `bson:"embedding"`
+}
+
+type searchResult struct {
+	FileName    string    `bson:"file_name" json:"file_name"`
+	Description string    `bson:"description" json:"image_description"`
+	Embedding   []float64 `bson:"embedding" json:"-"`
+	Score       float64   `bson:"score" json:"-"`
+}
+
+// =============================================================================
 
 func main() {
 	if err := run(); err != nil {

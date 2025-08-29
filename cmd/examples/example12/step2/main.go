@@ -33,13 +33,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-type document struct {
-	FileName    string    `bson:"file_name"`
-	Description string    `bson:"description"`
-	Embedding   []float64 `bson:"embedding"`
-}
-
-const (
+var (
 	urlChat    = "http://localhost:11434/v1/chat/completions"
 	urlEmbed   = "http://localhost:11434/v1/embeddings"
 	modelChat  = "qwen2.5vl:latest"
@@ -51,6 +45,34 @@ const (
 
 	similarityThreshold = 0.80
 )
+
+func init() {
+	if v := os.Getenv("LLM_CHAT_SERVER"); v != "" {
+		urlChat = v
+	}
+
+	if v := os.Getenv("LLM_CHAT_MODEL"); v != "" {
+		modelChat = v
+	}
+
+	if v := os.Getenv("LLM_EMBED_SERVER"); v != "" {
+		urlEmbed = v
+	}
+
+	if v := os.Getenv("LLM_EMBED_MODEL"); v != "" {
+		modelEmbed = v
+	}
+}
+
+// =============================================================================
+
+type document struct {
+	FileName    string    `bson:"file_name"`
+	Description string    `bson:"description"`
+	Embedding   []float64 `bson:"embedding"`
+}
+
+// =============================================================================
 
 func main() {
 	if err := run(); err != nil {

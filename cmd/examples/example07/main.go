@@ -30,15 +30,33 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
-const (
+var (
 	urlChat    = "http://localhost:11434/v1/chat/completions"
 	urlEmbed   = "http://localhost:11434/v1/embeddings"
 	modelChat  = "qwen2.5vl:latest"
 	modelEmbed = "bge-m3:latest"
-	dbName     = "example06"
-	colName    = "book"
-	dimensions = 1024
+
+	dbName  = "example06"
+	colName = "book"
 )
+
+func init() {
+	if v := os.Getenv("LLM_CHAT_SERVER"); v != "" {
+		urlChat = v
+	}
+
+	if v := os.Getenv("LLM_EMBED_SERVER"); v != "" {
+		urlEmbed = v
+	}
+
+	if v := os.Getenv("LLM_CHAT_MODEL"); v != "" {
+		modelChat = v
+	}
+
+	if v := os.Getenv("LLM_EMBED_MODEL"); v != "" {
+		modelEmbed = v
+	}
+}
 
 // =============================================================================
 
@@ -93,7 +111,9 @@ func vectorSearch(ctx context.Context, question string) ([]searchResult, error) 
 
 	// -------------------------------------------------------------------------
 
-	results, err := vectorDBSearch(ctx, col, vector, dimensions)
+	const limitResults = 2
+
+	results, err := vectorDBSearch(ctx, col, vector, limitResults)
 	if err != nil {
 		return nil, fmt.Errorf("vectorDBSearch: %w", err)
 	}

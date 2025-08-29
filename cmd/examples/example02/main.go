@@ -22,16 +22,27 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
 	"time"
 
 	"github.com/ardanlabs/ai-training/foundation/client"
 	"github.com/ardanlabs/ai-training/foundation/vector"
 )
 
-const (
+var (
 	url   = "http://localhost:11434/v1/embeddings"
 	model = "bge-m3:latest"
 )
+
+func init() {
+	if v := os.Getenv("LLM_SERVER"); v != "" {
+		url = v
+	}
+
+	if v := os.Getenv("LLM_MODEL"); v != "" {
+		model = v
+	}
+}
 
 // =============================================================================
 

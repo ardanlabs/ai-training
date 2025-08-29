@@ -27,16 +27,16 @@ import (
 	"github.com/ardanlabs/ai-training/foundation/tiktoken"
 )
 
-const (
+var (
 	url     = "http://localhost:11434/v1/chat/completions"
 	model   = "gpt-oss:latest"
 	mcpHost = "localhost:8080"
-)
 
-// The context window represents the maximum number of tokens that can be sent
-// and received by the model. The default for Ollama is 8K. In the makefile
-// it has been increased to 64K.
-var contextWindow = 1024 * 8
+	// The context window represents the maximum number of tokens that can be sent
+	// and received by the model. The default for Ollama is 8K. In the makefile
+	// it has been increased to 64K.
+	contextWindow = 1024 * 4
+)
 
 func init() {
 	if v := os.Getenv("OLLAMA_CONTEXT_LENGTH"); v != "" {
@@ -45,6 +45,18 @@ func init() {
 		if err != nil {
 			log.Fatal(err)
 		}
+	}
+
+	if v := os.Getenv("LLM_SERVER"); v != "" {
+		url = v
+	}
+
+	if v := os.Getenv("LLM_MODEL"); v != "" {
+		model = v
+	}
+
+	if v := os.Getenv("MCP_HOST"); v != "" {
+		mcpHost = v
 	}
 }
 

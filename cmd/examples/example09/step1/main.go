@@ -22,11 +22,22 @@ import (
 	"github.com/ardanlabs/ai-training/foundation/client"
 )
 
-const (
-	url       = "http://localhost:11434/v1/chat/completions"
-	model     = "qwen2.5vl:latest"
+var (
+	url   = "http://localhost:11434/v1/chat/completions"
+	model = "qwen2.5vl:latest"
+
 	imagePath = "zarf/samples/gallery/roseimg.png"
 )
+
+func init() {
+	if v := os.Getenv("LLM_SERVER"); v != "" {
+		url = v
+	}
+
+	if v := os.Getenv("LLM_MODEL"); v != "" {
+		model = v
+	}
+}
 
 // =============================================================================
 

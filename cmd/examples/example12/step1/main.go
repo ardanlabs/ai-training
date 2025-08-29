@@ -20,10 +20,22 @@ import (
 	"github.com/ardanlabs/ai-training/foundation/client"
 )
 
-const (
+var (
 	urlChat   = "http://localhost:11434/v1/chat/completions"
 	modelChat = "qwen2.5vl:latest"
 )
+
+func init() {
+	if v := os.Getenv("LLM_CHAT_SERVER"); v != "" {
+		urlChat = v
+	}
+
+	if v := os.Getenv("LLM_CHAT_MODEL"); v != "" {
+		modelChat = v
+	}
+}
+
+// =============================================================================
 
 func main() {
 	if err := run(); err != nil {

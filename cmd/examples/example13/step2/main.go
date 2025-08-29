@@ -29,6 +29,38 @@ import (
 	"github.com/ardanlabs/ai-training/foundation/vector"
 )
 
+var (
+	urlChat    = "http://localhost:11434/v1/chat/completions"
+	urlEmbed   = "http://localhost:11439/v1/embeddings"
+	modelChat  = "mistral-small3.2:latest"
+	modelEmbed = "nomic-embed-vision-v1.5"
+
+	dimensions          = 768
+	similarityThreshold = 0.80
+	sourceDir           = "zarf/samples/videos/"
+	sourceFileName      = "zarf/samples/videos/training.mp4"
+)
+
+func init() {
+	if v := os.Getenv("LLM_CHAT_SERVER"); v != "" {
+		urlChat = v
+	}
+
+	if v := os.Getenv("LLM_CHAT_MODEL"); v != "" {
+		modelChat = v
+	}
+
+	if v := os.Getenv("LLM_EMBED_SERVER"); v != "" {
+		urlEmbed = v
+	}
+
+	if v := os.Getenv("LLM_EMBED_MODEL"); v != "" {
+		modelEmbed = v
+	}
+}
+
+// =============================================================================
+
 type frame struct {
 	fileName       string
 	description    string
@@ -41,17 +73,7 @@ type frame struct {
 	image          []byte
 }
 
-const (
-	urlChat    = "http://localhost:11434/v1/chat/completions"
-	urlEmbed   = "http://localhost:11439/v1/embeddings"
-	modelChat  = "mistral-small3.2:latest"
-	modelEmbed = "nomic-embed-vision-v1.5"
-
-	dimensions          = 768
-	similarityThreshold = 0.80
-	sourceDir           = "zarf/samples/videos/"
-	sourceFileName      = "zarf/samples/videos/training.mp4"
-)
+// =============================================================================
 
 func main() {
 	if err := run(); err != nil {

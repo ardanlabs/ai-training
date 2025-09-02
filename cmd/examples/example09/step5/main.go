@@ -142,7 +142,7 @@ func run() error {
 		// -------------------------------------------------------------------------
 
 		var searchResults []searchResult
-		var scorePass float64 = 0.75
+		scorePass := 0.75
 
 		switch fileExists(question) {
 		case true:

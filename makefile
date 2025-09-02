@@ -157,40 +157,13 @@ example11-step2:
 	go run cmd/examples/example11/step2/*.go
 
 example12-step1:
-	mkdir -p zarf/samples/videos/frames && \
-	rm -rf zarf/samples/videos/frames/* && \
-	go run cmd/examples/example12/step1/main.go
-
-example12-step2:
-	mkdir -p zarf/samples/videos/frames && \
-	rm -rf zarf/samples/videos/frames/* && \
-	go run cmd/examples/example12/step2/main.go
-
-example12-step3:
-	mkdir -p zarf/samples/videos/frames && \
-	rm -rf zarf/samples/videos/frames/* && \
-	go run cmd/examples/example12/step3/*.go
-
-example13-step1:
 	mkdir -p zarf/samples/videos/chunks && \
 	mkdir -p zarf/samples/videos/frames && \
 	rm -rf zarf/samples/videos/chunks/* && \
 	rm -rf zarf/samples/videos/frames/* && \
-	go run cmd/examples/example13/step1/*.go
-
-example13-step2:
-	mkdir -p zarf/samples/videos/chunks && \
-	mkdir -p zarf/samples/videos/frames && \
-	rm -rf zarf/samples/videos/chunks/* && \
-	rm -rf zarf/samples/videos/frames/* && \
-	go run cmd/examples/example13/step2/*.go
-
-example13-step3:
-	mkdir -p zarf/samples/videos/chunks && \
-	mkdir -p zarf/samples/videos/frames && \
-	rm -rf zarf/samples/videos/chunks/* && \
-	rm -rf zarf/samples/videos/frames/* && \
-	go run ./cmd/examples/example13/step3/main.go
+	CC=/opt/homebrew/Cellar/llvm/21.1.0/bin/clang \
+	CXX=/opt/homebrew/Cellar/llvm/21.1.0/bin/clang++ \
+	go run ./cmd/examples/example12/step1/*.go
 
 # ==============================================================================
 # Manage project

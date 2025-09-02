@@ -1,5 +1,5 @@
 // This examples takes step1 and shows you how to generate a vector embedding
-// from the image description.
+// from the image description and for the image itself.
 //
 // # Running the example:
 //
@@ -8,6 +8,7 @@
 // # This requires running the following commands:
 //
 //	$ make ollama-up
+//	$ make embedding-up
 
 package main
 
@@ -23,10 +24,12 @@ import (
 )
 
 var (
-	urlChat    = "http://localhost:11434/v1/chat/completions"
-	urlEmbed   = "http://localhost:11434/v1/embeddings"
-	modelChat  = "qwen2.5vl:latest"
-	modelEmbed = "bge-m3:latest"
+	urlChat         = "http://localhost:11434/v1/chat/completions"
+	urlEmbed        = "http://localhost:11434/v1/embeddings"
+	urlImageEmbed   = "http://localhost:11439/v1/embeddings"
+	modelChat       = "qwen2.5vl:latest"
+	modelEmbed      = "bge-m3:latest"
+	modelImageEmbed = "nomic-embed-vision-v1.5"
 
 	imagePath = "zarf/samples/gallery/roseimg.png"
 )
@@ -40,12 +43,20 @@ func init() {
 		urlEmbed = v
 	}
 
+	if v := os.Getenv("LLM_EMBED_IMAGE_SERVER"); v != "" {
+		urlImageEmbed = v
+	}
+
 	if v := os.Getenv("LLM_CHAT_MODEL"); v != "" {
 		modelChat = v
 	}
 
 	if v := os.Getenv("LLM_EMBED_MODEL"); v != "" {
 		modelEmbed = v
+	}
+
+	if v := os.Getenv("LLM_IMAGE_EMBED_MODEL"); v != "" {
+		modelImageEmbed = v
 	}
 }
 
@@ -101,14 +112,27 @@ func run() error {
 
 	fmt.Println("\nGenerating embeddings for the image description:")
 
-	llm = client.NewLLM(urlEmbed, modelEmbed)
+	embedLLM := client.NewLLM(urlEmbed, modelEmbed)
 
-	vector, err := llm.EmbedText(ctx, results)
+	vector, err := embedLLM.EmbedText(ctx, results)
 	if err != nil {
 		return fmt.Errorf("llm.EmbedText: %w", err)
 	}
 
 	fmt.Printf("%v...%v\n", vector[0:3], vector[len(vector)-3:])
+
+	// -------------------------------------------------------------------------
+
+	fmt.Println("\nGenerating embeddings for the image file:")
+
+	imageEmbedLLM := client.NewLLM(urlImageEmbed, modelImageEmbed)
+
+	imageVector, err := imageEmbedLLM.EmbedWithImage(ctx, "", image, mimeType)
+	if err != nil {
+		return fmt.Errorf("llm.EmbedText: %w", err)
+	}
+
+	fmt.Printf("%v...%v\n", imageVector[0:3], imageVector[len(imageVector)-3:])
 
 	// -------------------------------------------------------------------------
 

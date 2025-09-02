@@ -38,7 +38,7 @@ var (
 
 	similarityThreshold = 0.80
 	sourceDir           = "zarf/samples/videos/"
-	sourceFileName      = "zarf/samples/videos/training.mp4"
+	sourceFileName      = "training.mp4"
 
 	audioCfg = audio.Config{
 		SetLanguage: "en",
@@ -119,14 +119,18 @@ func run() error {
 	llmChat := client.NewLLM(urlChat, modelChat)
 	llmEmbed := client.NewLLM(urlEmbed, modelEmbed)
 
-	adio, err := audio.New(client.StdoutLogger, "zarf/audio/ggml-tiny.bin")
+	adio, err := audio.New(client.NoopLogger, "zarf/audio/ggml-tiny.bin")
 	if err != nil {
 		return fmt.Errorf("starting audio: %w", err)
 	}
 
+	fmt.Print("\n---\n\n")
+
 	// -------------------------------------------------------------------------
 
-	if err := splitVideoIntoChunks(sourceFileName); err != nil {
+	videoPath := filepath.Join(sourceDir, sourceFileName)
+
+	if err := splitVideoIntoChunks(videoPath); err != nil {
 		return fmt.Errorf("splitting video into chunks: %w", err)
 	}
 
@@ -135,7 +139,7 @@ func run() error {
 	totalFramesTime := 0.0
 
 	chunksDir := filepath.Join(sourceDir, "chunks")
-	fmt.Printf("\nProcessing video chunks in directory: %s\n", chunksDir)
+	fmt.Printf("Processing video chunks in directory: %s\n", chunksDir)
 
 	f := func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -150,7 +154,9 @@ func run() error {
 			return nil
 		}
 
-		duration, err := getVideoDuration(filepath.Join(sourceDir, "chunks", path))
+		chunkFilePath := filepath.Join(sourceDir, "chunks", path)
+
+		duration, err := getVideoDuration(chunkFilePath)
 		if err != nil {
 			return fmt.Errorf("get video duration: %w", err)
 		}
@@ -160,7 +166,7 @@ func run() error {
 			totalFramesTime += duration
 		}()
 
-		return processChunk(ctx, llmChat, llmEmbed, adio, sourceDir, path, totalFramesTime, duration)
+		return processChunk(ctx, llmChat, llmEmbed, adio, sourceDir, chunkFilePath, totalFramesTime, duration)
 	}
 
 	if err := fs.WalkDir(os.DirFS(chunksDir), ".", f); err != nil {
@@ -170,209 +176,44 @@ func run() error {
 	return nil
 }
 
-func processChunk(ctx context.Context, llmChat *client.LLM, llmEmbed *client.LLM, adio *audio.Audio, sourceDir string, sourceFileName string, totalFramesTime float64, duration float64) error {
-	fullPath := filepath.Join(sourceDir, "chunks", sourceFileName)
+func processChunk(ctx context.Context, llmChat *client.LLM, llmEmbed *client.LLM, adio *audio.Audio, sourceDir string, chunkFilePath string, totalFramesTime float64, duration float64) error {
+	if err := removePastKeyFrameFiles(sourceDir); err != nil {
+		return fmt.Errorf("remove past work files: %w", err)
+	}
 
-	fmt.Printf("\nRemoving the frames from the previous chunk: %s\n",
-		filepath.Join(sourceDir, "frames"))
+	if err := extractAudioTranscription(ctx, chunkFilePath, adio); err != nil {
+		return fmt.Errorf("extract audio transcription: %w", err)
+	}
 
-	// -------------------------------------------------------------------------
-	// Remove any existing key frame files from any previous run.
+	if err := extractKeyFramesFromVideo(chunkFilePath); err != nil {
+		return fmt.Errorf("extract key frames from video: %w", err)
+	}
 
-	previousFrames, err := fs.Glob(os.DirFS(sourceDir), "frames/*")
+	keyFrames, err := processKeyFrames(ctx, sourceDir, llmEmbed, totalFramesTime, duration)
 	if err != nil {
-		return fmt.Errorf("glob: %w", err)
+		return fmt.Errorf("extract key frames data: %w", err)
 	}
 
-	for _, previousFrame := range previousFrames {
-		if err := os.Remove(filepath.Join(sourceDir, previousFrame)); err != nil {
-			return fmt.Errorf("remove previous frame: %w", err)
-		}
-	}
+	unqKeyFrames := removeDuplicateKeyFrames(keyFrames)
 
-	// -------------------------------------------------------------------------
-	// Produce the set of key frames from the video.
-
-	fmt.Printf("\nProcessing video chunk: %s\n", fullPath)
-
-	if err := extractKeyFramesFromVideo(fullPath); err != nil {
-		return fmt.Errorf("process video: %w", err)
-	}
-
-	// -------------------------------------------------------------------------
-	// Iterate over all the key frame images that we extracted from the chunk
-	// and collect the information so we can filter out the duplicates.
-
-	fmt.Printf("\nProcessing images in directory: %s\n", sourceDir)
-
-	keyFramefiles, err := getFilesFromDirectory(filepath.Join(sourceDir, "frames"))
-	if err != nil {
-		return fmt.Errorf("get files from directory: %w", err)
-	}
-
-	keyFrames := make([]keyFrame, len(keyFramefiles))
-
-	for i, keyFrameFile := range keyFramefiles {
-		fmt.Printf("\nProcessing image: %s\n", keyFrameFile)
-
-		// ---------------------------------------------------------------------
-		// Read the key frame and get the image data and mime type.
-
-		image, mimeType, err := readImage(keyFrameFile)
-		if err != nil {
-			return fmt.Errorf("read image: %w", err)
-		}
-
-		// ---------------------------------------------------------------------
-		// Create an embedding vector for the images. We will use this to compare
-		// the images to each other and find the most similar ones.
-
-		fmt.Println("\nGenerating embeddings for the image description:")
-
-		embedding, err := llmEmbed.EmbedWithImage(ctx, "", image, mimeType)
-		if err != nil {
-			return fmt.Errorf("llm.EmbedText: %w", err)
-		}
-
-		fmt.Printf("%v...%v\n", embedding[0:3], embedding[len(embedding)-3:])
-
-		// ---------------------------------------------------------------------
-		// Store the key frame information.
-
-		keyFrames[i] = keyFrame{
-			fileName:  keyFrameFile,
-			startTime: totalFramesTime,
-			duration:  duration,
-			mimeType:  mimeType,
-			image:     image,
-			embedding: embedding,
-		}
-	}
-
-	// -------------------------------------------------------------------------
-	// Find and remove any duplicate key frames.
-
-	fmt.Println("\nUnique Frames:")
-
-	// We have identifed that 80% of the time we have 10 or less unique key frames.
-	unqKeyFrames := make([]keyFrame, 0, 10)
-
-check:
-	for _, keyFrame := range keyFrames {
-		for _, unqKeyFrame := range unqKeyFrames {
-			fmt.Printf("Checking image similarity between: %s - %s\n", unqKeyFrame.fileName, keyFrame.fileName)
-			similarity := vector.CosineSimilarity(unqKeyFrame.embedding, keyFrame.embedding)
-			fmt.Printf("  - Image similarity: %.3f\n", similarity)
-
-			if similarity > similarityThreshold {
-				fmt.Println("  - Image is similar to previous image")
-				continue check
-			}
-		}
-
-		unqKeyFrames = append(unqKeyFrames, keyFrame)
-		fmt.Printf("  - FileName: %s - [%.4f, %.4f]\n", keyFrame.fileName, keyFrame.startTime, keyFrame.duration)
-	}
-
-	// -------------------------------------------------------------------------
-	// Extract descriptions for the unique key frames.
-
-	fmt.Println("\nExtracting frame descriptions:")
-
-	for i, unqKeyFrame := range unqKeyFrames {
-		fmt.Printf("Extracting description for image: %s\n", unqKeyFrame.fileName)
-
-		description, err := llmChat.ChatCompletions(ctx, extractFrameInfoPrompt, client.WithImage(unqKeyFrame.mimeType, unqKeyFrame.image))
-		if err != nil {
-			return fmt.Errorf("chat completions: %w", err)
-		}
-
-		description = strings.Trim(description, "`")
-		description = strings.TrimPrefix(description, "json")
-
-		fmt.Printf("\nLLM DESC RESPONSE: %s\n", description)
-
-		var descr struct {
-			Text           string `json:"text"`
-			Classification string `json:"classification"`
-		}
-		if err := json.Unmarshal([]byte(description), &descr); err != nil {
-			return fmt.Errorf("unmarshal: %w", err)
-		}
-
-		if descr.Classification == "icon" {
-			fmt.Println("  - Icon classification detected, skipping...")
-			continue
-		}
-
-		unqKeyFrames[i].description = descr.Text
-		unqKeyFrames[i].classification = descr.Classification
-
-		// ---------------------------------------------------------------------
-		// Extract code samples from the key frame.
-
-		if descr.Classification == "source code" {
-			fmt.Println("  - Source code classification detected, extracting code...")
-			code, err := llmChat.ChatCompletions(ctx, extractCodePrompt, client.WithImage(unqKeyFrame.mimeType, unqKeyFrame.image))
-			if err != nil {
-				return fmt.Errorf("chat completions: %w", err)
-			}
-
-			unqKeyFrames[i].code = code
-			fmt.Printf("\nLLM CODE RESPONSE: %s\n", code)
-		}
-	}
-
-	// -------------------------------------------------------------------------
-	// Extract a transcription of the audio.
-
-	if err := convertVideoToWav(fullPath); err != nil {
-		return fmt.Errorf("converting video to wav: %w", err)
-	}
-
-	response, err := adio.Process(ctx, audioCfg, "zarf/samples/audio/output.wav")
-	if err != nil {
-		return fmt.Errorf("process audio: %w", err)
-	}
-
-	fmt.Printf("\nChunk audio transcription: %s\n", response.Text)
-
-	// -------------------------------------------------------------------------
-
-	fmt.Println("\nUnique Frames:")
-
-	for _, f := range unqKeyFrames {
-		fmt.Printf("\t- FileName: %s - [%.4f, %.4f, %s]\n", f.fileName, f.startTime, f.startTime, f.classification)
+	if err := extractKeyFrameDescriptions(ctx, unqKeyFrames, llmChat); err != nil {
+		return fmt.Errorf("extract key frame descriptions: %w", err)
 	}
 
 	fmt.Println("\nDONE")
+
 	return nil
 }
 
 // =============================================================================
 
-func splitVideoIntoChunks(source string) error {
-	fmt.Println("Processing Video ...")
-	defer fmt.Println("\nDONE Processing Video")
+func splitVideoIntoChunks(videoePath string) error {
+	fmt.Println("Splitting video into chunks")
 
-	ffmpegCommand := fmt.Sprintf("ffmpeg -i %s -c copy -map 0 -f segment -segment_time 15 -reset_timestamps 1 -loglevel error zarf/samples/videos/chunks/output_%%05d.mp4", source)
+	ffmpegCommand := fmt.Sprintf("ffmpeg -i %s -c copy -map 0 -f segment -segment_time 15 -reset_timestamps 1 -loglevel error zarf/samples/videos/chunks/output_%%05d.mp4", videoePath)
 	out, err := exec.Command("/bin/sh", "-c", ffmpegCommand).CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("error while running ffmpeg: %w: %s", err, string(out))
-	}
-
-	return nil
-}
-
-func extractKeyFramesFromVideo(source string) error {
-	fmt.Printf("Extracting Video %s keyframes...\n", source)
-	defer fmt.Println("\nDONE Extracting Video keyframes")
-
-	ffmpegCommand := fmt.Sprintf("ffmpeg -skip_frame nokey -i %s -frame_pts true -fps_mode vfr -loglevel error zarf/samples/videos/frames/%%05d.jpg", source)
-
-	out, err := exec.Command("/bin/sh", "-c", ffmpegCommand).CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("error while running ffmpeg: %w: %s", err, string(out))
+		return fmt.Errorf("error while running ffmpeg: %s, %w: %s", videoePath, err, string(out))
 	}
 
 	return nil
@@ -403,6 +244,190 @@ func getVideoDuration(filePath string) (float64, error) {
 	}
 
 	return duration, nil
+}
+
+func convertVideoToWav(source string) error {
+	// Ensure there is no previous file to allow ffmpeg to create the new one.
+	_ = os.Remove("zarf/samples/audio/output.wav")
+
+	ffmpegCommand := fmt.Sprintf("ffmpeg -i %s -ar 16000 -ac 1 -c:a pcm_s16le -loglevel error zarf/samples/audio/output.wav", source)
+	out, err := exec.Command("/bin/sh", "-c", ffmpegCommand).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("error while running ffmpeg: %w: %s", err, string(out))
+	}
+
+	return nil
+}
+
+func removePastKeyFrameFiles(path string) error {
+	fmt.Printf("Removing past work files: %s\n", filepath.Join(path, "frames"))
+
+	previousFrames, err := fs.Glob(os.DirFS(path), "frames/*")
+	if err != nil {
+		return fmt.Errorf("glob: %w", err)
+	}
+
+	for _, previousFrame := range previousFrames {
+		if err := os.Remove(filepath.Join(path, previousFrame)); err != nil {
+			return fmt.Errorf("remove previous frame: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func extractAudioTranscription(ctx context.Context, chunkFilePath string, adio *audio.Audio) error {
+	fmt.Println("Extracting audio transcription")
+
+	if err := convertVideoToWav(chunkFilePath); err != nil {
+		return fmt.Errorf("converting video to wav: %w", err)
+	}
+
+	response, err := adio.Process(ctx, audioCfg, "zarf/samples/audio/output.wav")
+	if err != nil {
+		return fmt.Errorf("process audio: %w", err)
+	}
+
+	fmt.Printf("%s\n", response.Text)
+
+	return nil
+}
+
+func extractKeyFramesFromVideo(chunkFilePath string) error {
+	fmt.Println("Extracting video key frames")
+
+	ffmpegCommand := fmt.Sprintf("ffmpeg -skip_frame nokey -i %s -frame_pts true -fps_mode vfr -loglevel error zarf/samples/videos/frames/%%05d.jpg", chunkFilePath)
+
+	out, err := exec.Command("/bin/sh", "-c", ffmpegCommand).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("error while running ffmpeg: %w: %s", err, string(out))
+	}
+
+	return nil
+}
+
+func processKeyFrames(ctx context.Context, sourceDir string, llmEmbed *client.LLM, startTime float64, duration float64) ([]keyFrame, error) {
+	fullpath := filepath.Join(sourceDir, "frames")
+	fmt.Println("Processing key frames")
+
+	keyFramefiles, err := getFilesFromDirectory(fullpath)
+	if err != nil {
+		return nil, fmt.Errorf("get files from directory: %w", err)
+	}
+
+	keyFrames := make([]keyFrame, len(keyFramefiles))
+
+	for i, keyFrameFile := range keyFramefiles {
+		fmt.Printf("\t- Image: %s\n", keyFrameFile)
+
+		// ---------------------------------------------------------------------
+		// Read the key frame and get the image data and mime type.
+
+		image, mimeType, err := readImage(keyFrameFile)
+		if err != nil {
+			return nil, fmt.Errorf("read image: %w", err)
+		}
+
+		// ---------------------------------------------------------------------
+		// Create an embedding vector for the images. We will use this to compare
+		// the images to each other and find the most similar ones.
+
+		fmt.Println("\t- Generating embeddings")
+
+		embedding, err := llmEmbed.EmbedWithImage(ctx, "", image, mimeType)
+		if err != nil {
+			return nil, fmt.Errorf("llm.EmbedText: %w", err)
+		}
+
+		// ---------------------------------------------------------------------
+		// Store the key frame information.
+
+		keyFrames[i] = keyFrame{
+			fileName:  keyFrameFile,
+			startTime: startTime,
+			duration:  duration,
+			mimeType:  mimeType,
+			image:     image,
+			embedding: embedding,
+		}
+	}
+
+	return keyFrames, nil
+}
+
+func removeDuplicateKeyFrames(keyFrames []keyFrame) []keyFrame {
+	fmt.Println("Removing duplication key frames")
+
+	// We have identifed that 80% of the time we have 10 or less unique key frames.
+	unqKeyFrames := make([]keyFrame, 0, 10)
+
+check:
+	for _, keyFrame := range keyFrames {
+		for _, unqKeyFrame := range unqKeyFrames {
+			fmt.Printf("\t- Checking image similarity between: %s - %s\n", unqKeyFrame.fileName, keyFrame.fileName)
+			similarity := vector.CosineSimilarity(unqKeyFrame.embedding, keyFrame.embedding)
+			fmt.Printf("\t - Image similarity: %.3f\n", similarity)
+
+			if similarity > similarityThreshold {
+				fmt.Println("\t - Image is similar to previous image")
+				continue check
+			}
+		}
+
+		unqKeyFrames = append(unqKeyFrames, keyFrame)
+	}
+
+	return unqKeyFrames
+}
+
+func extractKeyFrameDescriptions(ctx context.Context, unqKeyFrames []keyFrame, llmChat *client.LLM) error {
+	fmt.Println("\nExtracting frame descriptions")
+
+	for i, unqKeyFrame := range unqKeyFrames {
+		fmt.Printf("\t- Extracting description for image: %s\n", unqKeyFrame.fileName)
+
+		description, err := llmChat.ChatCompletions(ctx, extractFrameInfoPrompt, client.WithImage(unqKeyFrame.mimeType, unqKeyFrame.image))
+		if err != nil {
+			return fmt.Errorf("chat completions: %w", err)
+		}
+
+		description = strings.Trim(description, "`")
+		description = strings.TrimPrefix(description, "json")
+
+		fmt.Printf("\t- LLM DESC RESPONSE: %s\n", description)
+
+		var descr struct {
+			Text           string `json:"text"`
+			Classification string `json:"classification"`
+		}
+		if err := json.Unmarshal([]byte(description), &descr); err != nil {
+			return fmt.Errorf("unmarshal: %w", err)
+		}
+
+		if descr.Classification == "icon" {
+			fmt.Println("\t- Icon classification detected, skipping...")
+			continue
+		}
+
+		unqKeyFrames[i].description = descr.Text
+		unqKeyFrames[i].classification = descr.Classification
+
+		// ---------------------------------------------------------------------
+		// Extract code samples from the key frame.
+
+		if descr.Classification == "source code" {
+			fmt.Println("\t- Source code classification detected, extracting code...")
+			code, err := llmChat.ChatCompletions(ctx, extractCodePrompt, client.WithImage(unqKeyFrame.mimeType, unqKeyFrame.image))
+			if err != nil {
+				return fmt.Errorf("chat completions: %w", err)
+			}
+
+			unqKeyFrames[i].code = code
+			fmt.Printf("\t- LLM CODE RESPONSE: %s\n", code)
+		}
+	}
+
+	return nil
 }
 
 func getFilesFromDirectory(directoryPath string) ([]string, error) {
@@ -438,20 +463,4 @@ func readImage(fileName string) ([]byte, string, error) {
 	default:
 		return nil, "", fmt.Errorf("unsupported file type: %s: filename: %s", mimeType, fileName)
 	}
-}
-
-func convertVideoToWav(source string) error {
-	fmt.Printf("Converting Video %s to Audio...\n", source)
-	defer fmt.Println("\nDONE Converting Video to audio")
-
-	// Ensure there is no previous file to allow ffmpeg to create the new one.
-	_ = os.Remove("zarf/samples/audio/output.wav")
-
-	ffmpegCommand := fmt.Sprintf("ffmpeg -i %s -ar 16000 -ac 1 -c:a pcm_s16le -loglevel error zarf/samples/audio/output.wav", source)
-	out, err := exec.Command("/bin/sh", "-c", ffmpegCommand).CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("error while running ffmpeg: %w: %s", err, string(out))
-	}
-
-	return nil
 }

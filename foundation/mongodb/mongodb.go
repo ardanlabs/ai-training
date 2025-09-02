@@ -85,13 +85,13 @@ func lookupVectorIndex(ctx context.Context, col *mongo.Collection, vectorIndexNa
 	}
 	defer cur.Close(ctx)
 
-	var indexs []Index
+	var indexes []Index
 
-	if err := cur.All(ctx, &indexs); err != nil {
+	if err := cur.All(ctx, &indexes); err != nil {
 		return nil, fmt.Errorf("list: %w", err)
 	}
 
-	return indexs, nil
+	return indexes, nil
 }
 
 func runCreateIndexCmd(ctx context.Context, col *mongo.Collection, vectorIndexName string, settings VectorIndexSettings) error {

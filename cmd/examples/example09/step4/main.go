@@ -8,6 +8,8 @@
 // # This requires running the following commands:
 //
 //	$ make ollama-up
+//	$ make embedding-up
+//	$ make compose-up
 
 package main
 
@@ -27,15 +29,18 @@ import (
 )
 
 var (
-	urlChat    = "http://localhost:11434/v1/chat/completions"
-	urlEmbed   = "http://localhost:11434/v1/embeddings"
-	modelChat  = "qwen2.5vl:latest"
-	modelEmbed = "bge-m3:latest"
+	urlChat         = "http://localhost:11434/v1/chat/completions"
+	urlEmbed        = "http://localhost:11434/v1/embeddings"
+	urlImageEmbed   = "http://localhost:11439/v1/embeddings"
+	modelChat       = "qwen2.5vl:latest"
+	modelEmbed      = "bge-m3:latest"
+	modelImageEmbed = "nomic-embed-vision-v1.5"
 
-	imagePath  = "zarf/samples/gallery/roseimg.png"
-	dbName     = "example9"
-	colName    = "images-4"
-	dimensions = 1024
+	imagePath       = "zarf/samples/gallery/roseimg.png"
+	dbName          = "example9"
+	colName         = "images-4"
+	dimensions      = 1024
+	imageDimensions = 768
 )
 
 func init() {
@@ -47,6 +52,10 @@ func init() {
 		urlEmbed = v
 	}
 
+	if v := os.Getenv("LLM_EMBED_IMAGE_SERVER"); v != "" {
+		urlImageEmbed = v
+	}
+
 	if v := os.Getenv("LLM_CHAT_MODEL"); v != "" {
 		modelChat = v
 	}
@@ -54,14 +63,19 @@ func init() {
 	if v := os.Getenv("LLM_EMBED_MODEL"); v != "" {
 		modelEmbed = v
 	}
+
+	if v := os.Getenv("LLM_IMAGE_EMBED_MODEL"); v != "" {
+		modelImageEmbed = v
+	}
 }
 
 // =============================================================================
 
 type document struct {
-	FileName    string    `bson:"file_name"`
-	Description string    `bson:"description"`
-	Embedding   []float64 `bson:"embedding"`
+	FileName       string    `bson:"file_name"`
+	Description    string    `bson:"description"`
+	Embedding      []float64 `bson:"embedding"`
+	ImageEmbedding []float64 `bson:"image_embedding"`
 }
 
 // =============================================================================
@@ -82,7 +96,7 @@ func run() error {
 
 	dbClient, err := mongodb.Connect(ctx, "mongodb://localhost:27017", "ardan", "ardan")
 	if err != nil {
-		return fmt.Errorf("connectToMongo: %w", err)
+		return fmt.Errorf("mongodb.Connect: %w", err)
 	}
 
 	fmt.Println("Initializing Database")
@@ -130,36 +144,50 @@ func run() error {
 		Make sure the JSON is valid, doesn't have any extra spaces, and is
 		properly formatted.`
 
-	llmChat := client.NewLLM(urlChat, modelChat)
+	llm := client.NewLLM(urlChat, modelChat)
 
-	results, err := llmChat.ChatCompletions(ctx, prompt, client.WithImage(mimeType, image))
+	results, err := llm.ChatCompletions(ctx, prompt, client.WithImage(mimeType, image))
 	if err != nil {
-		return fmt.Errorf("llmChat.ChatCompletions: %w", err)
+		return fmt.Errorf("llm.ChatCompletions: %w", err)
 	}
 
 	fmt.Printf("%s\n", results)
 
 	// -------------------------------------------------------------------------
 
-	fmt.Println("Generate embeddings for the image description:")
+	fmt.Println("\nGenerating embeddings for the image description:")
 
-	llmEmbed := client.NewLLM(urlEmbed, modelEmbed)
+	embedLLM := client.NewLLM(urlEmbed, modelEmbed)
 
-	vector, err := llmEmbed.EmbedText(ctx, results)
+	vector, err := embedLLM.EmbedText(ctx, results)
 	if err != nil {
-		return fmt.Errorf("llmEmbed.EmbedText: %w", err)
+		return fmt.Errorf("llm.EmbedText: %w", err)
 	}
 
 	fmt.Printf("%v...%v\n", vector[0:3], vector[len(vector)-3:])
 
 	// -------------------------------------------------------------------------
 
+	fmt.Println("\nGenerating embeddings for the image file:")
+
+	imageEmbedLLM := client.NewLLM(urlImageEmbed, modelImageEmbed)
+
+	imageVector, err := imageEmbedLLM.EmbedWithImage(ctx, "", image, mimeType)
+	if err != nil {
+		return fmt.Errorf("llm.EmbedWithImage: %w", err)
+	}
+
+	fmt.Printf("%v...%v\n", imageVector[0:3], imageVector[len(imageVector)-3:])
+
+	// -------------------------------------------------------------------------
+
 	fmt.Println("\nInserting image information into the database:")
 
 	d1 := document{
-		FileName:    imagePath,
-		Description: results,
-		Embedding:   vector,
+		FileName:       imagePath,
+		Description:    results,
+		Embedding:      vector,
+		ImageEmbedding: imageVector,
 	}
 
 	res, err := col.InsertOne(ctx, d1)
@@ -184,7 +212,7 @@ func run() error {
 
 	fmt.Println("\nPerforming vector search:")
 
-	searchResults, err := vectorSearch(ctx, llmEmbed, col, question)
+	searchResults, err := vectorSearch(ctx, embedLLM, col, question)
 	if err != nil {
 		return fmt.Errorf("vectorSearch: %w", err)
 	}
@@ -197,7 +225,7 @@ func run() error {
 
 	fmt.Println("\nProviding response")
 
-	if err := questionResponse(ctx, llmChat, question, searchResults); err != nil {
+	if err := questionResponse(ctx, llm, question, searchResults); err != nil {
 		return fmt.Errorf("questionResponse: %w", err)
 	}
 
@@ -336,7 +364,7 @@ func initDB(ctx context.Context, client *mongo.Client) (*mongo.Collection, error
 		return nil, fmt.Errorf("createCollection: %w", err)
 	}
 
-	const indexName = "vector_index"
+	const textIndexName = "vector_embedding_index"
 
 	settings := mongodb.VectorIndexSettings{
 		NumDimensions: dimensions,
@@ -344,8 +372,20 @@ func initDB(ctx context.Context, client *mongo.Client) (*mongo.Collection, error
 		Similarity:    "cosine",
 	}
 
-	if err := mongodb.CreateVectorIndex(ctx, col, indexName, settings); err != nil {
-		return nil, fmt.Errorf("createVectorIndex: %w", err)
+	if err := mongodb.CreateVectorIndex(ctx, col, textIndexName, settings); err != nil {
+		return nil, fmt.Errorf("createVectorIndex (text): %w", err)
+	}
+
+	const imageIndexName = "vector_image_embedding_index"
+
+	settings = mongodb.VectorIndexSettings{
+		NumDimensions: imageDimensions,
+		Path:          "image_embedding",
+		Similarity:    "cosine",
+	}
+
+	if err := mongodb.CreateVectorIndex(ctx, col, imageIndexName, settings); err != nil {
+		return nil, fmt.Errorf("createVectorIndex (text): %w", err)
 	}
 
 	return col, nil

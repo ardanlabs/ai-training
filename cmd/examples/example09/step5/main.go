@@ -1,5 +1,6 @@
 // This example takes step4 and shows you how to process a set of images
-// from a location on disk and provide search capabilities.
+// from a location on disk and provide search capabilities by text or similar
+// image.
 //
 // # Running the example:
 //
@@ -8,6 +9,8 @@
 // # This requires running the following commands:
 //
 //	$ make ollama-up
+//	$ make embedding-up
+//	$ make compose-up
 
 package main
 
@@ -20,6 +23,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/ardanlabs/ai-training/foundation/client"
@@ -29,15 +33,18 @@ import (
 )
 
 var (
-	urlChat    = "http://localhost:11434/v1/chat/completions"
-	urlEmbed   = "http://localhost:11434/v1/embeddings"
-	modelChat  = "qwen2.5vl:latest"
-	modelEmbed = "bge-m3:latest"
+	urlChat         = "http://localhost:11434/v1/chat/completions"
+	urlEmbed        = "http://localhost:11434/v1/embeddings"
+	urlImageEmbed   = "http://localhost:11439/v1/embeddings"
+	modelChat       = "qwen2.5vl:latest"
+	modelEmbed      = "bge-m3:latest"
+	modelImageEmbed = "nomic-embed-vision-v1.5"
 
-	dbName      = "example9"
-	colName     = "images-5"
-	dimensions  = 1024
-	gallaryPath = "zarf/samples/gallery/"
+	dbName          = "example9"
+	colName         = "images-5"
+	dimensions      = 1024
+	imageDimensions = 768
+	galleryPath     = "zarf/samples/gallery/"
 )
 
 func init() {
@@ -49,6 +56,10 @@ func init() {
 		urlEmbed = v
 	}
 
+	if v := os.Getenv("LLM_EMBED_IMAGE_SERVER"); v != "" {
+		urlImageEmbed = v
+	}
+
 	if v := os.Getenv("LLM_CHAT_MODEL"); v != "" {
 		modelChat = v
 	}
@@ -56,14 +67,19 @@ func init() {
 	if v := os.Getenv("LLM_EMBED_MODEL"); v != "" {
 		modelEmbed = v
 	}
+
+	if v := os.Getenv("LLM_IMAGE_EMBED_MODEL"); v != "" {
+		modelImageEmbed = v
+	}
 }
 
 // =============================================================================
 
 type document struct {
-	FileName    string    `bson:"file_name"`
-	Description string    `bson:"description"`
-	Embedding   []float64 `bson:"embedding"`
+	FileName       string    `bson:"file_name"`
+	Description    string    `bson:"description"`
+	Embedding      []float64 `bson:"embedding"`
+	ImageEmbedding []float64 `bson:"image_embedding"`
 }
 
 // =============================================================================
@@ -75,13 +91,13 @@ func main() {
 }
 
 func run() error {
-	ctx, cancel := context.WithTimeout(context.Background(), 240*time.Second)
-	defer cancel()
+	ctx := context.Background()
 
 	// -------------------------------------------------------------------------
 
 	llmChat := client.NewLLM(urlChat, modelChat)
-	llmEmbed := client.NewLLM(urlEmbed, modelEmbed)
+	embedLLM := client.NewLLM(urlEmbed, modelEmbed)
+	imageEmbedLLM := client.NewLLM(urlImageEmbed, modelImageEmbed)
 
 	// -------------------------------------------------------------------------
 
@@ -89,25 +105,29 @@ func run() error {
 
 	dbClient, err := mongodb.Connect(ctx, "mongodb://localhost:27017", "ardan", "ardan")
 	if err != nil {
-		return fmt.Errorf("connectToMongo: %w", err)
+		return fmt.Errorf("mongodb.Connect: %w", err)
 	}
+
+	fmt.Println("Initializing Database")
 
 	col, err := initDB(ctx, dbClient)
 	if err != nil {
-		return fmt.Errorf("db init: %w", err)
+		return fmt.Errorf("initDB: %w", err)
 	}
 
 	// -------------------------------------------------------------------------
 
 	fmt.Println("Saving images in DB")
 
-	if err := saveImagesInDB(ctx, llmChat, llmEmbed, col); err != nil {
+	if err := saveImagesInDB(ctx, llmChat, embedLLM, imageEmbedLLM, col); err != nil {
 		return fmt.Errorf("loadImages: %w", err)
 	}
 
 	// -------------------------------------------------------------------------
 
-	fmt.Print("\nAsk questions about images (use 'ctrl-c' to quit)\n\n")
+	fmt.Print("\nAsk questions about images (use 'ctrl-c' to quit)\n")
+	fmt.Print("Hint: You can paste a filename to search for a similar image\n")
+	fmt.Print("      E.g. zarf/samples/gallery/roseimg.png\n\n")
 
 	for {
 		reader := bufio.NewReader(os.Stdin)
@@ -117,27 +137,45 @@ func run() error {
 		if question == "" {
 			return nil
 		}
+		question = strings.TrimSpace(question)
 
 		// -------------------------------------------------------------------------
 
-		fmt.Println("\nPerforming vector search:")
+		var searchResults []searchResult
+		var scorePass float64 = 0.75
 
-		searchResults, err := vectorSearch(ctx, llmEmbed, col, question)
-		if err != nil {
-			return fmt.Errorf("vectorSearch: %w", err)
+		switch fileExists(question) {
+		case true:
+			fmt.Println("\nPerforming vector search using image file:")
+
+			searchResults, err = imageVectorSearch(ctx, imageEmbedLLM, col, question)
+			if err != nil {
+				return fmt.Errorf("vectorSearch: %w", err)
+			}
+
+			scorePass = 0.85
+		default:
+			fmt.Println("\nPerforming vector search using image description:")
+
+			searchResults, err = textVectorSearch(ctx, embedLLM, col, question)
+			if err != nil {
+				return fmt.Errorf("vectorSearch: %w", err)
+			}
 		}
+
+		// -------------------------------------------------------------------------
 
 		for _, result := range searchResults {
 			fmt.Printf("FileName[%s] Score[%.2f]\n", result.FileName, result.Score)
 		}
 
-		if err := questionResponse(ctx, llmChat, question, searchResults); err != nil {
+		if err := questionResponse(ctx, llmChat, question, scorePass, searchResults); err != nil {
 			return fmt.Errorf("questionResponse: %w", err)
 		}
 	}
 }
 
-func saveImagesInDB(ctx context.Context, llmChat *client.LLM, llmEmbed *client.LLM, col *mongo.Collection) error {
+func saveImagesInDB(ctx context.Context, llm *client.LLM, embedLLM *client.LLM, imageEmbedLLM *client.LLM, col *mongo.Collection) error {
 	const prompt = `Describe the image. Be concise and accurate. Do not be overly
 	verbose or stylistic. Make sure all the elements in the image are
 	enumerated and described. Do not include any additional details. Keep
@@ -154,7 +192,7 @@ func saveImagesInDB(ctx context.Context, llmChat *client.LLM, llmEmbed *client.L
 	Make sure the JSON is valid, doesn't have any extra spaces, and is
 	properly formatted.`
 
-	files, err := getFilesFromDirectory(gallaryPath)
+	files, err := getFilesFromDirectory(galleryPath)
 	if err != nil {
 		return fmt.Errorf("get files: %w", err)
 	}
@@ -175,24 +213,36 @@ func saveImagesInDB(ctx context.Context, llmChat *client.LLM, llmEmbed *client.L
 
 		fmt.Println("  - Generating image description")
 
-		results, err := llmChat.ChatCompletions(ctx, prompt, client.WithImage(mimeType, image))
+		results, err := llm.ChatCompletions(ctx, prompt, client.WithImage(mimeType, image))
 		if err != nil {
 			return fmt.Errorf("llmChat.ChatCompletions: %w", err)
 		}
 
 		fmt.Println("  - Generate embeddings for the image description")
 
-		vector, err := llmEmbed.EmbedText(ctx, results)
+		vector, err := embedLLM.EmbedText(ctx, results)
 		if err != nil {
-			return fmt.Errorf("llmEmbed.EmbedText: %w", err)
+			return fmt.Errorf("llm.EmbedText: %w", err)
 		}
 
-		fmt.Println("  - Inserting image description into the database")
+		// ---------------------------------------------------------------------
+
+		fmt.Println("\nGenerating embeddings for the image file:")
+
+		imageVector, err := imageEmbedLLM.EmbedWithImage(ctx, "", image, mimeType)
+		if err != nil {
+			return fmt.Errorf("llm.EmbedWithImage: %w", err)
+		}
+
+		// ---------------------------------------------------------------------
+
+		fmt.Println("  - Inserting image information into the database")
 
 		d1 := document{
-			FileName:    fileName,
-			Description: results,
-			Embedding:   vector,
+			FileName:       fileName,
+			Description:    results,
+			Embedding:      vector,
+			ImageEmbedding: imageVector,
 		}
 
 		res, err := col.InsertOne(ctx, d1)
@@ -243,7 +293,22 @@ func readImage(fileName string) ([]byte, string, error) {
 	}
 }
 
-func questionResponse(ctx context.Context, llm *client.LLM, question string, results []searchResult) error {
+func fileExists(filename string) bool {
+	info, err := os.Stat(filename)
+	switch {
+	case os.IsNotExist(err):
+		return false
+	case err != nil:
+		return false
+	default:
+		if info.IsDir() {
+			return false
+		}
+		return true
+	}
+}
+
+func questionResponse(ctx context.Context, llm *client.LLM, question string, scorePass float64, results []searchResult) error {
 	type searchResult struct {
 		FileName    string `json:"file_name"`
 		Description string `json:"image_description"`
@@ -254,7 +319,7 @@ func questionResponse(ctx context.Context, llm *client.LLM, question string, res
 	var finalResults []searchResult
 
 	for _, result := range results {
-		if result.Score >= 0.75 {
+		if result.Score > scorePass {
 			fmt.Printf("FileName[%s] Score[%.2f]\n", result.FileName, result.Score)
 			finalResults = append(finalResults, searchResult{
 				FileName:    result.FileName,
@@ -345,10 +410,11 @@ func questionResponse(ctx context.Context, llm *client.LLM, question string, res
 // =============================================================================
 
 type searchResult struct {
-	FileName    string    `bson:"file_name" json:"file_name"`
-	Description string    `bson:"description" json:"image_description"`
-	Embedding   []float64 `bson:"embedding" json:"-"`
-	Score       float64   `bson:"score" json:"-"`
+	FileName       string    `bson:"file_name" json:"file_name"`
+	Description    string    `bson:"description" json:"image_description"`
+	Embedding      []float64 `bson:"embedding" json:"-"`
+	ImageEmbedding []float64 `bson:"image_embedding" json:"-"`
+	Score          float64   `bson:"score" json:"-"`
 }
 
 func initDB(ctx context.Context, client *mongo.Client) (*mongo.Collection, error) {
@@ -359,7 +425,7 @@ func initDB(ctx context.Context, client *mongo.Client) (*mongo.Collection, error
 		return nil, fmt.Errorf("createCollection: %w", err)
 	}
 
-	const indexName = "vector_index"
+	const textIndexName = "vector_embedding_index"
 
 	settings := mongodb.VectorIndexSettings{
 		NumDimensions: dimensions,
@@ -367,26 +433,56 @@ func initDB(ctx context.Context, client *mongo.Client) (*mongo.Collection, error
 		Similarity:    "cosine",
 	}
 
-	if err := mongodb.CreateVectorIndex(ctx, col, indexName, settings); err != nil {
-		return nil, fmt.Errorf("createVectorIndex: %w", err)
+	if err := mongodb.CreateVectorIndex(ctx, col, textIndexName, settings); err != nil {
+		return nil, fmt.Errorf("createVectorIndex (text): %w", err)
+	}
+
+	const imageIndexName = "vector_image_embedding_index"
+
+	settings = mongodb.VectorIndexSettings{
+		NumDimensions: imageDimensions,
+		Path:          "image_embedding",
+		Similarity:    "cosine",
+	}
+
+	if err := mongodb.CreateVectorIndex(ctx, col, imageIndexName, settings); err != nil {
+		return nil, fmt.Errorf("createVectorIndex (text): %w", err)
 	}
 
 	return col, nil
 }
 
-func vectorSearch(ctx context.Context, llm *client.LLM, col *mongo.Collection, question string) ([]searchResult, error) {
-	vector, err := llm.EmbedText(ctx, question)
+func imageVectorSearch(ctx context.Context, imageEmbedLLM *client.LLM, col *mongo.Collection, fileName string) ([]searchResult, error) {
+	image, mimeType, err := readImage(fileName)
 	if err != nil {
-		return nil, fmt.Errorf("embed text: %w", err)
+		return nil, fmt.Errorf("readImage: %w", err)
 	}
 
+	vector, err := imageEmbedLLM.EmbedWithImage(ctx, "", image, mimeType)
+	if err != nil {
+		return nil, fmt.Errorf("embedImage: %w", err)
+	}
+
+	return vectorSearch(ctx, col, vector, "image_embedding")
+}
+
+func textVectorSearch(ctx context.Context, llm *client.LLM, col *mongo.Collection, question string) ([]searchResult, error) {
+	vector, err := llm.EmbedText(ctx, question)
+	if err != nil {
+		return nil, fmt.Errorf("embedText: %w", err)
+	}
+
+	return vectorSearch(ctx, col, vector, "embedding")
+}
+
+func vectorSearch(ctx context.Context, col *mongo.Collection, vector []float64, column string) ([]searchResult, error) {
 	pipeline := mongo.Pipeline{
 		{{
 			Key: "$vectorSearch",
 			Value: bson.M{
-				"index":       "vector_index",
+				"index":       fmt.Sprintf("vector_%s_index", column),
 				"exact":       true,
-				"path":        "embedding",
+				"path":        column,
 				"queryVector": vector,
 				"limit":       5,
 			}},
@@ -394,9 +490,10 @@ func vectorSearch(ctx context.Context, llm *client.LLM, col *mongo.Collection, q
 		{{
 			Key: "$project",
 			Value: bson.M{
-				"file_name":   1,
-				"description": 1,
-				"embedding":   1,
+				"file_name":       1,
+				"description":     1,
+				"embedding":       1,
+				"image_embedding": 1,
 				"score": bson.M{
 					"$meta": "vectorSearchScore",
 				},

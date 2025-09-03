@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"os"
 	"sync"
@@ -37,92 +38,128 @@ type Transport interface {
 
 // A Connection is a logical bidirectional JSON-RPC connection.
 type Connection interface {
+	// Read reads the next message to process off the connection.
+	//
+	// Connections must allow Read to be called concurrently with Close. In
+	// particular, calling Close should unblock a Read waiting for input.
 	Read(context.Context) (jsonrpc.Message, error)
+
+	// Write writes a new message to the connection.
+	//
+	// Write may be called concurrently, as calls or reponses may occur
+	// concurrently in user code.
 	Write(context.Context, jsonrpc.Message) error
-	Close() error // may be called concurrently by both peers
+
+	// Close closes the connection. It is implicitly called whenever a Read or
+	// Write fails.
+	//
+	// Close may be called multiple times, potentially concurrently.
+	Close() error
+
+	// TODO(#148): remove SessionID from this interface.
 	SessionID() string
 }
 
-// An httpConnection is a [Connection] that runs over HTTP.
-type httpConnection interface {
+// A ClientConnection is a [Connection] that is specific to the MCP client.
+//
+// If client connections implement this interface, they may receive information
+// about changes to the client session.
+//
+// TODO: should this interface be exported?
+type clientConnection interface {
 	Connection
-	setProtocolVersion(string)
+
+	// SessionUpdated is called whenever the client session state changes.
+	sessionUpdated(clientSessionState)
+}
+
+// A serverConnection is a Connection that is specific to the MCP server.
+//
+// If server connections implement this interface, they receive information
+// about changes to the server session.
+//
+// TODO: should this interface be exported?
+type serverConnection interface {
+	Connection
+	sessionUpdated(ServerSessionState)
 }
 
 // A StdioTransport is a [Transport] that communicates over stdin/stdout using
 // newline-delimited JSON.
-type StdioTransport struct {
-	ioTransport
-}
+type StdioTransport struct{}
 
-// An ioTransport is a [Transport] that communicates using newline-delimited
-// JSON over an io.ReadWriteCloser.
-type ioTransport struct {
-	rwc io.ReadWriteCloser
-}
-
-func (t *ioTransport) Connect(context.Context) (Connection, error) {
-	return newIOConn(t.rwc), nil
+// Connect implements the [Transport] interface.
+func (*StdioTransport) Connect(context.Context) (Connection, error) {
+	return newIOConn(rwc{os.Stdin, os.Stdout}), nil
 }
 
 // NewStdioTransport constructs a transport that communicates over
 // stdin/stdout.
+//
+// Deprecated: use a StdioTransport literal.
+//
+//go:fix inline
 func NewStdioTransport() *StdioTransport {
-	return &StdioTransport{ioTransport{rwc{os.Stdin, os.Stdout}}}
+	return &StdioTransport{}
 }
 
 // An InMemoryTransport is a [Transport] that communicates over an in-memory
 // network connection, using newline-delimited JSON.
 type InMemoryTransport struct {
-	ioTransport
+	rwc io.ReadWriteCloser
 }
 
-// NewInMemoryTransports returns two InMemoryTransports that connect to each
+// Connect implements the [Transport] interface.
+func (t *InMemoryTransport) Connect(context.Context) (Connection, error) {
+	return newIOConn(t.rwc), nil
+}
+
+// NewInMemoryTransports returns two [InMemoryTransports] that connect to each
 // other.
 func NewInMemoryTransports() (*InMemoryTransport, *InMemoryTransport) {
 	c1, c2 := net.Pipe()
-	return &InMemoryTransport{ioTransport{c1}}, &InMemoryTransport{ioTransport{c2}}
+	return &InMemoryTransport{c1}, &InMemoryTransport{c2}
 }
 
-type binder[T handler] interface {
-	bind(*jsonrpc2.Connection) T
+type binder[T handler, State any] interface {
+	// TODO(rfindley): the bind API has gotten too complicated. Simplify.
+	bind(Connection, *jsonrpc2.Connection, State, func()) T
 	disconnect(T)
 }
 
 type handler interface {
 	handle(ctx context.Context, req *jsonrpc.Request) (any, error)
-	setConn(Connection)
 }
 
-func connect[H handler](ctx context.Context, t Transport, b binder[H]) (H, error) {
+func connect[H handler, State any](ctx context.Context, t Transport, b binder[H, State], s State, onClose func()) (H, error) {
 	var zero H
-	conn, err := t.Connect(ctx)
+	mcpConn, err := t.Connect(ctx)
 	if err != nil {
 		return zero, err
 	}
 	// If logging is configured, write message logs.
-	reader, writer := jsonrpc2.Reader(conn), jsonrpc2.Writer(conn)
+	reader, writer := jsonrpc2.Reader(mcpConn), jsonrpc2.Writer(mcpConn)
 	var (
 		h         H
 		preempter canceller
 	)
 	bind := func(conn *jsonrpc2.Connection) jsonrpc2.Handler {
-		h = b.bind(conn)
+		h = b.bind(mcpConn, conn, s, onClose)
 		preempter.conn = conn
 		return jsonrpc2.HandlerFunc(h.handle)
 	}
 	_ = jsonrpc2.NewConnection(ctx, jsonrpc2.ConnectionConfig{
 		Reader:    reader,
 		Writer:    writer,
-		Closer:    conn,
+		Closer:    mcpConn,
 		Bind:      bind,
 		Preempter: &preempter,
 		OnDone: func() {
 			b.disconnect(h)
 		},
+		OnInternalError: func(err error) { log.Printf("jsonrpc2 error: %v", err) },
 	})
 	assert(preempter.conn != nil, "unbound preempter")
-	h.setConn(conn)
 	return h, nil
 }
 
@@ -132,9 +169,9 @@ type canceller struct {
 	conn *jsonrpc2.Connection
 }
 
-// Preempt implements jsonrpc2.Preempter.
+// Preempt implements [jsonrpc2.Preempter].
 func (c *canceller) Preempt(ctx context.Context, req *jsonrpc.Request) (result any, err error) {
-	if req.Method == "notifications/cancelled" {
+	if req.Method == notificationCancelled {
 		var params CancelledParams
 		if err := json.Unmarshal(req.Params, &params); err != nil {
 			return nil, err
@@ -174,24 +211,28 @@ func call(ctx context.Context, conn *jsonrpc2.Connection, method string, params 
 // A LoggingTransport is a [Transport] that delegates to another transport,
 // writing RPC logs to an io.Writer.
 type LoggingTransport struct {
-	delegate Transport
-	w        io.Writer
+	Transport Transport
+	Writer    io.Writer
 }
 
 // NewLoggingTransport creates a new LoggingTransport that delegates to the
 // provided transport, writing RPC logs to the provided io.Writer.
+//
+// Deprecated: use a LoggingTransport literal.
+//
+//go:fix inline
 func NewLoggingTransport(delegate Transport, w io.Writer) *LoggingTransport {
-	return &LoggingTransport{delegate, w}
+	return &LoggingTransport{Transport: delegate, Writer: w}
 }
 
 // Connect connects the underlying transport, returning a [Connection] that writes
 // logs to the configured destination.
 func (t *LoggingTransport) Connect(ctx context.Context) (Connection, error) {
-	delegate, err := t.delegate.Connect(ctx)
+	delegate, err := t.Transport.Connect(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return &loggingConn{delegate, t.w}, nil
+	return &loggingConn{delegate, t.Writer}, nil
 }
 
 type loggingConn struct {
@@ -201,7 +242,7 @@ type loggingConn struct {
 
 func (c *loggingConn) SessionID() string { return c.delegate.SessionID() }
 
-// loggingReader is a stream middleware that logs incoming messages.
+// Read is a stream middleware that logs incoming messages.
 func (s *loggingConn) Read(ctx context.Context) (jsonrpc.Message, error) {
 	msg, err := s.delegate.Read(ctx)
 	if err != nil {
@@ -216,7 +257,7 @@ func (s *loggingConn) Read(ctx context.Context) (jsonrpc.Message, error) {
 	return msg, err
 }
 
-// loggingWriter is a stream middleware that logs outgoing messages.
+// Write is a stream middleware that logs outgoing messages.
 func (s *loggingConn) Write(ctx context.Context, msg jsonrpc.Message) error {
 	err := s.delegate.Write(ctx, msg)
 	if err != nil {
@@ -262,8 +303,11 @@ func (r rwc) Close() error {
 //
 // See [msgBatch] for more discussion of message batching.
 type ioConn struct {
-	rwc io.ReadWriteCloser // the underlying stream
-	in  *json.Decoder      // a decoder bound to rwc
+	writeMu sync.Mutex         // guards Write, which must be concurrency safe.
+	rwc     io.ReadWriteCloser // the underlying stream
+
+	// incoming receives messages from the read loop started in [newIOConn].
+	incoming <-chan msgOrErr
 
 	// If outgoiBatch has a positive capacity, it will be used to batch requests
 	// and notifications before sending.
@@ -277,12 +321,60 @@ type ioConn struct {
 	// Since writes may be concurrent to reads, we need to guard this with a mutex.
 	batchMu sync.Mutex
 	batches map[jsonrpc2.ID]*msgBatch // lazily allocated
+
+	closeOnce sync.Once
+	closed    chan struct{}
+	closeErr  error
+}
+
+type msgOrErr struct {
+	msg json.RawMessage
+	err error
 }
 
 func newIOConn(rwc io.ReadWriteCloser) *ioConn {
+	var (
+		incoming = make(chan msgOrErr)
+		closed   = make(chan struct{})
+	)
+	// Start a goroutine for reads, so that we can select on the incoming channel
+	// in [ioConn.Read] and unblock the read as soon as Close is called (see #224).
+	//
+	// This leaks a goroutine if rwc.Read does not unblock after it is closed,
+	// but that is unavoidable since AFAIK there is no (easy and portable) way to
+	// guarantee that reads of stdin are unblocked when closed.
+	go func() {
+		dec := json.NewDecoder(rwc)
+		for {
+			var raw json.RawMessage
+			err := dec.Decode(&raw)
+			// If decoding was successful, check for trailing data at the end of the stream.
+			if err == nil {
+				// Read the next byte to check if there is trailing data.
+				var tr [1]byte
+				if n, readErr := dec.Buffered().Read(tr[:]); n > 0 {
+					// If read byte is not a newline, it is an error.
+					if tr[0] != '\n' {
+						err = fmt.Errorf("invalid trailing data at the end of stream")
+					}
+				} else if readErr != nil && readErr != io.EOF {
+					err = readErr
+				}
+			}
+			select {
+			case incoming <- msgOrErr{msg: raw, err: err}:
+			case <-closed:
+				return
+			}
+			if err != nil {
+				return
+			}
+		}
+	}()
 	return &ioConn{
-		rwc: rwc,
-		in:  json.NewDecoder(rwc),
+		rwc:      rwc,
+		incoming: incoming,
+		closed:   closed,
 	}
 }
 
@@ -354,10 +446,8 @@ type msgBatch struct {
 }
 
 func (t *ioConn) Read(ctx context.Context) (jsonrpc.Message, error) {
-	return t.read(ctx, t.in)
-}
-
-func (t *ioConn) read(ctx context.Context, in *json.Decoder) (jsonrpc.Message, error) {
+	// As a matter of principle, enforce that reads on a closed context return an
+	// error.
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
@@ -370,9 +460,20 @@ func (t *ioConn) read(ctx context.Context, in *json.Decoder) (jsonrpc.Message, e
 	}
 
 	var raw json.RawMessage
-	if err := in.Decode(&raw); err != nil {
-		return nil, err
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+
+	case v := <-t.incoming:
+		if v.err != nil {
+			return nil, v.err
+		}
+		raw = v.msg
+
+	case <-t.closed:
+		return nil, io.EOF
 	}
+
 	msgs, batch, err := readBatch(raw)
 	if err != nil {
 		return nil, err
@@ -429,11 +530,15 @@ func readBatch(data []byte) (msgs []jsonrpc.Message, isBatch bool, _ error) {
 }
 
 func (t *ioConn) Write(ctx context.Context, msg jsonrpc.Message) error {
+	// As in [ioConn.Read], enforce that Writes on a closed context are an error.
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
 	default:
 	}
+
+	t.writeMu.Lock()
+	defer t.writeMu.Unlock()
 
 	// Batching support: if msg is a Response, it may have completed a batch, so
 	// check that first. Otherwise, it is a request or notification, and we may
@@ -476,7 +581,11 @@ func (t *ioConn) Write(ctx context.Context, msg jsonrpc.Message) error {
 }
 
 func (t *ioConn) Close() error {
-	return t.rwc.Close()
+	t.closeOnce.Do(func() {
+		t.closeErr = t.rwc.Close()
+		close(t.closed)
+	})
+	return t.closeErr
 }
 
 func marshalMessages[T jsonrpc.Message](msgs []T) ([]byte, error) {

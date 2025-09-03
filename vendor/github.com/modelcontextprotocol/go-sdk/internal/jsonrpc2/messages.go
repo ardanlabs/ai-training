@@ -19,7 +19,7 @@ type ID struct {
 // MakeID coerces the given Go value to an ID. The value is assumed to be the
 // default JSON marshaling of a Request identifier -- nil, float64, or string.
 //
-// Returns an error if the value type was a valid Request ID type.
+// Returns an error if the value type was not a valid Request ID type.
 //
 // TODO: ID can't be a json.Marshaler/Unmarshaler, because we want to omitzero.
 // Simplify this package by making ID json serializable once we can rely on
@@ -56,6 +56,9 @@ type Request struct {
 	Method string
 	// Params is either a struct or an array with the parameters of the method.
 	Params json.RawMessage
+	// Extra is additional information that does not appear on the wire. It can be
+	// used to pass information from the application to the underlying transport.
+	Extra any
 }
 
 // Response is a Message used as a reply to a call Request.
@@ -67,6 +70,9 @@ type Response struct {
 	Error error
 	// id of the request this is a response to.
 	ID ID
+	// Extra is additional information that does not appear on the wire. It can be
+	// used to pass information from the underlying transport to the application.
+	Extra any
 }
 
 // StringID creates a new string request identifier.

@@ -1,4 +1,4 @@
-// Copyright 2025 The Go MCP SDK Authors. All rights reserved.
+// Copyright 2025 The JSON Schema Go Project Authors. All rights reserved.
 // Use of this source code is governed by an MIT-style
 // license that can be found in the LICENSE file.
 
@@ -13,19 +13,15 @@ import (
 	"iter"
 	"maps"
 	"math"
-	"net/url"
 	"reflect"
-	"regexp"
 	"slices"
-
-	"github.com/modelcontextprotocol/go-sdk/internal/util"
 )
 
 // A Schema is a JSON schema object.
 // It corresponds to the 2020-12 draft, as described in https://json-schema.org/draft/2020-12,
 // specifically:
-// - https://json-schema.org/draft/2020-12/draft-bhutton-json-schema-01
-// - https://json-schema.org/draft/2020-12/draft-bhutton-json-schema-validation-01
+//   - https://json-schema.org/draft/2020-12/draft-bhutton-json-schema-01
+//   - https://json-schema.org/draft/2020-12/draft-bhutton-json-schema-validation-01
 //
 // A Schema value may have non-zero values for more than one field:
 // all relevant non-zero fields are used for validation.
@@ -129,47 +125,6 @@ type Schema struct {
 
 	// Extra allows for additional keywords beyond those specified.
 	Extra map[string]any `json:"-"`
-
-	// computed fields
-
-	// This schema's base schema.
-	// If the schema is the root or has an ID, its base is itself.
-	// Otherwise, its base is the innermost enclosing schema whose base
-	// is itself.
-	// Intuitively, a base schema is one that can be referred to with a
-	// fragmentless URI.
-	base *Schema
-
-	// The URI for the schema, if it is the root or has an ID.
-	// Otherwise nil.
-	// Invariants:
-	//   s.base.uri != nil.
-	//   s.base == s <=> s.uri != nil
-	uri *url.URL
-
-	// The JSON Pointer path from the root schema to here.
-	// Used in errors.
-	path string
-
-	// The schema to which Ref refers.
-	resolvedRef *Schema
-
-	// If the schema has a dynamic ref, exactly one of the next two fields
-	// will be non-zero after successful resolution.
-	// The schema to which the dynamic ref refers when it acts lexically.
-	resolvedDynamicRef *Schema
-	// The anchor to look up on the stack when the dynamic ref acts dynamically.
-	dynamicRefAnchor string
-
-	// Map from anchors to subschemas.
-	anchors map[string]anchorInfo
-
-	// compiled regexps
-	pattern           *regexp.Regexp
-	patternProperties map[*regexp.Regexp]*Schema
-
-	// the set of required properties
-	isRequired map[string]bool
 }
 
 // falseSchema returns a new Schema tree that fails to validate any value.
@@ -186,26 +141,49 @@ type anchorInfo struct {
 
 // String returns a short description of the schema.
 func (s *Schema) String() string {
-	if s.uri != nil {
-		if u := s.uri.String(); u != "" {
-			return u
-		}
+	if s.ID != "" {
+		return s.ID
 	}
 	if a := cmp.Or(s.Anchor, s.DynamicAnchor); a != "" {
-		return fmt.Sprintf("%q, anchor %s", s.base.uri.String(), a)
-	}
-	if s.path != "" {
-		return s.path
+		return fmt.Sprintf("anchor %s", a)
 	}
 	return "<anonymous schema>"
 }
 
-// ResolvedRef returns the Schema to which this schema's $ref keyword
-// refers, or nil if it doesn't have a $ref.
-// It returns nil if this schema has not been resolved, meaning that
-// [Schema.Resolve] was called on it or one of its ancestors.
-func (s *Schema) ResolvedRef() *Schema {
-	return s.resolvedRef
+// CloneSchemas returns a copy of s.
+// The copy is shallow except for sub-schemas, which are themelves copied with CloneSchemas.
+// This allows both s and s.CloneSchemas() to appear as sub-schemas of the same parent.
+func (s *Schema) CloneSchemas() *Schema {
+	if s == nil {
+		return nil
+	}
+	s2 := *s
+	v := reflect.ValueOf(&s2)
+	for _, info := range schemaFieldInfos {
+		fv := v.Elem().FieldByIndex(info.sf.Index)
+		switch info.sf.Type {
+		case schemaType:
+			sscss := fv.Interface().(*Schema)
+			fv.Set(reflect.ValueOf(sscss.CloneSchemas()))
+
+		case schemaSliceType:
+			slice := fv.Interface().([]*Schema)
+			slice = slices.Clone(slice)
+			for i, ss := range slice {
+				slice[i] = ss.CloneSchemas()
+			}
+			fv.Set(reflect.ValueOf(slice))
+
+		case schemaMapType:
+			m := fv.Interface().(map[string]*Schema)
+			m = maps.Clone(m)
+			for k, ss := range m {
+				m[k] = ss.CloneSchemas()
+			}
+			fv.Set(reflect.ValueOf(m))
+		}
+	}
+	return &s2
 }
 
 func (s *Schema) basicChecks() error {
@@ -224,6 +202,7 @@ func (s *Schema) MarshalJSON() ([]byte, error) {
 	if err := s.basicChecks(); err != nil {
 		return nil, err
 	}
+
 	// Marshal either Type or Types as "type".
 	var typ any
 	switch {
@@ -239,7 +218,19 @@ func (s *Schema) MarshalJSON() ([]byte, error) {
 		Type:                 typ,
 		schemaWithoutMethods: (*schemaWithoutMethods)(s),
 	}
-	return marshalStructWithMap(&ms, "Extra")
+	bs, err := marshalStructWithMap(&ms, "Extra")
+	if err != nil {
+		return nil, err
+	}
+	// Marshal {} as true and {"not": {}} as false.
+	// It is wasteful to do this here instead of earlier, but much easier.
+	switch {
+	case bytes.Equal(bs, []byte(`{}`)):
+		bs = []byte("true")
+	case bytes.Equal(bs, []byte(`{"not":true}`)):
+		bs = []byte("false")
+	}
+	return bs, nil
 }
 
 func (s *Schema) UnmarshalJSON(data []byte) error {
@@ -431,9 +422,9 @@ var (
 
 func init() {
 	for _, sf := range reflect.VisibleFields(reflect.TypeFor[Schema]()) {
-		info := util.FieldJSONInfo(sf)
-		if !info.Omit {
-			schemaFieldInfos = append(schemaFieldInfos, structFieldInfo{sf, info.Name})
+		info := fieldJSONInfo(sf)
+		if !info.omit {
+			schemaFieldInfos = append(schemaFieldInfos, structFieldInfo{sf, info.name})
 		}
 	}
 	slices.SortFunc(schemaFieldInfos, func(i1, i2 structFieldInfo) int {

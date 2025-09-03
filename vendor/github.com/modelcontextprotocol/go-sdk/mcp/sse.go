@@ -5,16 +5,12 @@
 package mcp
 
 import (
-	"bufio"
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"io"
-	"iter"
 	"net/http"
 	"net/url"
-	"strings"
 	"sync"
 
 	"github.com/modelcontextprotocol/go-sdk/internal/jsonrpc2"
@@ -41,34 +37,6 @@ import (
 //  - Read reads off a message queue that is pushed to via POST requests.
 //  - Close causes the hanging GET to exit.
 
-// An event is a server-sent event.
-type event struct {
-	name string
-	id   string
-	data []byte
-}
-
-func (e event) empty() bool {
-	return e.name == "" && e.id == "" && len(e.data) == 0
-}
-
-// writeEvent writes the event to w, and flushes.
-func writeEvent(w io.Writer, evt event) (int, error) {
-	var b bytes.Buffer
-	if evt.name != "" {
-		fmt.Fprintf(&b, "event: %s\n", evt.name)
-	}
-	if evt.id != "" {
-		fmt.Fprintf(&b, "id: %s\n", evt.id)
-	}
-	fmt.Fprintf(&b, "data: %s\n\n", string(evt.data))
-	n, err := w.Write(b.Bytes())
-	if f, ok := w.(http.Flusher); ok {
-		f.Flush()
-	}
-	return n, err
-}
-
 // SSEHandler is an http.Handler that serves SSE-based MCP sessions as defined by
 // the [2024-11-05 version] of the MCP spec.
 //
@@ -87,12 +55,13 @@ type SSEHandler struct {
 // Sessions are created when the client issues a GET request to the server,
 // which must accept text/event-stream responses (server-sent events).
 // For each such request, a new [SSEServerTransport] is created with a distinct
-// messages endpoint, and connected to the server returned by getServer. It is
-// up to the user whether getServer returns a distinct [Server] for each new
-// request, or reuses an existing server.
-//
+// messages endpoint, and connected to the server returned by getServer.
 // The SSEHandler also handles requests to the message endpoints, by
 // delegating them to the relevant server transport.
+//
+// The getServer function may return a distinct [Server] for each new
+// request, or reuse an existing server. If it returns nil, the handler
+// will return a 400 Bad Request.
 //
 // TODO(rfindley): add options.
 func NewSSEHandler(getServer func(request *http.Request) *Server) *SSEHandler {
@@ -105,47 +74,66 @@ func NewSSEHandler(getServer func(request *http.Request) *Server) *SSEHandler {
 // A SSEServerTransport is a logical SSE session created through a hanging GET
 // request.
 //
+// Use [SSEServerTransport.Connect] to initiate the flow of messages.
+//
 // When connected, it returns the following [Connection] implementation:
 //   - Writes are SSE 'message' events to the GET response.
 //   - Reads are received from POSTs to the session endpoint, via
 //     [SSEServerTransport.ServeHTTP].
 //   - Close terminates the hanging GET.
-type SSEServerTransport struct {
-	endpoint string
-	incoming chan jsonrpc.Message // queue of incoming messages; never closed
-
-	// We must guard both pushes to the incoming queue and writes to the response
-	// writer, because incoming POST requests are arbitrarily concurrent and we
-	// need to ensure we don't write push to the queue, or write to the
-	// ResponseWriter, after the session GET request exits.
-	mu     sync.Mutex
-	w      http.ResponseWriter // the hanging response body
-	closed bool                // set when the stream is closed
-	done   chan struct{}       // closed when the connection is closed
-}
-
-// NewSSEServerTransport creates a new SSE transport for the given messages
-// endpoint, and hanging GET response.
-//
-// Use [SSEServerTransport.Connect] to initiate the flow of messages.
 //
 // The transport is itself an [http.Handler]. It is the caller's responsibility
 // to ensure that the resulting transport serves HTTP requests on the given
 // session endpoint.
 //
+// Each SSEServerTransport may be connected (via [Server.Connect]) at most
+// once, since [SSEServerTransport.ServeHTTP] serves messages to the connected
+// session.
+//
 // Most callers should instead use an [SSEHandler], which transparently handles
 // the delegation to SSEServerTransports.
+type SSEServerTransport struct {
+	// Endpoint is the endpoint for this session, where the client can POST
+	// messages.
+	Endpoint string
+
+	// Response is the hanging response body to the incoming GET request.
+	Response http.ResponseWriter
+
+	// incoming is the queue of incoming messages.
+	// It is never closed, and by convention, incoming is non-nil if and only if
+	// the transport is connected.
+	incoming chan jsonrpc.Message
+
+	// We must guard both pushes to the incoming queue and writes to the response
+	// writer, because incoming POST requests are arbitrarily concurrent and we
+	// need to ensure we don't write push to the queue, or write to the
+	// ResponseWriter, after the session GET request exits.
+	mu     sync.Mutex    // also guards writes to Response
+	closed bool          // set when the stream is closed
+	done   chan struct{} // closed when the connection is closed
+}
+
+// NewSSEServerTransport creates a new SSE transport for the given messages
+// endpoint, and hanging GET response.
+//
+// Deprecated: use an SSEServerTransport literal.
+//
+//go:fix inline
 func NewSSEServerTransport(endpoint string, w http.ResponseWriter) *SSEServerTransport {
 	return &SSEServerTransport{
-		endpoint: endpoint,
-		w:        w,
-		incoming: make(chan jsonrpc.Message, 100),
-		done:     make(chan struct{}),
+		Endpoint: endpoint,
+		Response: w,
 	}
 }
 
 // ServeHTTP handles POST requests to the transport endpoint.
 func (t *SSEServerTransport) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	if t.incoming == nil {
+		http.Error(w, "session not connected", http.StatusInternalServerError)
+		return
+	}
+
 	// Read and parse the message.
 	data, err := io.ReadAll(req.Body)
 	if err != nil {
@@ -160,6 +148,12 @@ func (t *SSEServerTransport) ServeHTTP(w http.ResponseWriter, req *http.Request)
 		http.Error(w, "failed to parse body", http.StatusBadRequest)
 		return
 	}
+	if req, ok := msg.(*jsonrpc.Request); ok {
+		if _, err := checkRequest(req, serverMethodInfos); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+	}
 	select {
 	case t.incoming <- msg:
 		w.WriteHeader(http.StatusAccepted)
@@ -171,16 +165,19 @@ func (t *SSEServerTransport) ServeHTTP(w http.ResponseWriter, req *http.Request)
 // Connect sends the 'endpoint' event to the client.
 // See [SSEServerTransport] for more details on the [Connection] implementation.
 func (t *SSEServerTransport) Connect(context.Context) (Connection, error) {
-	t.mu.Lock()
-	_, err := writeEvent(t.w, event{
-		name: "endpoint",
-		data: []byte(t.endpoint),
+	if t.incoming != nil {
+		return nil, fmt.Errorf("already connected")
+	}
+	t.incoming = make(chan jsonrpc.Message, 100)
+	t.done = make(chan struct{})
+	_, err := writeEvent(t.Response, Event{
+		Name: "endpoint",
+		Data: []byte(t.Endpoint),
 	})
-	t.mu.Unlock()
 	if err != nil {
 		return nil, err
 	}
-	return sseServerConn{t}, nil
+	return &sseServerConn{t: t}, nil
 }
 
 func (h *SSEHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -228,7 +225,7 @@ func (h *SSEHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	transport := NewSSEServerTransport(endpoint.RequestURI(), w)
+	transport := &SSEServerTransport{Endpoint: endpoint.RequestURI(), Response: w}
 
 	// The session is terminated when the request exits.
 	h.mu.Lock()
@@ -240,9 +237,13 @@ func (h *SSEHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		h.mu.Unlock()
 	}()
 
-	// TODO(hxjiang): getServer returns nil will panic.
 	server := h.getServer(req)
-	ss, err := server.Connect(req.Context(), transport)
+	if server == nil {
+		// The getServer argument to NewSSEHandler returned nil.
+		http.Error(w, "no server available", http.StatusBadRequest)
+		return
+	}
+	ss, err := server.Connect(req.Context(), transport, nil)
 	if err != nil {
 		http.Error(w, "connection failed", http.StatusInternalServerError)
 		return
@@ -265,10 +266,10 @@ type sseServerConn struct {
 }
 
 // TODO(jba): get the session ID. (Not urgent because SSE transports have been removed from the spec.)
-func (s sseServerConn) SessionID() string { return "" }
+func (s *sseServerConn) SessionID() string { return "" }
 
 // Read implements jsonrpc2.Reader.
-func (s sseServerConn) Read(ctx context.Context) (jsonrpc.Message, error) {
+func (s *sseServerConn) Read(ctx context.Context) (jsonrpc.Message, error) {
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
@@ -280,7 +281,7 @@ func (s sseServerConn) Read(ctx context.Context) (jsonrpc.Message, error) {
 }
 
 // Write implements jsonrpc2.Writer.
-func (s sseServerConn) Write(ctx context.Context, msg jsonrpc.Message) error {
+func (s *sseServerConn) Write(ctx context.Context, msg jsonrpc.Message) error {
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
@@ -300,7 +301,7 @@ func (s sseServerConn) Write(ctx context.Context, msg jsonrpc.Message) error {
 		return io.EOF
 	}
 
-	_, err = writeEvent(s.t.w, event{name: "message", data: data})
+	_, err = writeEvent(s.t.Response, Event{Name: "message", Data: data})
 	return err
 }
 
@@ -309,7 +310,7 @@ func (s sseServerConn) Write(ctx context.Context, msg jsonrpc.Message) error {
 // It must be safe to call Close more than once, as the close may
 // asynchronously be initiated by either the server closing its connection, or
 // by the hanging GET exiting.
-func (s sseServerConn) Close() error {
+func (s *sseServerConn) Close() error {
 	s.t.mu.Lock()
 	defer s.t.mu.Unlock()
 	if !s.t.closed {
@@ -325,12 +326,18 @@ func (s sseServerConn) Close() error {
 //
 // https://modelcontextprotocol.io/specification/2024-11-05/basic/transports
 type SSEClientTransport struct {
-	sseEndpoint *url.URL
-	opts        SSEClientTransportOptions
+	// Endpoint is the SSE endpoint to connect to.
+	Endpoint string
+
+	// HTTPClient is the client to use for making HTTP requests. If nil,
+	// http.DefaultClient is used.
+	HTTPClient *http.Client
 }
 
 // SSEClientTransportOptions provides options for the [NewSSEClientTransport]
 // constructor.
+//
+// Deprecated: use an SSEClientTransport literal.
 type SSEClientTransportOptions struct {
 	// HTTPClient is the client to use for making HTTP requests. If nil,
 	// http.DefaultClient is used.
@@ -340,28 +347,28 @@ type SSEClientTransportOptions struct {
 // NewSSEClientTransport returns a new client transport that connects to the
 // SSE server at the provided URL.
 //
-// NewSSEClientTransport panics if the given URL is invalid.
-func NewSSEClientTransport(baseURL string, opts *SSEClientTransportOptions) *SSEClientTransport {
-	url, err := url.Parse(baseURL)
-	if err != nil {
-		panic(fmt.Sprintf("invalid base url: %v", err))
-	}
-	t := &SSEClientTransport{
-		sseEndpoint: url,
-	}
+// Deprecated: use an SSEClientTransport literal.
+//
+//go:fix inline
+func NewSSEClientTransport(endpoint string, opts *SSEClientTransportOptions) *SSEClientTransport {
+	t := &SSEClientTransport{Endpoint: endpoint}
 	if opts != nil {
-		t.opts = *opts
+		t.HTTPClient = opts.HTTPClient
 	}
 	return t
 }
 
 // Connect connects through the client endpoint.
 func (c *SSEClientTransport) Connect(ctx context.Context) (Connection, error) {
-	req, err := http.NewRequestWithContext(ctx, "GET", c.sseEndpoint.String(), nil)
+	parsedURL, err := url.Parse(c.Endpoint)
+	if err != nil {
+		return nil, fmt.Errorf("invalid endpoint: %v", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, "GET", c.Endpoint, nil)
 	if err != nil {
 		return nil, err
 	}
-	httpClient := c.opts.HTTPClient
+	httpClient := c.HTTPClient
 	if httpClient == nil {
 		httpClient = http.DefaultClient
 	}
@@ -372,18 +379,18 @@ func (c *SSEClientTransport) Connect(ctx context.Context) (Connection, error) {
 	}
 
 	msgEndpoint, err := func() (*url.URL, error) {
-		var evt event
+		var evt Event
 		for evt, err = range scanEvents(resp.Body) {
 			break
 		}
 		if err != nil {
 			return nil, err
 		}
-		if evt.name != "endpoint" {
-			return nil, fmt.Errorf("first event is %q, want %q", evt.name, "endpoint")
+		if evt.Name != "endpoint" {
+			return nil, fmt.Errorf("first event is %q, want %q", evt.Name, "endpoint")
 		}
-		raw := string(evt.data)
-		return c.sseEndpoint.Parse(raw)
+		raw := string(evt.Data)
+		return parsedURL.Parse(raw)
 	}()
 	if err != nil {
 		resp.Body.Close()
@@ -393,7 +400,6 @@ func (c *SSEClientTransport) Connect(ctx context.Context) (Connection, error) {
 	// From here on, the stream takes ownership of resp.Body.
 	s := &sseClientConn{
 		client:      httpClient,
-		sseEndpoint: c.sseEndpoint,
 		msgEndpoint: msgEndpoint,
 		incoming:    make(chan []byte, 100),
 		body:        resp.Body,
@@ -408,7 +414,7 @@ func (c *SSEClientTransport) Connect(ctx context.Context) (Connection, error) {
 				return
 			}
 			select {
-			case s.incoming <- evt.data:
+			case s.incoming <- evt.Data:
 			case <-s.done:
 				return
 			}
@@ -418,95 +424,6 @@ func (c *SSEClientTransport) Connect(ctx context.Context) (Connection, error) {
 	return s, nil
 }
 
-// scanEvents iterates SSE events in the given scanner. The iterated error is
-// terminal: if encountered, the stream is corrupt or broken and should no
-// longer be used.
-//
-// TODO(rfindley): consider a different API here that makes failure modes more
-// apparent.
-func scanEvents(r io.Reader) iter.Seq2[event, error] {
-	scanner := bufio.NewScanner(r)
-	const maxTokenSize = 1 * 1024 * 1024 // 1 MiB max line size
-	scanner.Buffer(nil, maxTokenSize)
-
-	// TODO: investigate proper behavior when events are out of order, or have
-	// non-standard names.
-	var (
-		eventKey = []byte("event")
-		idKey    = []byte("id")
-		dataKey  = []byte("data")
-	)
-
-	return func(yield func(event, error) bool) {
-		// iterate event from the wire.
-		// https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events/Using_server-sent_events#examples
-		//
-		//  - `key: value` line records.
-		//  - Consecutive `data: ...` fields are joined with newlines.
-		//  - Unrecognized fields are ignored. Since we only care about 'event', 'id', and
-		//   'data', these are the only three we consider.
-		//  - Lines starting with ":" are ignored.
-		//  - Records are terminated with two consecutive newlines.
-		var (
-			evt     event
-			dataBuf *bytes.Buffer // if non-nil, preceding field was also data
-		)
-		flushData := func() {
-			if dataBuf != nil {
-				evt.data = dataBuf.Bytes()
-				dataBuf = nil
-			}
-		}
-		for scanner.Scan() {
-			line := scanner.Bytes()
-			if len(line) == 0 {
-				flushData()
-				// \n\n is the record delimiter
-				if !evt.empty() && !yield(evt, nil) {
-					return
-				}
-				evt = event{}
-				continue
-			}
-			before, after, found := bytes.Cut(line, []byte{':'})
-			if !found {
-				yield(event{}, fmt.Errorf("malformed line in SSE stream: %q", string(line)))
-				return
-			}
-			if !bytes.Equal(before, dataKey) {
-				flushData()
-			}
-			switch {
-			case bytes.Equal(before, eventKey):
-				evt.name = strings.TrimSpace(string(after))
-			case bytes.Equal(before, idKey):
-				evt.id = strings.TrimSpace(string(after))
-			case bytes.Equal(before, dataKey):
-				data := bytes.TrimSpace(after)
-				if dataBuf != nil {
-					dataBuf.WriteByte('\n')
-					dataBuf.Write(data)
-				} else {
-					dataBuf = new(bytes.Buffer)
-					dataBuf.Write(data)
-				}
-			}
-		}
-		if err := scanner.Err(); err != nil {
-			if errors.Is(err, bufio.ErrTooLong) {
-				err = fmt.Errorf("event exceeded max line length of %d", maxTokenSize)
-			}
-			if !yield(event{}, err) {
-				return
-			}
-		}
-		flushData()
-		if !evt.empty() {
-			yield(evt, nil)
-		}
-	}
-}
-
 // An sseClientConn is a logical jsonrpc2 connection that implements the client
 // half of the SSE protocol:
 //   - Writes are POSTS to the session endpoint.
@@ -514,7 +431,6 @@ func scanEvents(r io.Reader) iter.Seq2[event, error] {
 //   - Close terminates the GET request.
 type sseClientConn struct {
 	client      *http.Client // HTTP client to use for requests
-	sseEndpoint *url.URL     // SSE endpoint for the GET
 	msgEndpoint *url.URL     // session endpoint for POSTs
 	incoming    chan []byte  // queue of incoming messages
 

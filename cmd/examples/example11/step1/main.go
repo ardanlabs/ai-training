@@ -129,14 +129,14 @@ type ListFilesParams struct {
 	Filter string `json:"filter" jsonschema:"a possible filter to use"`
 }
 
-func ListFilesMCPHandler(ctx context.Context, cc *mcp.ServerSession, params *mcp.CallToolParamsFor[ListFilesParams]) (*mcp.CallToolResultFor[any], error) {
+func ListFilesMCPHandler(ctx context.Context, req *mcp.CallToolRequest, params ListFilesParams) (*mcp.CallToolResult, any, error) {
 	data := struct {
 		Status string   `json:"status"`
 		Filter string   `json:"filter"`
 		Files  []string `json:"files"`
 	}{
 		Status: "SUCCESS",
-		Filter: params.Arguments.Filter,
+		Filter: params.Filter,
 		Files: []string{
 			"file1.txt",
 			"file2.txt",
@@ -146,14 +146,14 @@ func ListFilesMCPHandler(ctx context.Context, cc *mcp.ServerSession, params *mcp
 
 	d, err := json.Marshal(data)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	return &mcp.CallToolResultFor[any]{
+	return &mcp.CallToolResult{
 		Content: []mcp.Content{&mcp.TextContent{
 			Text: string(d),
 		}},
-	}, nil
+	}, nil, nil
 }
 
 // =============================================================================
@@ -162,27 +162,27 @@ type ReadFilesParams struct {
 	Path string `json:"path" jsonschema:"the path to the file to read"`
 }
 
-func ReadFilesMCPHandler(ctx context.Context, cc *mcp.ServerSession, params *mcp.CallToolParamsFor[ReadFilesParams]) (*mcp.CallToolResultFor[any], error) {
+func ReadFilesMCPHandler(ctx context.Context, req *mcp.CallToolRequest, params ReadFilesParams) (*mcp.CallToolResult, any, error) {
 	data := struct {
 		Status  string `json:"status"`
 		Path    string `json:"path"`
 		Content string `json:"content"`
 	}{
 		Status:  "SUCCESS",
-		Path:    params.Arguments.Path,
+		Path:    params.Path,
 		Content: "Hello World",
 	}
 
 	d, err := json.Marshal(data)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	return &mcp.CallToolResultFor[any]{
+	return &mcp.CallToolResult{
 		Content: []mcp.Content{&mcp.TextContent{
 			Text: string(d),
 		}},
-	}, nil
+	}, nil, nil
 }
 
 // =============================================================================
@@ -195,32 +195,32 @@ type ShellCommandParams struct {
 // like this. I am showing this because you could leverage CLI tooling to do
 // things like list files, read files, etc, but you need some way to limit the
 // commands that can be executed with a level of security.
-func ShellCommandMCPHandler(ctx context.Context, cc *mcp.ServerSession, params *mcp.CallToolParamsFor[ShellCommandParams]) (*mcp.CallToolResultFor[any], error) {
+func ShellCommandMCPHandler(ctx context.Context, req *mcp.CallToolRequest, params ShellCommandParams) (*mcp.CallToolResult, any, error) {
 	var out bytes.Buffer
-	cmd := exec.Command(params.Arguments.Command[0], params.Arguments.Command[1:]...)
+	cmd := exec.Command(params.Command[0], params.Command[1:]...)
 	cmd.Stdout = &out
 	if err := cmd.Run(); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	data := struct {
 		Command []string `json:"command"`
 		Output  string   `json:"output"`
 	}{
-		Command: params.Arguments.Command,
+		Command: params.Command,
 		Output:  out.String(),
 	}
 
 	d, err := json.Marshal(data)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	return &mcp.CallToolResultFor[any]{
+	return &mcp.CallToolResult{
 		Content: []mcp.Content{&mcp.TextContent{
 			Text: string(d),
 		}},
-	}, nil
+	}, nil, nil
 }
 
 // =============================================================================
@@ -234,11 +234,13 @@ func mcpClientCall(host string, port string, tool string, arguments map[string]a
 
 	addr := fmt.Sprintf("http://%s:%s/%s", host, port, tool)
 	client := mcp.NewClient(&mcp.Implementation{Name: "mcp-client", Version: "v1.0.0"}, nil)
-	transport := mcp.NewSSEClientTransport(addr, nil)
+	transport := mcp.SSEClientTransport{
+		Endpoint: addr,
+	}
 
 	fmt.Print("Client: Connecting to MCP Server\n\n")
 
-	session, err := client.Connect(ctx, transport)
+	session, err := client.Connect(ctx, &transport, nil)
 	if err != nil {
 		return fmt.Errorf("failed to connect to MCP server: %w", err)
 	}

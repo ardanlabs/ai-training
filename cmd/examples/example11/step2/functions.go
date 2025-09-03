@@ -28,7 +28,7 @@ func newMCPClient() *mcpClient {
 func (cln *mcpClient) Call(ctx context.Context, transport *mcp.SSEClientTransport, params *mcp.CallToolParams) ([]mcp.Content, error) {
 	fmt.Print("\u001b[92mtool: connecting to MCP Server\u001b[0m\n")
 
-	session, err := cln.client.Connect(ctx, transport)
+	session, err := cln.client.Connect(ctx, transport, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to MCP server: %w", err)
 	}
@@ -111,12 +111,14 @@ func RegisterReadFile(mcpClient *mcpClient, tools map[string]Tool) client.D {
 	toolName := "tool_read_file"
 
 	addr := fmt.Sprintf("http://%s/%s", mcpHost, toolName)
-	transport := mcp.NewSSEClientTransport(addr, nil)
+	transport := mcp.SSEClientTransport{
+		Endpoint: addr,
+	}
 
 	rf := ReadFile{
 		name:      toolName,
 		mcpClient: mcpClient,
-		transport: transport,
+		transport: &transport,
 	}
 	tools[rf.name] = &rf
 
@@ -192,12 +194,14 @@ func RegisterSearchFiles(mcpClient *mcpClient, tools map[string]Tool) client.D {
 	toolName := "tool_search_files"
 
 	addr := fmt.Sprintf("http://%s/%s", mcpHost, toolName)
-	transport := mcp.NewSSEClientTransport(addr, nil)
+	transport := mcp.SSEClientTransport{
+		Endpoint: addr,
+	}
 
 	sf := SearchFiles{
 		name:      toolName,
 		mcpClient: mcpClient,
-		transport: transport,
+		transport: &transport,
 	}
 	tools[sf.name] = &sf
 
@@ -281,12 +285,14 @@ func RegisterCreateFile(mcpClient *mcpClient, tools map[string]Tool) client.D {
 	toolName := "tool_create_file"
 
 	addr := fmt.Sprintf("http://%s/%s", mcpHost, toolName)
-	transport := mcp.NewSSEClientTransport(addr, nil)
+	transport := mcp.SSEClientTransport{
+		Endpoint: addr,
+	}
 
 	cf := CreateFile{
 		name:      toolName,
 		mcpClient: mcpClient,
-		transport: transport,
+		transport: &transport,
 	}
 	tools[cf.name] = &cf
 
@@ -362,12 +368,14 @@ func RegisterGoCodeEditor(mcpClient *mcpClient, tools map[string]Tool) client.D 
 	toolName := "tool_go_code_editor"
 
 	addr := fmt.Sprintf("http://%s/%s", mcpHost, toolName)
-	transport := mcp.NewSSEClientTransport(addr, nil)
+	transport := mcp.SSEClientTransport{
+		Endpoint: addr,
+	}
 
 	gce := GoCodeEditor{
 		name:      toolName,
 		mcpClient: mcpClient,
-		transport: transport,
+		transport: &transport,
 	}
 	tools[gce.name] = &gce
 

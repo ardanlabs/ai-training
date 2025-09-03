@@ -72,15 +72,15 @@ type ReadFileToolParams struct {
 }
 
 // ReadFileHandler reads the contents of a given file path.
-func ReadFileHandler(ctx context.Context, cc *mcp.ServerSession, params *mcp.CallToolParamsFor[ReadFileToolParams]) (*mcp.CallToolResultFor[any], error) {
+func ReadFileHandler(ctx context.Context, req *mcp.CallToolRequest, params ReadFileToolParams) (*mcp.CallToolResult, any, error) {
 	dir := "."
-	if params.Arguments.Path != "" {
-		dir = params.Arguments.Path
+	if params.Path != "" {
+		dir = params.Path
 	}
 
 	content, err := os.ReadFile(dir)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	info := struct {
@@ -91,14 +91,14 @@ func ReadFileHandler(ctx context.Context, cc *mcp.ServerSession, params *mcp.Cal
 
 	data, err := json.Marshal(info)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	return &mcp.CallToolResultFor[any]{
+	return &mcp.CallToolResult{
 		Content: []mcp.Content{&mcp.TextContent{
 			Text: string(data),
 		}},
-	}, nil
+	}, nil, nil
 }
 
 // =============================================================================
@@ -122,14 +122,14 @@ type SearchFilesToolParams struct {
 
 // SearchFilesHandler searches for files in a given directory that match a
 // given filter and contain a given string.
-func SearchFilesHandler(ctx context.Context, cc *mcp.ServerSession, params *mcp.CallToolParamsFor[SearchFilesToolParams]) (*mcp.CallToolResultFor[any], error) {
+func SearchFilesHandler(ctx context.Context, req *mcp.CallToolRequest, params SearchFilesToolParams) (*mcp.CallToolResult, any, error) {
 	dir := "."
-	if params.Arguments.Path != "" {
-		dir = params.Arguments.Path
+	if params.Path != "" {
+		dir = params.Path
 	}
 
-	filter := params.Arguments.Filter
-	contains := params.Arguments.Contains
+	filter := params.Filter
+	contains := params.Contains
 
 	var files []string
 	err := filepath.WalkDir(dir, func(path string, info fs.DirEntry, err error) error {
@@ -191,7 +191,7 @@ func SearchFilesHandler(ctx context.Context, cc *mcp.ServerSession, params *mcp.
 	})
 
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	info := struct {
@@ -202,14 +202,14 @@ func SearchFilesHandler(ctx context.Context, cc *mcp.ServerSession, params *mcp.
 
 	data, err := json.Marshal(info)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	return &mcp.CallToolResultFor[any]{
+	return &mcp.CallToolResult{
 		Content: []mcp.Content{&mcp.TextContent{
 			Text: string(data),
 		}},
-	}, nil
+	}, nil, nil
 }
 
 // =============================================================================
@@ -229,16 +229,15 @@ type CreateFileToolParams struct {
 	Path string `json:"path" jsonschema:"Relative path and name of the file to create."`
 }
 
-// CreateFileHandler searches for files in a given directory that match a
-// given filter and contain a given string.
-func CreateFileHandler(ctx context.Context, cc *mcp.ServerSession, params *mcp.CallToolParamsFor[SearchFilesToolParams]) (*mcp.CallToolResultFor[any], error) {
+// CreateFileHandler creates a new file at the specified path.
+func CreateFileHandler(ctx context.Context, req *mcp.CallToolRequest, params CreateFileToolParams) (*mcp.CallToolResult, any, error) {
 	filePath := "."
-	if params.Arguments.Path != "" {
-		filePath = params.Arguments.Path
+	if params.Path != "" {
+		filePath = params.Path
 	}
 
 	if _, err := os.Stat(filePath); !os.IsNotExist(err) {
-		return nil, err
+		return nil, nil, err
 	}
 
 	dir := path.Dir(filePath)
@@ -248,7 +247,7 @@ func CreateFileHandler(ctx context.Context, cc *mcp.ServerSession, params *mcp.C
 
 	f, err := os.Create(filePath)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	f.Close()
 
@@ -260,14 +259,14 @@ func CreateFileHandler(ctx context.Context, cc *mcp.ServerSession, params *mcp.C
 
 	data, err := json.Marshal(info)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	return &mcp.CallToolResultFor[any]{
+	return &mcp.CallToolResult{
 		Content: []mcp.Content{&mcp.TextContent{
 			Text: string(data),
 		}},
-	}, nil
+	}, nil, nil
 }
 
 // =============================================================================
@@ -291,26 +290,26 @@ type GoCodeEditorToolParams struct {
 }
 
 // GoCodeEditorHandler can make add, updates, and deletes to go code.
-func GoCodeEditorHandler(ctx context.Context, cc *mcp.ServerSession, params *mcp.CallToolParamsFor[GoCodeEditorToolParams]) (*mcp.CallToolResultFor[any], error) {
+func GoCodeEditorHandler(ctx context.Context, req *mcp.CallToolRequest, params GoCodeEditorToolParams) (*mcp.CallToolResult, any, error) {
 	path := "."
-	if params.Arguments.Path != "" {
-		path = params.Arguments.Path
+	if params.Path != "" {
+		path = params.Path
 	}
 
-	lineNumber := params.Arguments.LineNumber
-	typeChange := strings.TrimSpace(params.Arguments.TypeChange)
-	lineChange := strings.TrimSpace(params.Arguments.LineChange)
+	lineNumber := params.LineNumber
+	typeChange := strings.TrimSpace(params.TypeChange)
+	lineChange := strings.TrimSpace(params.LineChange)
 
 	content, err := os.ReadFile(path)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	fset := token.NewFileSet()
 	lines := strings.Split(string(content), "\n")
 
 	if lineNumber < 1 || lineNumber > len(lines) {
-		return nil, fmt.Errorf("line number %d is out of range (1-%d)", lineNumber, len(lines))
+		return nil, nil, fmt.Errorf("line number %d is out of range (1-%d)", lineNumber, len(lines))
 	}
 
 	switch typeChange {
@@ -332,14 +331,14 @@ func GoCodeEditorHandler(ctx context.Context, cc *mcp.ServerSession, params *mcp
 		}
 
 	default:
-		return nil, fmt.Errorf("unsupported change type: %s, please inform the user", typeChange)
+		return nil, nil, fmt.Errorf("unsupported change type: %s, please inform the user", typeChange)
 	}
 
 	modifiedContent := strings.Join(lines, "\n")
 
 	_, err = parser.ParseFile(fset, path, modifiedContent, parser.ParseComments)
 	if err != nil {
-		return nil, fmt.Errorf("syntax error after modification: %s, please inform the user", err)
+		return nil, nil, fmt.Errorf("syntax error after modification: %s, please inform the user", err)
 	}
 
 	formattedContent, err := format.Source([]byte(modifiedContent))
@@ -349,7 +348,7 @@ func GoCodeEditorHandler(ctx context.Context, cc *mcp.ServerSession, params *mcp
 
 	err = os.WriteFile(path, formattedContent, 0644)
 	if err != nil {
-		return nil, fmt.Errorf("write file: %s", err)
+		return nil, nil, fmt.Errorf("write file: %s", err)
 	}
 
 	var action string
@@ -370,12 +369,12 @@ func GoCodeEditorHandler(ctx context.Context, cc *mcp.ServerSession, params *mcp
 
 	data, err := json.Marshal(info)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	return &mcp.CallToolResultFor[any]{
+	return &mcp.CallToolResult{
 		Content: []mcp.Content{&mcp.TextContent{
 			Text: string(data),
 		}},
-	}, nil
+	}, nil, nil
 }

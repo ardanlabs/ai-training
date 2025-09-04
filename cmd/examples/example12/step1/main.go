@@ -33,7 +33,7 @@ import (
 var (
 	urlChat         = "http://localhost:11434/v1/chat/completions"
 	urlImageEmbed   = "http://localhost:11439/v1/embeddings"
-	modelChat       = "qwen2.5vl:latest" //"hf.co/mradermacher/NuMarkdown-8B-Thinking-GGUF:Q4_K_M"
+	modelChat       = "qwen2.5vl:latest"
 	modelImageEmbed = "nomic-embed-vision-v1.5"
 
 	similarityThreshold = 0.80
@@ -405,9 +405,11 @@ check:
 }
 
 func createKeyFrameDescriptions(ctx context.Context, unqKeyFrames []keyFrame, llmChat *client.LLM) error {
-	fmt.Println("Creating key frame descriptions")
+	fmt.Printf("Creating key frame descriptions: %d\n", len(unqKeyFrames))
 
 	for i, unqKeyFrame := range unqKeyFrames {
+		fmt.Printf("\t- Creating key frame description: %s\n", filepath.Base(unqKeyFrame.fileName))
+
 		description, err := llmChat.ChatCompletions(ctx, extractFrameInfoPrompt, client.WithImage(unqKeyFrame.mimeType, unqKeyFrame.image))
 		if err != nil {
 			return fmt.Errorf("chat completions: %w", err)

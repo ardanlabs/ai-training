@@ -3,7 +3,7 @@
 //
 // # Running the example:
 //
-//	$ make example12-step1
+//	$ make example12-step2
 //
 // # This requires running the following commands:
 //
@@ -27,24 +27,33 @@ import (
 
 	"github.com/ardanlabs/ai-training/foundation/audio"
 	"github.com/ardanlabs/ai-training/foundation/client"
+	"github.com/ardanlabs/ai-training/foundation/mongodb"
 	"github.com/ardanlabs/ai-training/foundation/vector"
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo"
 )
 
 var (
 	urlChat         = "http://localhost:11434/v1/chat/completions"
+	urlTextEmbed    = "http://localhost:11434/v1/embeddings"
 	urlImageEmbed   = "http://localhost:11439/v1/embeddings"
 	modelChat       = "qwen2.5vl:latest" //"hf.co/mradermacher/NuMarkdown-8B-Thinking-GGUF:Q4_K_M"
+	modelTextEmbed  = "bge-m3:latest"
 	modelImageEmbed = "nomic-embed-vision-v1.5"
 
 	similarityThreshold = 0.80
 	sourceDir           = "zarf/samples/videos/"
-	sourceFileName      = "training.mp4"
+	sourceFileName      = "test_rag_video.mp4"
 
 	audioCfg = audio.Config{
 		SetLanguage: "en",
 		Temperature: 0.1,
 		Threads:     4,
 	}
+
+	dbName     = "example12"
+	colName    = "trainingvideo"
+	dimensions = 1024
 )
 
 func init() {
@@ -54,6 +63,14 @@ func init() {
 
 	if v := os.Getenv("LLM_CHAT_MODEL"); v != "" {
 		modelChat = v
+	}
+
+	if v := os.Getenv("LLM_TEXT_EMBED_SERVER"); v != "" {
+		urlTextEmbed = v
+	}
+
+	if v := os.Getenv("LLM_TEXT_EMBED_MODEL"); v != "" {
+		modelTextEmbed = v
 	}
 
 	if v := os.Getenv("LLM_IMAGE_EMBED_SERVER"); v != "" {
@@ -91,13 +108,6 @@ const extractCodePrompt = `
 
 // =============================================================================
 
-type chunk struct {
-	filePath      string
-	duration      float64
-	transcription string
-	keyFrames     []keyFrame
-}
-
 type keyFrame struct {
 	fileName       string
 	description    string
@@ -124,7 +134,8 @@ func run() error {
 	// -------------------------------------------------------------------------
 
 	llmChat := client.NewLLM(urlChat, modelChat)
-	llmEmbed := client.NewLLM(urlImageEmbed, modelImageEmbed)
+	llmTextEmbed := client.NewLLM(urlTextEmbed, modelTextEmbed)
+	llmImageEmbed := client.NewLLM(urlImageEmbed, modelImageEmbed)
 
 	adio, err := audio.New(client.NoopLogger, "zarf/audio/ggml-tiny.bin")
 	if err != nil {
@@ -132,6 +143,26 @@ func run() error {
 	}
 
 	fmt.Print("\n---\n\n")
+
+	// -------------------------------------------------------------------------
+
+	fmt.Println("\nConnecting to MongoDB")
+
+	dbClient, err := mongodb.Connect(ctx, "mongodb://localhost:27017", "ardan", "ardan")
+	if err != nil {
+		return fmt.Errorf("mongodb.Connect: %w", err)
+	}
+
+	fmt.Println("Initializing Database")
+
+	col, err := initDB(ctx, dbClient)
+	if err != nil {
+		return fmt.Errorf("initDB: %w", err)
+	}
+
+	if _, err := col.DeleteMany(ctx, bson.M{}); err != nil {
+		return fmt.Errorf("col.DeleteMany: %w", err)
+	}
 
 	// -------------------------------------------------------------------------
 
@@ -176,7 +207,7 @@ func run() error {
 			totalFramesTime += duration
 		}()
 
-		err = processChunk(ctx, llmChat, llmEmbed, adio, sourceDir, chunkFilePath, totalFramesTime, duration)
+		err = processChunk(ctx, col, llmChat, llmTextEmbed, llmImageEmbed, adio, sourceDir, chunkFilePath, totalFramesTime, duration)
 		if err != nil {
 			return err
 		}
@@ -191,7 +222,7 @@ func run() error {
 	return nil
 }
 
-func processChunk(ctx context.Context, llmChat *client.LLM, llmEmbed *client.LLM, adio *audio.Audio, sourceDir string, chunkFilePath string, totalFramesTime float64, duration float64) error {
+func processChunk(ctx context.Context, col *mongo.Collection, llmChat *client.LLM, llmTextEmbed *client.LLM, llmImageEmbed *client.LLM, adio *audio.Audio, sourceDir string, chunkFilePath string, totalFramesTime float64, duration float64) error {
 	transcription, err := extractAudioTranscription(ctx, chunkFilePath, adio)
 	if err != nil {
 		return fmt.Errorf("extract audio transcription: %w", err)
@@ -201,30 +232,54 @@ func processChunk(ctx context.Context, llmChat *client.LLM, llmEmbed *client.LLM
 		return fmt.Errorf("create key frame files: %w", err)
 	}
 
-	keyFrames, err := processKeyFrameFiles(ctx, sourceDir, llmEmbed, llmChat, totalFramesTime, duration)
+	keyFrames, err := processKeyFrameFiles(ctx, sourceDir, llmImageEmbed, llmChat, totalFramesTime, duration)
 	if err != nil {
 		return fmt.Errorf("extract key frames data: %w", err)
 	}
 
-	c := chunk{
-		filePath:      chunkFilePath,
-		duration:      duration,
-		transcription: transcription,
-		keyFrames:     keyFrames,
-	}
-
-	// NEXT IS TO STORE IN MONGO
-
 	fmt.Print("\n")
-	fmt.Printf("Chunk: %s\n", c.filePath)
-	fmt.Printf("Duration: %f\n", c.duration)
-	fmt.Printf("Transcription: %s\n", c.transcription)
-	fmt.Printf("Key Frames: %d\n", len(c.keyFrames))
-	for _, frame := range c.keyFrames {
+	fmt.Printf("Chunk: %s\n", chunkFilePath)
+	fmt.Printf("Duration: %f\n", duration)
+	fmt.Printf("Transcription: %s\n", transcription)
+	fmt.Printf("Key Frames: %d\n", len(keyFrames))
+	for _, frame := range keyFrames {
 		fmt.Printf("\t- %s\n", filepath.Base(frame.fileName))
 		fmt.Printf("\t- %s\n", frame.classification)
 		fmt.Printf("\t- %s\n", frame.description)
 	}
+
+	// -------------------------------------------------------------------------
+
+	var sb strings.Builder
+	sb.WriteString(transcription)
+	sb.WriteString("\n")
+	for _, frame := range keyFrames {
+		sb.WriteString(frame.description)
+		sb.WriteString("\n")
+		sb.WriteString(frame.code)
+		sb.WriteString("\n")
+	}
+
+	input := sb.String()
+
+	embed, err := llmTextEmbed.EmbedText(ctx, input)
+	if err != nil {
+		return fmt.Errorf("embed text: %w", err)
+	}
+
+	doc := document{
+		FileName:  chunkFilePath,
+		Duration:  duration,
+		Text:      input,
+		Embedding: embed,
+	}
+
+	res, err := col.InsertOne(ctx, doc)
+	if err != nil {
+		return fmt.Errorf("col.InsertOne: %w", err)
+	}
+
+	fmt.Printf("Inserted into Mongo: %v\n", res.InsertedID)
 
 	return nil
 }

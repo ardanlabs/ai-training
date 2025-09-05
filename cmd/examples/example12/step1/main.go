@@ -17,6 +17,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 	"log"
@@ -26,6 +27,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/ardanlabs/ai-training/foundation/audio"
 	"github.com/ardanlabs/ai-training/foundation/client"
@@ -43,7 +45,7 @@ var (
 	modelTextEmbed  = "bge-m3:latest"
 	modelImageEmbed = "nomic-embed-vision-v1.5"
 
-	chunkSize           = 30
+	chunkSize           = 60
 	similarityThreshold = 0.80
 	videoDir            = "zarf/samples/videos/"
 	videoFileName       = "test_rag_video.mp4"
@@ -454,6 +456,9 @@ func createKeyFrameDescriptions(ctx context.Context, unqKeyFrames []keyFrame, ll
 		g.Go(func() error {
 			fmt.Printf("\t- Creating key frame description: %s\n", filepath.Base(unqKeyFrame.fileName))
 
+			ctx, cancel := context.WithTimeout(ctx, time.Second*10)
+			defer cancel()
+
 			response, err := llmChat.ChatCompletions(ctx, promptKeyFrameDesc, client.WithImage(unqKeyFrame.mimeType, unqKeyFrame.image))
 			if err != nil {
 				return fmt.Errorf("chat completions: %w", err)
@@ -481,7 +486,12 @@ func createKeyFrameDescriptions(ctx context.Context, unqKeyFrames []keyFrame, ll
 	}
 
 	if err := g.Wait(); err != nil {
-		return err
+		if errors.Is(err, context.DeadlineExceeded) {
+			fmt.Println("createKeyFrameDescriptions: context deadline exceeded")
+			return nil
+		}
+
+		return fmt.Errorf("createKeyFrameDescriptions: %w", err)
 	}
 
 	return nil

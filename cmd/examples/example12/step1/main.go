@@ -257,7 +257,7 @@ func processChunk(ctx context.Context, col *mongo.Collection, llmChat *client.LL
 	sb.WriteString(transcription)
 	sb.WriteString("\n")
 	for _, frame := range keyFrames {
-		if frame.classification == "icon" || frame.classification == "other" || frame.classification == "terminal" {
+		if frame.classification == "icon" || frame.classification == "other" {
 			continue
 		}
 		sb.WriteString(frame.description)

@@ -32,6 +32,7 @@ import (
 	"github.com/ardanlabs/ai-training/foundation/mongodb"
 	"github.com/ardanlabs/ai-training/foundation/vector"
 	"go.mongodb.org/mongo-driver/mongo"
+	"golang.org/x/sync/errgroup"
 )
 
 var (
@@ -42,6 +43,7 @@ var (
 	modelTextEmbed  = "bge-m3:latest"
 	modelImageEmbed = "nomic-embed-vision-v1.5"
 
+	chunkSize           = 30
 	similarityThreshold = 0.80
 	videoDir            = "zarf/samples/videos/"
 	videoFileName       = "test_rag_video.mp4"
@@ -79,28 +81,26 @@ func init() {
 	}
 }
 
-const extractKeyFramePrompt = `
+const promptKeyFrameDesc = `
 		Provide a detailed description of this image in 300 words or less.
 		Also, classify this image as: "source code", "diagram", "terminal", or "other" depending on the content it features the most.
 		If icons are present in the middle of the image and blocking the main content, classify them as "icon".
-		
-		Output the text in a valid JSON format MATCHING this format:
+
+		If the classification is "source code", provide the raw text of the source code after the SOURCE CODE section.
+		If there is no source code, leave the SOURCE CODE section empty.
+
+		Encode any special characters that will be part of a JSON document.
+		Make sure all text to be placed inside a JSON documentis properly encoded and that the JSON is valid.
+
+		Provide the response using the following format:
+
+		** JSON DOCUMENT
 		{
 			"text": "<image description>",
 			"classification": "<image classification>"
 		}
-
-		Encode any special characters in the JSON output.
 		
-		Make sure that there's no extra whitespace or formatting, or markdown surrounding the json output.
-		MAKE SURE THAT THE JSON IS VALID.
-		DO NOT INCLUDE ANYTHING ELSE BUT THE JSON DOCUMENT IN THE RESPONSE.
-`
-
-const extractCodePrompt = `
-		Extract all the source code in the image and provide the raw text.
-		Do not include any other text.
-		Do not interpret the code in the image.
+		** SOURCE CODE
 `
 
 // =============================================================================
@@ -238,19 +238,6 @@ func processChunk(ctx context.Context, col *mongo.Collection, llmChat *client.LL
 		return fmt.Errorf("process key frame files: %w", err)
 	}
 
-	fmt.Print("\n")
-	fmt.Printf("Video: %s\n", videoFileName)
-	fmt.Printf("Chunk: %s\n", filepath.Base(videoChunkFile))
-	fmt.Printf("Starting Video Time: %f\n", startingVideoTime)
-	fmt.Printf("Duration: %f\n", duration)
-	fmt.Printf("Transcription: %s\n", transcription)
-	fmt.Printf("Key Frames: %d\n", len(keyFrames))
-	for _, frame := range keyFrames {
-		fmt.Printf("\t- %s\n", filepath.Base(frame.fileName))
-		fmt.Printf("\t- %s\n", frame.classification)
-		fmt.Printf("\t- %s\n", frame.description)
-	}
-
 	// -------------------------------------------------------------------------
 
 	var sb strings.Builder
@@ -262,13 +249,20 @@ func processChunk(ctx context.Context, col *mongo.Collection, llmChat *client.LL
 		}
 		sb.WriteString(frame.description)
 		sb.WriteString("\n")
-		if frame.classification == "source_code" {
+		if frame.classification == "source code" {
 			sb.WriteString(frame.code)
 			sb.WriteString("\n")
 		}
 	}
 
 	input := sb.String()
+
+	fmt.Print("\n")
+	fmt.Printf("Video: %s\n", videoFileName)
+	fmt.Printf("Chunk: %s\n", filepath.Base(videoChunkFile))
+	fmt.Printf("Starting Video Time: %f\n", startingVideoTime)
+	fmt.Printf("Duration: %f\n", duration)
+	fmt.Printf("Input: %s\n", input)
 
 	if err := insertDocument(ctx, col, llmTextEmbed, input, videoFileName, videoChunkFile, startingVideoTime, duration); err != nil {
 		return fmt.Errorf("insert document: %w", err)
@@ -282,7 +276,7 @@ func processChunk(ctx context.Context, col *mongo.Collection, llmChat *client.LL
 func splitVideoIntoChunks(videoPath string) error {
 	fmt.Printf("Splitting video into chunks: %s\n", videoPath)
 
-	ffmpegCommand := fmt.Sprintf("ffmpeg -i %s -c copy -map 0 -f segment -segment_time 15 -reset_timestamps 1 -loglevel error zarf/samples/videos/chunks/output_%%05d.mp4", videoPath)
+	ffmpegCommand := fmt.Sprintf("ffmpeg -i %s -c copy -map 0 -f segment -segment_time %d -reset_timestamps 1 -loglevel error zarf/samples/videos/chunks/output_%%05d.mp4", videoPath, chunkSize)
 	out, err := exec.Command("/bin/sh", "-c", ffmpegCommand).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("error while running ffmpeg: %s, %w: %s", videoPath, err, string(out))
@@ -454,43 +448,71 @@ check:
 func createKeyFrameDescriptions(ctx context.Context, unqKeyFrames []keyFrame, llmChat *client.LLM) error {
 	fmt.Printf("Creating key frame descriptions: %d\n", len(unqKeyFrames))
 
+	var g errgroup.Group
+
 	for i, unqKeyFrame := range unqKeyFrames {
-		fmt.Printf("\t- Creating key frame description: %s\n", filepath.Base(unqKeyFrame.fileName))
+		g.Go(func() error {
+			fmt.Printf("\t- Creating key frame description: %s\n", filepath.Base(unqKeyFrame.fileName))
 
-		description, err := llmChat.ChatCompletions(ctx, extractKeyFramePrompt, client.WithImage(unqKeyFrame.mimeType, unqKeyFrame.image))
-		if err != nil {
-			return fmt.Errorf("chat completions: %w", err)
-		}
-
-		description = strings.Trim(description, "`")
-		description = strings.TrimPrefix(description, "json")
-
-		var descr struct {
-			Text           string `json:"text"`
-			Classification string `json:"classification"`
-		}
-		if err := json.Unmarshal([]byte(description), &descr); err != nil {
-			return fmt.Errorf("unmarshal: %w: %s", err, description)
-		}
-
-		unqKeyFrames[i].description = descr.Text
-		unqKeyFrames[i].classification = descr.Classification
-
-		// ---------------------------------------------------------------------
-		// Extract code samples from the key frame.
-
-		if descr.Classification == "source code" {
-			fmt.Printf("\t- Extracting source code: %s\n", filepath.Base(unqKeyFrame.fileName))
-			code, err := llmChat.ChatCompletions(ctx, extractCodePrompt, client.WithImage(unqKeyFrame.mimeType, unqKeyFrame.image))
+			response, err := llmChat.ChatCompletions(ctx, promptKeyFrameDesc, client.WithImage(unqKeyFrame.mimeType, unqKeyFrame.image))
 			if err != nil {
 				return fmt.Errorf("chat completions: %w", err)
 			}
 
-			unqKeyFrames[i].code = code
-		}
+			jsonDoc, sourceCode, err := extractParts(response)
+			if err != nil {
+				return fmt.Errorf("extract parts: %w: %s", err, response)
+			}
+
+			var descr struct {
+				Text           string `json:"text"`
+				Classification string `json:"classification"`
+			}
+			if err := json.Unmarshal([]byte(jsonDoc), &descr); err != nil {
+				return fmt.Errorf("unmarshal: %w: %s", err, jsonDoc)
+			}
+
+			unqKeyFrames[i].description = descr.Text
+			unqKeyFrames[i].classification = descr.Classification
+			unqKeyFrames[i].code = sourceCode
+
+			return nil
+		})
+	}
+
+	if err := g.Wait(); err != nil {
+		return err
 	}
 
 	return nil
+}
+
+func extractParts(description string) (string, string, error) {
+	jsonMarker := "** JSON DOCUMENT"
+	codeMarker := "** SOURCE CODE"
+
+	jsonStart := strings.Index(description, jsonMarker)
+	if jsonStart == -1 {
+		return "", "", fmt.Errorf("JSON document marker not found")
+	}
+
+	codeStart := strings.Index(description, codeMarker)
+	if codeStart == -1 {
+		// If no source code marker, just return JSON part and empty code
+		jsonDoc := strings.TrimSpace(description[jsonStart+len(jsonMarker):])
+		return jsonDoc, "", nil
+	}
+
+	jsonDoc := strings.TrimSpace(description[jsonStart+len(jsonMarker) : codeStart])
+	sourceCode := strings.TrimSpace(description[codeStart+len(codeMarker):])
+
+	jsonDoc = strings.Trim(jsonDoc, "`")
+	jsonDoc = strings.TrimPrefix(jsonDoc, "json")
+
+	sourceCode = strings.Trim(sourceCode, "`")
+	sourceCode = strings.TrimPrefix(sourceCode, "go")
+
+	return jsonDoc, sourceCode, nil
 }
 
 func getFilesFromDirectory(directoryPath string) ([]string, error) {

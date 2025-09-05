@@ -76,7 +76,7 @@ python-install:
 # Ollama Settings
 
 OLLAMA_CONTEXT_LENGTH := 32768
-OLLAMA_NUM_PARALLEL := 1
+OLLAMA_NUM_PARALLEL := 4
 OLLAMA_MAX_LOADED_MODELS := 2
 
 # ==============================================================================

@@ -1,5 +1,5 @@
-// This example provides a proof of concept for extracting transcriptions, code,
-// diagrams, images, and text from videos using the Ollama and Embedding services.
+// This example provides a chat interface for the video that was processed
+// in step1.
 //
 // # Running the example:
 //
@@ -7,117 +7,58 @@
 //
 // # This requires running the following commands:
 //
-//	$ make ollama-up    // This starts the Ollama service.
-//	$ make embedding-up // This starts the Embedding service.
+//	$ make ollama-up  // This starts the Ollama service.
 
 package main
 
 import (
+	"bufio"
 	"context"
-	"encoding/json"
 	"fmt"
-	"io/fs"
 	"log"
 	"net/http"
 	"os"
-	"os/exec"
-	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 
-	"github.com/ardanlabs/ai-training/foundation/audio"
 	"github.com/ardanlabs/ai-training/foundation/client"
 	"github.com/ardanlabs/ai-training/foundation/mongodb"
-	"github.com/ardanlabs/ai-training/foundation/vector"
-	"go.mongodb.org/mongo-driver/bson"
+	"github.com/ardanlabs/ai-training/foundation/tiktoken"
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
 var (
-	urlChat         = "http://localhost:11434/v1/chat/completions"
-	urlTextEmbed    = "http://localhost:11434/v1/embeddings"
-	urlImageEmbed   = "http://localhost:11439/v1/embeddings"
-	modelChat       = "qwen2.5vl:latest"
-	modelTextEmbed  = "bge-m3:latest"
-	modelImageEmbed = "nomic-embed-vision-v1.5"
+	url   = "http://localhost:11434/v1/chat/completions"
+	model = "gpt-oss:latest"
 
-	similarityThreshold = 0.80
-	sourceDir           = "zarf/samples/videos/"
-	sourceFileName      = "test_rag_video.mp4"
+	urlTextEmbed   = "http://localhost:11434/v1/embeddings"
+	modelTextEmbed = "bge-m3:latest"
 
-	audioCfg = audio.Config{
-		SetLanguage: "en",
-		Temperature: 0.1,
-		Threads:     4,
-	}
-
-	dbName     = "example12"
-	colName    = "trainingvideo"
-	dimensions = 1024
+	// The context window represents the maximum number of tokens that can be sent
+	// and received by the model. The default for Ollama is 4K. In the makefile
+	// it has been increased to 64K.
+	contextWindow = 1024 * 4
 )
 
 func init() {
-	if v := os.Getenv("LLM_CHAT_SERVER"); v != "" {
-		urlChat = v
-	}
-
-	if v := os.Getenv("LLM_CHAT_MODEL"); v != "" {
-		modelChat = v
-	}
-
-	if v := os.Getenv("LLM_TEXT_EMBED_SERVER"); v != "" {
-		urlTextEmbed = v
-	}
-
-	if v := os.Getenv("LLM_TEXT_EMBED_MODEL"); v != "" {
-		modelTextEmbed = v
-	}
-
-	if v := os.Getenv("LLM_IMAGE_EMBED_SERVER"); v != "" {
-		urlImageEmbed = v
-	}
-
-	if v := os.Getenv("LLM_IMAGE_EMBED_MODEL"); v != "" {
-		modelImageEmbed = v
-	}
-}
-
-const extractFrameInfoPrompt = `
-		Provide a detailed description of this image in 300 words or less.
-		Also, classify this image as: "source code", "diagram", "terminal", or "other" depending on the content it features the most.
-		If icons are present in the middle of the image and blocking the main content, classify them as "icon".
-		
-		Output the text in a valid JSON format MATCHING this format:
-		{
-			"text": "<image description>",
-			"classification": "<image classification>"
+	if v := os.Getenv("OLLAMA_CONTEXT_LENGTH"); v != "" {
+		var err error
+		contextWindow, err = strconv.Atoi(v)
+		if err != nil {
+			log.Fatal(err)
 		}
+	}
 
-		Encode any special characters in the JSON output.
-		
-		Make sure that there's no extra whitespace or formatting, or markdown surrounding the json output.
-		MAKE SURE THAT THE JSON IS VALID.
-		DO NOT INCLUDE ANYTHING ELSE BUT THE JSON DOCUMENT IN THE RESPONSE.
-`
+	if v := os.Getenv("LLM_SERVER"); v != "" {
+		url = v
+	}
 
-const extractCodePrompt = `
-		Extract all the source code in the image and provide the raw text.
-		Do not include any other text.
-		Do not interpret the code in the image.
-`
-
-// =============================================================================
-
-type keyFrame struct {
-	fileName       string
-	description    string
-	classification string
-	embedding      []float64
-	startTime      float64
-	duration       float64
-	mimeType       string
-	image          []byte
-	code           string
+	if v := os.Getenv("LLM_MODEL"); v != "" {
+		model = v
+	}
 }
 
 // =============================================================================
@@ -129,412 +70,387 @@ func main() {
 }
 
 func run() error {
-	ctx := context.Background()
-
 	// -------------------------------------------------------------------------
+	// Declare a function that can accept user input which the agent will use
+	// when it's the users turn.
 
-	llmChat := client.NewLLM(urlChat, modelChat)
-	llmTextEmbed := client.NewLLM(urlTextEmbed, modelTextEmbed)
-	llmImageEmbed := client.NewLLM(urlImageEmbed, modelImageEmbed)
-
-	adio, err := audio.New(client.NoopLogger, "zarf/audio/ggml-tiny.bin")
-	if err != nil {
-		return fmt.Errorf("starting audio: %w", err)
-	}
-
-	fmt.Print("\n---\n\n")
-
-	// -------------------------------------------------------------------------
-
-	fmt.Println("\nConnecting to MongoDB")
-
-	dbClient, err := mongodb.Connect(ctx, "mongodb://localhost:27017", "ardan", "ardan")
-	if err != nil {
-		return fmt.Errorf("mongodb.Connect: %w", err)
-	}
-
-	fmt.Println("Initializing Database")
-
-	col, err := initDB(ctx, dbClient)
-	if err != nil {
-		return fmt.Errorf("initDB: %w", err)
-	}
-
-	if _, err := col.DeleteMany(ctx, bson.M{}); err != nil {
-		return fmt.Errorf("col.DeleteMany: %w", err)
+	scanner := bufio.NewScanner(os.Stdin)
+	getUserMessage := func() (string, bool) {
+		if !scanner.Scan() {
+			return "", false
+		}
+		return scanner.Text(), true
 	}
 
 	// -------------------------------------------------------------------------
+	// Construct the agent and get it started.
 
-	videoPath := filepath.Join(sourceDir, sourceFileName)
-
-	if err := splitVideoIntoChunks(videoPath); err != nil {
-		return fmt.Errorf("splitting video into chunks: %w", err)
-	}
-
-	// -------------------------------------------------------------------------
-
-	totalFramesTime := 0.0
-
-	chunksDir := filepath.Join(sourceDir, "chunks")
-	fmt.Printf("Processing video chunks in directory: %s\n", chunksDir)
-
-	f := func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-
-		if d.IsDir() {
-			return nil
-		}
-
-		if !strings.HasSuffix(path, ".mp4") {
-			return nil
-		}
-
-		chunkFilePath := filepath.Join(sourceDir, "chunks", path)
-
-		fmt.Print("\n=================================================\n\n")
-		fmt.Printf("Processing chunk file: %s\n", chunkFilePath)
-
-		duration, err := getVideoDuration(chunkFilePath)
-		if err != nil {
-			return fmt.Errorf("get video duration: %w", err)
-		}
-
-		// Defer the total time computation until after processing the chunk.
-		defer func() {
-			totalFramesTime += duration
-		}()
-
-		err = processChunk(ctx, col, llmChat, llmTextEmbed, llmImageEmbed, adio, sourceDir, chunkFilePath, totalFramesTime, duration)
-		if err != nil {
-			return err
-		}
-
-		return nil
-	}
-
-	if err := fs.WalkDir(os.DirFS(chunksDir), ".", f); err != nil {
-		return fmt.Errorf("walk directory: %w", err)
-	}
-
-	return nil
-}
-
-func processChunk(ctx context.Context, col *mongo.Collection, llmChat *client.LLM, llmTextEmbed *client.LLM, llmImageEmbed *client.LLM, adio *audio.Audio, sourceDir string, chunkFilePath string, totalFramesTime float64, duration float64) error {
-	transcription, err := extractAudioTranscription(ctx, chunkFilePath, adio)
+	agent, err := NewAgent(getUserMessage)
 	if err != nil {
-		return fmt.Errorf("extract audio transcription: %w", err)
+		return fmt.Errorf("failed to create agent: %w", err)
 	}
 
-	if err := createKeyFrameFiles(chunkFilePath); err != nil {
-		return fmt.Errorf("create key frame files: %w", err)
-	}
-
-	keyFrames, err := processKeyFrameFiles(ctx, sourceDir, llmImageEmbed, llmChat, totalFramesTime, duration)
-	if err != nil {
-		return fmt.Errorf("extract key frames data: %w", err)
-	}
-
-	fmt.Print("\n")
-	fmt.Printf("Chunk: %s\n", chunkFilePath)
-	fmt.Printf("Duration: %f\n", duration)
-	fmt.Printf("Transcription: %s\n", transcription)
-	fmt.Printf("Key Frames: %d\n", len(keyFrames))
-	for _, frame := range keyFrames {
-		fmt.Printf("\t- %s\n", filepath.Base(frame.fileName))
-		fmt.Printf("\t- %s\n", frame.classification)
-		fmt.Printf("\t- %s\n", frame.description)
-	}
-
-	// -------------------------------------------------------------------------
-
-	var sb strings.Builder
-	sb.WriteString(transcription)
-	sb.WriteString("\n")
-	for _, frame := range keyFrames {
-		sb.WriteString(frame.description)
-		sb.WriteString("\n")
-		sb.WriteString(frame.code)
-		sb.WriteString("\n")
-	}
-
-	input := sb.String()
-
-	embed, err := llmTextEmbed.EmbedText(ctx, input)
-	if err != nil {
-		return fmt.Errorf("embed text: %w", err)
-	}
-
-	doc := document{
-		FileName:  chunkFilePath,
-		Duration:  duration,
-		Text:      input,
-		Embedding: embed,
-	}
-
-	res, err := col.InsertOne(ctx, doc)
-	if err != nil {
-		return fmt.Errorf("col.InsertOne: %w", err)
-	}
-
-	fmt.Printf("Inserted into Mongo: %v\n", res.InsertedID)
-
-	return nil
+	return agent.Run(context.TODO())
 }
 
 // =============================================================================
 
-func splitVideoIntoChunks(videoPath string) error {
-	fmt.Printf("Splitting video into chunks: %s\n", videoPath)
-
-	ffmpegCommand := fmt.Sprintf("ffmpeg -i %s -c copy -map 0 -f segment -segment_time 15 -reset_timestamps 1 -loglevel error zarf/samples/videos/chunks/output_%%05d.mp4", videoPath)
-	out, err := exec.Command("/bin/sh", "-c", ffmpegCommand).CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("error while running ffmpeg: %s, %w: %s", videoPath, err, string(out))
-	}
-
-	return nil
+// Tool describes the features which all tools must implement.
+type Tool interface {
+	Call(ctx context.Context, toolCall client.ToolCall) client.D
 }
 
-func getVideoDuration(filePath string) (float64, error) {
-	fmt.Println("Getting video duration")
+// =============================================================================
 
-	cmd := exec.Command("ffprobe", "-v", "quiet", "-print_format", "json",
-		"-show_entries", "format=duration", filePath)
-
-	output, err := cmd.Output()
-	if err != nil {
-		return 0, err
-	}
-
-	var probe struct {
-		Format struct {
-			Duration string `json:"duration"`
-		} `json:"format"`
-	}
-
-	if err := json.Unmarshal(output, &probe); err != nil {
-		return 0, err
-	}
-
-	duration, err := strconv.ParseFloat(probe.Format.Duration, 64)
-	if err != nil {
-		return 0, err
-	}
-
-	return duration, nil
+// Agent represents the chat agent that can use tools to perform tasks.
+type Agent struct {
+	textEmbedClient *client.LLM
+	sseClient       *client.SSEClient[client.ChatSSE]
+	col             *mongo.Collection
+	getUserMessage  func() (string, bool)
+	tke             *tiktoken.Tiktoken
+	tools           map[string]Tool
+	toolDocuments   []client.D
 }
 
-func extractAudioTranscription(ctx context.Context, chunkFilePath string, adio *audio.Audio) (string, error) {
-	fmt.Println("Extracting audio transcription")
+// NewAgent creates a new instance of Agent.
+func NewAgent(getUserMessage func() (string, bool)) (*Agent, error) {
+	// -------------------------------------------------------------------------
+	// Init access to the DB.
 
-	if err := convertVideoToWav(chunkFilePath); err != nil {
-		return "", fmt.Errorf("converting video to wav: %w", err)
-	}
-
-	response, err := adio.Process(ctx, audioCfg, "zarf/samples/audio/output.wav")
+	ctx := context.Background()
+	dbClient, err := mongodb.Connect(ctx, "mongodb://localhost:27017", "ardan", "ardan")
 	if err != nil {
-		return "", fmt.Errorf("process audio: %w", err)
+		return nil, fmt.Errorf("mongodb.Connect: %w", err)
 	}
 
-	return response.Text, nil
+	col, err := initDB(ctx, dbClient)
+	if err != nil {
+		return nil, fmt.Errorf("initDB: %w", err)
+	}
+
+	// -------------------------------------------------------------------------
+	// Construct the tokenizer.
+
+	tke, err := tiktoken.NewTiktoken()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create tiktoken: %w", err)
+	}
+
+	// -------------------------------------------------------------------------
+	// Construct the agent.
+
+	tools := map[string]Tool{}
+
+	agent := Agent{
+		textEmbedClient: client.NewLLM(urlTextEmbed, modelTextEmbed),
+		sseClient:       client.NewSSE[client.ChatSSE](client.StdoutLogger),
+		col:             col,
+		getUserMessage:  getUserMessage,
+		tke:             tke,
+		tools:           tools,
+		toolDocuments:   []client.D{},
+	}
+
+	return &agent, nil
 }
 
-func convertVideoToWav(source string) error {
-	// Ensure there is no previous file to allow ffmpeg to create the new one.
-	_ = os.Remove("zarf/samples/audio/output.wav")
+// The system prompt for the model so it behaves as expected.
+const systemPrompt = `You are a helpful coding assistant that has tools to assist
+you in coding.
 
-	ffmpegCommand := fmt.Sprintf("ffmpeg -i %s -ar 16000 -ac 1 -c:a pcm_s16le -loglevel error zarf/samples/audio/output.wav", source)
-	out, err := exec.Command("/bin/sh", "-c", ffmpegCommand).CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("error while running ffmpeg: %w: %s", err, string(out))
-	}
+After you request a tool call, you will receive a JSON document with two fields,
+"status" and "data". Always check the "status" field to know if the call "SUCCEED"
+or "FAILED". The information you need to respond will be provided under the "data"
+field. If the called "FAILED", just inform the user and don't try using the tool
+again for the current response.
 
-	return nil
-}
+When reading Go source code always start counting lines of code from the top of
+the source code file.
 
-func processKeyFrameFiles(ctx context.Context, sourceDir string, llmEmbed *client.LLM, llmChat *client.LLM, startTime float64, duration float64) ([]keyFrame, error) {
-	fmt.Println("Processing key frames")
+If you get back results from a tool call, do not verify the results.
 
-	fullpath := filepath.Join(sourceDir, "frames")
+Reasoning: high
+`
 
-	keyFramefiles, err := getFilesFromDirectory(fullpath)
-	if err != nil {
-		return nil, fmt.Errorf("get files from directory: %w", err)
-	}
+// Run starts the agent and runs the chat loop.
+func (a *Agent) Run(ctx context.Context) error {
+	var conversation []client.D // History of the conversation
+	var reasonContent []string  // Reasoning content per model call
+	var inToolCall bool         // Need to know we are inside a tool call request
 
-	keyFrames := make([]keyFrame, len(keyFramefiles))
+	conversation = append(conversation, client.D{
+		"role":    "system",
+		"content": systemPrompt,
+	})
 
-	for i, keyFrameFile := range keyFramefiles {
+	fmt.Printf("\nChat with %s (use 'ctrl-c' to quit)\n", model)
+
+	timeForResult := time.NewTicker(100 * time.Millisecond)
+
+	for {
 		// ---------------------------------------------------------------------
-		// Read the key frame and get the image data and mime type.
+		// If we are not in a tool call then we can ask the user
+		// to provide their next question or request.
 
-		image, mimeType, err := readImage(keyFrameFile)
-		if err != nil {
-			return nil, fmt.Errorf("read image: %w", err)
-		}
-
-		// ---------------------------------------------------------------------
-		// Create an embedding vector for the images. We will use this to compare
-		// the images to each other and find the most similar ones.
-
-		embedding, err := llmEmbed.EmbedWithImage(ctx, "", image, mimeType)
-		if err != nil {
-			return nil, fmt.Errorf("llm.EmbedText: %w", err)
-		}
-
-		// ---------------------------------------------------------------------
-		// Store the key frame information.
-
-		keyFrames[i] = keyFrame{
-			fileName:  keyFrameFile,
-			startTime: startTime,
-			duration:  duration,
-			mimeType:  mimeType,
-			image:     image,
-			embedding: embedding,
-		}
-	}
-
-	unqKeyFrames := removeDuplicateKeyFrames(keyFrames)
-
-	if err := createKeyFrameDescriptions(ctx, unqKeyFrames, llmChat); err != nil {
-		return nil, fmt.Errorf("create key frame descriptions: %w", err)
-	}
-
-	return unqKeyFrames, nil
-}
-
-func createKeyFrameFiles(chunkFilePath string) error {
-	fmt.Println("Creating key frame files")
-
-	if err := removePastKeyFrameFiles(sourceDir); err != nil {
-		return fmt.Errorf("remove past work files: %w", err)
-	}
-
-	ffmpegCommand := fmt.Sprintf("ffmpeg -skip_frame nokey -i %s -frame_pts true -fps_mode vfr -loglevel error zarf/samples/videos/frames/%%05d.jpg", chunkFilePath)
-
-	out, err := exec.Command("/bin/sh", "-c", ffmpegCommand).CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("error while running ffmpeg: %w: %s", err, string(out))
-	}
-
-	return nil
-}
-
-func removePastKeyFrameFiles(path string) error {
-	previousFrames, err := fs.Glob(os.DirFS(path), "frames/*")
-	if err != nil {
-		return fmt.Errorf("glob: %w", err)
-	}
-
-	for _, previousFrame := range previousFrames {
-		if err := os.Remove(filepath.Join(path, previousFrame)); err != nil {
-			return fmt.Errorf("remove previous frame: %w", err)
-		}
-	}
-
-	return nil
-}
-
-func removeDuplicateKeyFrames(keyFrames []keyFrame) []keyFrame {
-	// We have identifed that 80% of the time we have 10 or less unique key frames.
-	unqKeyFrames := make([]keyFrame, 0, 10)
-
-check:
-	for _, keyFrame := range keyFrames {
-		for _, unqKeyFrame := range unqKeyFrames {
-			similarity := vector.CosineSimilarity(unqKeyFrame.embedding, keyFrame.embedding)
-
-			if similarity > similarityThreshold {
-				continue check
+		if !inToolCall {
+			fmt.Print("\u001b[94m\nYou\u001b[0m: ")
+			userInput, ok := a.getUserMessage()
+			if !ok {
+				break
 			}
+
+			results, err := textVectorSearch(context.TODO(), a.textEmbedClient, a.col, userInput)
+			if err != nil {
+				fmt.Printf("\n\n\u001b[91mERROR:%s\u001b[0m\n\n", err)
+				continue
+			}
+
+			var extraContext string
+			for _, result := range results {
+				fmt.Printf("\u001b[94m\n%v\u001b[0m:\n", result.Score)
+				fmt.Printf("\u001b[94m\n%v\u001b[0m:\n", result.Text)
+				if result.Score >= .80 {
+					extraContext += result.Text + "\n"
+				}
+			}
+
+			if extraContext != "" {
+				prompt := "please answer the following question only using the context provided."
+				userInput = fmt.Sprintf("%s\nCONTEXT: %s\nQUESTION:%s", prompt, extraContext, userInput)
+			}
+
+			conversation = append(conversation, client.D{
+				"role":    "user",
+				"content": userInput,
+			})
 		}
 
-		unqKeyFrames = append(unqKeyFrames, keyFrame)
-	}
+		inToolCall = false
 
-	return unqKeyFrames
-}
+		// ---------------------------------------------------------------------
+		// Let's show how long we are waiting for the model response.
 
-func createKeyFrameDescriptions(ctx context.Context, unqKeyFrames []keyFrame, llmChat *client.LLM) error {
-	fmt.Printf("Creating key frame descriptions: %d\n", len(unqKeyFrames))
+		wctx, cancelTimer := context.WithCancel(ctx)
+		timeForResult.Reset(100 * time.Millisecond)
+		start := time.Now()
 
-	for i, unqKeyFrame := range unqKeyFrames {
-		fmt.Printf("\t- Creating key frame description: %s\n", filepath.Base(unqKeyFrame.fileName))
+		var wg sync.WaitGroup
+		wg.Go(func() {
+			for {
+				select {
+				case <-timeForResult.C:
+					m := time.Since(start).Milliseconds()
+					fmt.Printf("\r\u001b[93m%s %d.%03d\u001b[0m: ", model, m/1000, m%1000)
 
-		description, err := llmChat.ChatCompletions(ctx, extractFrameInfoPrompt, client.WithImage(unqKeyFrame.mimeType, unqKeyFrame.image))
-		if err != nil {
-			return fmt.Errorf("chat completions: %w", err)
+				case <-wctx.Done():
+					fmt.Print("\n")
+					timeForResult.Stop()
+					cancelTimer()
+					return
+				}
+			}
+		})
+
+		// ---------------------------------------------------------------------
+		// Now we will make a call to the model, we could be responding to a
+		// tool call or providing a user request.
+
+		d := client.D{
+			"model":          model,
+			"messages":       conversation,
+			"max_tokens":     contextWindow,
+			"temperature":    0.0,
+			"top_p":          0.1,
+			"top_k":          1,
+			"stream":         true,
+			"tools":          a.toolDocuments,
+			"tool_selection": "auto",
 		}
 
-		description = strings.Trim(description, "`")
-		description = strings.TrimPrefix(description, "json")
+		fmt.Printf("\u001b[93m\n%s\u001b[0m: 0.000", model)
 
-		var descr struct {
-			Text           string `json:"text"`
-			Classification string `json:"classification"`
-		}
-		if err := json.Unmarshal([]byte(description), &descr); err != nil {
-			return fmt.Errorf("unmarshal: %w: %s", err, description)
-		}
+		ch := make(chan client.ChatSSE, 100)
+		ctx, cancelDoCall := context.WithTimeout(ctx, time.Minute*5)
 
-		if descr.Classification == "icon" {
+		if err := a.sseClient.Do(ctx, http.MethodPost, url, d, ch); err != nil {
+			fmt.Printf("\n\n\u001b[91mERROR:%s\u001b[0m\n\n", err)
+			inToolCall = false
+			cancelDoCall()
 			continue
 		}
 
-		unqKeyFrames[i].description = descr.Text
-		unqKeyFrames[i].classification = descr.Classification
+		// ---------------------------------------------------------------------
+		// Now we will make a call to the model.
+
+		var chunks []string      // Store the response chunks since we are streaming.
+		reasonThinking := false  // GPT models provide a Reasoning field.
+		contentThinking := false // Other reasoning models use <think> tags.
+		reasonContent = nil      // Reset the reasoning content for this next call.
 
 		// ---------------------------------------------------------------------
-		// Extract code samples from the key frame.
+		// Process the response which comes in as chunks. So we need to process
+		// and save each chunk.
 
-		if descr.Classification == "source code" {
-			code, err := llmChat.ChatCompletions(ctx, extractCodePrompt, client.WithImage(unqKeyFrame.mimeType, unqKeyFrame.image))
-			if err != nil {
-				return fmt.Errorf("chat completions: %w", err)
+		waitingForResponse := true
+
+		for resp := range ch {
+			if len(resp.Choices) == 0 {
+				continue
 			}
 
-			unqKeyFrames[i].code = code
+			// Check if this is the first response. If it is, we will shutdown
+			// the G displaying the latency.
+			if waitingForResponse {
+				waitingForResponse = false
+				cancelTimer()
+				wg.Wait()
+			}
+
+			switch {
+
+			// Did the model ask us to execute a tool call?
+			case len(resp.Choices[0].Delta.ToolCalls) > 0:
+				fmt.Print("\n\n")
+
+				toolCall := resp.Choices[0].Delta.ToolCalls[0]
+
+				conversation = a.addToConversation(reasonContent, conversation, client.D{
+					"role": "assistant",
+					"content": fmt.Sprintf("Tool call %s: %s(%v)",
+						toolCall.ID,
+						toolCall.Function.Name,
+						toolCall.Function.Arguments),
+				})
+
+				results := a.callTools(ctx, resp.Choices[0].Delta.ToolCalls)
+				if len(results) > 0 {
+					conversation = a.addToConversation(reasonContent, conversation, results...)
+					inToolCall = true
+				}
+
+			// Did we get content? With some models a <think> tag could exist to
+			// indicate reasoning. We need to filter that out and display it as
+			// a different color.
+			case resp.Choices[0].Delta.Content != "":
+				if reasonThinking {
+					reasonThinking = false
+					fmt.Print("\n\n")
+				}
+
+				switch resp.Choices[0].Delta.Content {
+				case "<think>":
+					contentThinking = true
+					continue
+				case "</think>":
+					contentThinking = false
+					continue
+				}
+
+				switch {
+				case !contentThinking:
+					fmt.Print(resp.Choices[0].Delta.Content)
+					chunks = append(chunks, resp.Choices[0].Delta.Content)
+
+				case contentThinking:
+					reasonContent = append(reasonContent, resp.Choices[0].Delta.Content)
+					fmt.Printf("\u001b[91m%s\u001b[0m", resp.Choices[0].Delta.Content)
+				}
+
+			// Did we get reasoning content? ChatGPT models provide reasoning in
+			// the Delta.Reasoning field. Display it as a different color.
+			case resp.Choices[0].Delta.Reasoning != "":
+				reasonThinking = true
+
+				if len(reasonContent) == 0 {
+					fmt.Print("\n")
+				}
+
+				reasonContent = append(reasonContent, resp.Choices[0].Delta.Reasoning)
+				fmt.Printf("\u001b[91m%s\u001b[0m", resp.Choices[0].Delta.Reasoning)
+			}
+		}
+
+		cancelDoCall()
+
+		// ---------------------------------------------------------------------
+		// We processed all the chunks from the response so we need to add
+		// this to the conversation history.
+
+		if !inToolCall && len(chunks) > 0 {
+			fmt.Print("\n")
+
+			content := strings.Join(chunks, " ")
+			content = strings.TrimLeft(content, "\n")
+
+			if content != "" {
+				conversation = a.addToConversation(reasonContent, conversation, client.D{
+					"role":    "assistant",
+					"content": content,
+				})
+			}
 		}
 	}
 
 	return nil
 }
 
-func getFilesFromDirectory(directoryPath string) ([]string, error) {
-	var files []string
+// addToConversation will add new messages to the conversation history and
+// calculate the different tokens used in the conversation and display it to the
+// user. It will also check the amount of input tokens currently in history
+// and remove the oldest messages if we are over.
+func (a *Agent) addToConversation(reasoning []string, conversation []client.D, newMessages ...client.D) []client.D {
+	conversation = append(conversation, newMessages...)
 
-	err := filepath.Walk(directoryPath, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
+	fmt.Print("\n")
+
+	for {
+		var currentWindow int
+		for _, msg := range conversation {
+			currentWindow += a.tke.TokenCount(msg["content"].(string))
 		}
 
-		if !info.IsDir() && (filepath.Ext(info.Name()) == ".jpg" || filepath.Ext(info.Name()) == ".jpeg" || filepath.Ext(info.Name()) == ".png") {
-			files = append(files, path)
+		r := strings.Join(reasoning, " ")
+		reasonTokens := a.tke.TokenCount(r)
+
+		totalTokens := currentWindow + reasonTokens
+		percentage := (float64(currentWindow) / float64(contextWindow)) * 100
+		of := float32(contextWindow) / float32(1024)
+
+		fmt.Printf("\u001b[90mTokens Total[%d] Reason[%d] Window[%d] (%.0f%% of %.0fK)\u001b[0m\n", totalTokens, reasonTokens, currentWindow, percentage, of)
+
+		// ---------------------------------------------------------------------
+		// Check if we have too many input tokens and start removing messages.
+
+		if currentWindow > contextWindow {
+			fmt.Print("\u001b[90mRemoving conversation history\u001b[0m\n")
+			conversation = slices.Delete(conversation, 1, 2)
+			continue
 		}
 
-		return nil
-	})
-	if err != nil {
-		return nil, fmt.Errorf("walk directory: %w", err)
+		break
 	}
 
-	return files, nil
+	return conversation
 }
 
-func readImage(fileName string) ([]byte, string, error) {
-	data, err := os.ReadFile(fileName)
-	if err != nil {
-		return nil, "", fmt.Errorf("read file: %w", err)
+// callTools will lookup a requested tool by name and call it.
+func (a *Agent) callTools(ctx context.Context, toolCalls []client.ToolCall) []client.D {
+	var resps []client.D
+
+	for _, toolCall := range toolCalls {
+		tool, exists := a.tools[toolCall.Function.Name]
+		if !exists {
+			continue
+		}
+
+		fmt.Printf("\n\u001b[92m%s(%v)\u001b[0m:\n\n", toolCall.Function.Name, toolCall.Function.Arguments)
+
+		resp := tool.Call(ctx, toolCall)
+		resps = append(resps, resp)
+
+		fmt.Printf("%#v\n", resps)
 	}
 
-	switch mimeType := http.DetectContentType(data); mimeType {
-	case "image/jpeg", "image/png":
-		return data, mimeType, nil
-	default:
-		return nil, "", fmt.Errorf("unsupported file type: %s: filename: %s", mimeType, fileName)
-	}
+	return resps
 }

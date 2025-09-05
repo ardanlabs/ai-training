@@ -10,12 +10,11 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
-type document struct {
-	FileName  string    `bson:"file_name"`
-	Duration  float64   `bson:"duration"`
-	Text      string    `bson:"text"`
-	Embedding []float64 `bson:"embedding"`
-}
+const (
+	dbName     = "example12"
+	colName    = "trainingvideo"
+	dimensions = 1024
+)
 
 type searchResult struct {
 	FileName  string    `bson:"file_name" json:"file_name"`
@@ -74,10 +73,9 @@ func vectorSearch(ctx context.Context, col *mongo.Collection, vector []float64) 
 		{{
 			Key: "$project",
 			Value: bson.M{
-				"file_name":       1,
-				"description":     1,
-				"embedding":       1,
-				"image_embedding": 1,
+				"file_name": 1,
+				"text":      1,
+				"embedding": 1,
 				"score": bson.M{
 					"$meta": "vectorSearchScore",
 				},

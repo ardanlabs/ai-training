@@ -1,5 +1,6 @@
 // This example provides a proof of concept for extracting transcriptions, code,
 // diagrams, images, and text from videos using the Ollama and Embedding services.
+// It then stores the extracted data in a MongoDB database for vector seaarch.
 //
 // # Running the example:
 //
@@ -9,6 +10,7 @@
 //
 //	$ make ollama-up    // This starts the Ollama service.
 //	$ make embedding-up // This starts the Embedding service.
+//	$ make compose-up   // This starts Mongo service.
 
 package main
 
@@ -27,24 +29,32 @@ import (
 
 	"github.com/ardanlabs/ai-training/foundation/audio"
 	"github.com/ardanlabs/ai-training/foundation/client"
+	"github.com/ardanlabs/ai-training/foundation/mongodb"
 	"github.com/ardanlabs/ai-training/foundation/vector"
+	"go.mongodb.org/mongo-driver/mongo"
 )
 
 var (
 	urlChat         = "http://localhost:11434/v1/chat/completions"
+	urlTextEmbed    = "http://localhost:11434/v1/embeddings"
 	urlImageEmbed   = "http://localhost:11439/v1/embeddings"
-	modelChat       = "qwen2.5vl:latest"
+	modelChat       = "gemma3:4b-it-qat"
+	modelTextEmbed  = "bge-m3:latest"
 	modelImageEmbed = "nomic-embed-vision-v1.5"
 
 	similarityThreshold = 0.80
-	sourceDir           = "zarf/samples/videos/"
-	sourceFileName      = "training.mp4"
+	videoDir            = "zarf/samples/videos/"
+	videoFileName       = "test_rag_video.mp4"
 
 	audioCfg = audio.Config{
 		SetLanguage: "en",
 		Temperature: 0.1,
 		Threads:     4,
 	}
+
+	dbName     = "example12"
+	colName    = "trainingvideo"
+	dimensions = 1024
 )
 
 func init() {
@@ -54,6 +64,14 @@ func init() {
 
 	if v := os.Getenv("LLM_CHAT_MODEL"); v != "" {
 		modelChat = v
+	}
+
+	if v := os.Getenv("LLM_TEXT_EMBED_SERVER"); v != "" {
+		urlTextEmbed = v
+	}
+
+	if v := os.Getenv("LLM_TEXT_EMBED_MODEL"); v != "" {
+		modelTextEmbed = v
 	}
 
 	if v := os.Getenv("LLM_IMAGE_EMBED_SERVER"); v != "" {
@@ -91,13 +109,6 @@ const extractCodePrompt = `
 
 // =============================================================================
 
-type chunk struct {
-	filePath      string
-	duration      float64
-	transcription string
-	keyFrames     []keyFrame
-}
-
 type keyFrame struct {
 	fileName       string
 	description    string
@@ -124,7 +135,8 @@ func run() error {
 	// -------------------------------------------------------------------------
 
 	llmChat := client.NewLLM(urlChat, modelChat)
-	llmEmbed := client.NewLLM(urlImageEmbed, modelImageEmbed)
+	llmTextEmbed := client.NewLLM(urlTextEmbed, modelTextEmbed)
+	llmImageEmbed := client.NewLLM(urlImageEmbed, modelImageEmbed)
 
 	adio, err := audio.New(client.NoopLogger, "zarf/audio/ggml-tiny.bin")
 	if err != nil {
@@ -135,7 +147,23 @@ func run() error {
 
 	// -------------------------------------------------------------------------
 
-	videoPath := filepath.Join(sourceDir, sourceFileName)
+	fmt.Println("\nConnecting to MongoDB")
+
+	dbClient, err := mongodb.Connect(ctx, "mongodb://localhost:27017", "ardan", "ardan")
+	if err != nil {
+		return fmt.Errorf("mongodb.Connect: %w", err)
+	}
+
+	fmt.Println("Initializing Database")
+
+	col, err := initDB(ctx, dbClient)
+	if err != nil {
+		return fmt.Errorf("initDB: %w", err)
+	}
+
+	// -------------------------------------------------------------------------
+
+	videoPath := filepath.Join(videoDir, videoFileName)
 
 	if err := splitVideoIntoChunks(videoPath); err != nil {
 		return fmt.Errorf("splitting video into chunks: %w", err)
@@ -145,7 +173,7 @@ func run() error {
 
 	totalFramesTime := 0.0
 
-	chunksDir := filepath.Join(sourceDir, "chunks")
+	chunksDir := filepath.Join(videoDir, "chunks")
 	fmt.Printf("Processing video chunks in directory: %s\n", chunksDir)
 
 	f := func(path string, d fs.DirEntry, err error) error {
@@ -161,12 +189,12 @@ func run() error {
 			return nil
 		}
 
-		chunkFilePath := filepath.Join(sourceDir, "chunks", path)
+		videoChunkFile := filepath.Join(videoDir, "chunks", path)
 
 		fmt.Print("\n=================================================\n\n")
-		fmt.Printf("Processing chunk file: %s\n", chunkFilePath)
+		fmt.Printf("Processing chunk file: %s\n", videoChunkFile)
 
-		duration, err := getVideoDuration(chunkFilePath)
+		duration, err := getVideoDuration(videoChunkFile)
 		if err != nil {
 			return fmt.Errorf("get video duration: %w", err)
 		}
@@ -176,7 +204,7 @@ func run() error {
 			totalFramesTime += duration
 		}()
 
-		err = processChunk(ctx, llmChat, llmEmbed, adio, sourceDir, chunkFilePath, totalFramesTime, duration)
+		err = processChunk(ctx, col, llmChat, llmTextEmbed, llmImageEmbed, adio, videoDir, videoFileName, videoChunkFile, totalFramesTime, duration)
 		if err != nil {
 			return err
 		}
@@ -191,39 +219,58 @@ func run() error {
 	return nil
 }
 
-func processChunk(ctx context.Context, llmChat *client.LLM, llmEmbed *client.LLM, adio *audio.Audio, sourceDir string, chunkFilePath string, totalFramesTime float64, duration float64) error {
-	transcription, err := extractAudioTranscription(ctx, chunkFilePath, adio)
+func processChunk(ctx context.Context, col *mongo.Collection, llmChat *client.LLM, llmTextEmbed *client.LLM, llmImageEmbed *client.LLM, adio *audio.Audio, videoDir string, videoFileName string, videoChunkFile string, totalFramesTime float64, duration float64) error {
+	exists, err := existsDocument(ctx, col, videoFileName, videoChunkFile)
+	if err != nil {
+		return fmt.Errorf("exists document: %w", err)
+	}
+	if exists {
+		fmt.Printf("Document exists: %s, %s\n", videoFileName, filepath.Base(videoChunkFile))
+		return nil
+	}
+
+	transcription, err := extractAudioTranscription(ctx, videoChunkFile, adio)
 	if err != nil {
 		return fmt.Errorf("extract audio transcription: %w", err)
 	}
 
-	if err := createKeyFrameFiles(chunkFilePath); err != nil {
+	if err := createKeyFrameFiles(videoChunkFile); err != nil {
 		return fmt.Errorf("create key frame files: %w", err)
 	}
 
-	keyFrames, err := processKeyFrameFiles(ctx, sourceDir, llmEmbed, llmChat, totalFramesTime, duration)
+	keyFrames, err := processKeyFrameFiles(ctx, videoDir, llmImageEmbed, llmChat, totalFramesTime, duration)
 	if err != nil {
-		return fmt.Errorf("extract key frames data: %w", err)
+		return fmt.Errorf("process key frame files: %w", err)
 	}
-
-	c := chunk{
-		filePath:      chunkFilePath,
-		duration:      duration,
-		transcription: transcription,
-		keyFrames:     keyFrames,
-	}
-
-	// NEXT IS TO STORE IN MONGO
 
 	fmt.Print("\n")
-	fmt.Printf("Chunk: %s\n", c.filePath)
-	fmt.Printf("Duration: %f\n", c.duration)
-	fmt.Printf("Transcription: %s\n", c.transcription)
-	fmt.Printf("Key Frames: %d\n", len(c.keyFrames))
-	for _, frame := range c.keyFrames {
+	fmt.Printf("Video: %s\n", videoFileName)
+	fmt.Printf("Chunk: %s\n", filepath.Base(videoChunkFile))
+	fmt.Printf("Duration: %f\n", duration)
+	fmt.Printf("Transcription: %s\n", transcription)
+	fmt.Printf("Key Frames: %d\n", len(keyFrames))
+	for _, frame := range keyFrames {
 		fmt.Printf("\t- %s\n", filepath.Base(frame.fileName))
 		fmt.Printf("\t- %s\n", frame.classification)
 		fmt.Printf("\t- %s\n", frame.description)
+	}
+
+	// -------------------------------------------------------------------------
+
+	var sb strings.Builder
+	sb.WriteString(transcription)
+	sb.WriteString("\n")
+	for _, frame := range keyFrames {
+		sb.WriteString(frame.description)
+		sb.WriteString("\n")
+		sb.WriteString(frame.code)
+		sb.WriteString("\n")
+	}
+
+	input := sb.String()
+
+	if err := insertDocument(ctx, col, llmTextEmbed, input, videoFileName, videoChunkFile, duration); err != nil {
+		return fmt.Errorf("insert document: %w", err)
 	}
 
 	return nil
@@ -243,11 +290,11 @@ func splitVideoIntoChunks(videoPath string) error {
 	return nil
 }
 
-func getVideoDuration(filePath string) (float64, error) {
+func getVideoDuration(videoChunkFile string) (float64, error) {
 	fmt.Println("Getting video duration")
 
 	cmd := exec.Command("ffprobe", "-v", "quiet", "-print_format", "json",
-		"-show_entries", "format=duration", filePath)
+		"-show_entries", "format=duration", videoChunkFile)
 
 	output, err := cmd.Output()
 	if err != nil {
@@ -272,10 +319,10 @@ func getVideoDuration(filePath string) (float64, error) {
 	return duration, nil
 }
 
-func extractAudioTranscription(ctx context.Context, chunkFilePath string, adio *audio.Audio) (string, error) {
+func extractAudioTranscription(ctx context.Context, videoChunkFile string, adio *audio.Audio) (string, error) {
 	fmt.Println("Extracting audio transcription")
 
-	if err := convertVideoToWav(chunkFilePath); err != nil {
+	if err := convertVideoToWav(videoChunkFile); err != nil {
 		return "", fmt.Errorf("converting video to wav: %w", err)
 	}
 
@@ -300,10 +347,10 @@ func convertVideoToWav(source string) error {
 	return nil
 }
 
-func processKeyFrameFiles(ctx context.Context, sourceDir string, llmEmbed *client.LLM, llmChat *client.LLM, startTime float64, duration float64) ([]keyFrame, error) {
+func processKeyFrameFiles(ctx context.Context, videoDir string, llmEmbed *client.LLM, llmChat *client.LLM, startTime float64, duration float64) ([]keyFrame, error) {
 	fmt.Println("Processing key frames")
 
-	fullpath := filepath.Join(sourceDir, "frames")
+	fullpath := filepath.Join(videoDir, "frames")
 
 	keyFramefiles, err := getFilesFromDirectory(fullpath)
 	if err != nil {
@@ -352,14 +399,14 @@ func processKeyFrameFiles(ctx context.Context, sourceDir string, llmEmbed *clien
 	return unqKeyFrames, nil
 }
 
-func createKeyFrameFiles(chunkFilePath string) error {
+func createKeyFrameFiles(videoChunkFile string) error {
 	fmt.Println("Creating key frame files")
 
-	if err := removePastKeyFrameFiles(sourceDir); err != nil {
+	if err := removePastKeyFrameFiles(videoDir); err != nil {
 		return fmt.Errorf("remove past work files: %w", err)
 	}
 
-	ffmpegCommand := fmt.Sprintf("ffmpeg -skip_frame nokey -i %s -frame_pts true -fps_mode vfr -loglevel error zarf/samples/videos/frames/%%05d.jpg", chunkFilePath)
+	ffmpegCommand := fmt.Sprintf("ffmpeg -skip_frame nokey -i %s -frame_pts true -fps_mode vfr -loglevel error zarf/samples/videos/frames/%%05d.jpg", videoChunkFile)
 
 	out, err := exec.Command("/bin/sh", "-c", ffmpegCommand).CombinedOutput()
 	if err != nil {
@@ -369,14 +416,14 @@ func createKeyFrameFiles(chunkFilePath string) error {
 	return nil
 }
 
-func removePastKeyFrameFiles(path string) error {
-	previousFrames, err := fs.Glob(os.DirFS(path), "frames/*")
+func removePastKeyFrameFiles(videoDir string) error {
+	previousFrames, err := fs.Glob(os.DirFS(videoDir), "frames/*")
 	if err != nil {
 		return fmt.Errorf("glob: %w", err)
 	}
 
 	for _, previousFrame := range previousFrames {
-		if err := os.Remove(filepath.Join(path, previousFrame)); err != nil {
+		if err := os.Remove(filepath.Join(videoDir, previousFrame)); err != nil {
 			return fmt.Errorf("remove previous frame: %w", err)
 		}
 	}
@@ -423,7 +470,7 @@ func createKeyFrameDescriptions(ctx context.Context, unqKeyFrames []keyFrame, ll
 			Classification string `json:"classification"`
 		}
 		if err := json.Unmarshal([]byte(description), &descr); err != nil {
-			return fmt.Errorf("unmarshal: %w", err)
+			return fmt.Errorf("unmarshal: %w: %s", err, description)
 		}
 
 		if descr.Classification == "icon" {

@@ -63,7 +63,7 @@ ollama-pull:
 	ollama pull bge-m3:latest
 	ollama pull qwen2.5vl:latest
 	ollama pull gpt-oss:latest
-	ollama pull hf.co/mradermacher/NuMarkdown-8B-Thinking-GGUF:Q4_K_M
+	ollama pull gemma3:4b-it-qat
 
 python-install:
 	rm -rf .venv

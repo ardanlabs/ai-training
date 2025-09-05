@@ -161,22 +161,14 @@ example12-step1:
 	mkdir -p zarf/samples/videos/frames && \
 	rm -rf zarf/samples/videos/chunks/* && \
 	rm -rf zarf/samples/videos/frames/* && \
+	export OLLAMA_CONTEXT_LENGTH=$(OLLAMA_CONTEXT_LENGTH) && \
 	CC=/opt/homebrew/Cellar/llvm/21.1.0/bin/clang \
 	CXX=/opt/homebrew/Cellar/llvm/21.1.0/bin/clang++ \
 	go run ./cmd/examples/example12/step1/*.go
 
 example12-step2:
-	mkdir -p zarf/samples/videos/chunks && \
-	mkdir -p zarf/samples/videos/frames && \
-	rm -rf zarf/samples/videos/chunks/* && \
-	rm -rf zarf/samples/videos/frames/* && \
-	CC=/opt/homebrew/Cellar/llvm/21.1.0/bin/clang \
-	CXX=/opt/homebrew/Cellar/llvm/21.1.0/bin/clang++ \
-	go run ./cmd/examples/example12/step2/*.go
-
-example12-step3:
 	export OLLAMA_CONTEXT_LENGTH=$(OLLAMA_CONTEXT_LENGTH) && \
-	go run cmd/examples/example12/step3/*.go
+	go run cmd/examples/example12/step2/*.go
 
 # ==============================================================================
 # Manage project

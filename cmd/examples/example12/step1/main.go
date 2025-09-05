@@ -51,10 +51,6 @@ var (
 		Temperature: 0.1,
 		Threads:     4,
 	}
-
-	dbName     = "example12"
-	colName    = "trainingvideo"
-	dimensions = 1024
 )
 
 func init() {

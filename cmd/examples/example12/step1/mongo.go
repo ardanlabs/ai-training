@@ -13,20 +13,18 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
+const (
+	dbName     = "example12"
+	colName    = "trainingvideo"
+	dimensions = 1024
+)
+
 type document struct {
 	Video     string    `bson:"video"`
 	Chunk     string    `bson:"chunk"`
 	Duration  float64   `bson:"duration"`
 	Text      string    `bson:"text"`
 	Embedding []float64 `bson:"embedding"`
-}
-
-type searchResult struct {
-	FileName  string    `bson:"file_name" json:"file_name"`
-	Duration  string    `bson:"duration" json:"duration"`
-	Text      string    `bson:"text" json:"text"`
-	Embedding []float64 `bson:"embedding" json:"-"`
-	Score     float64   `bson:"score" json:"-"`
 }
 
 // =============================================================================

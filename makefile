@@ -181,10 +181,13 @@ example12-step3:
 # ==============================================================================
 # Manage project
 
-compose-up:
+compose-up-clean:
 	rm -rf zarf/docker/db_data && \
 	mkdir -p zarf/docker/db_data/db zarf/docker/db_data/configdb && \
 	chmod -R 777 zarf/docker/db_data && \
+	docker compose -f zarf/docker/compose.yaml up
+
+compose-up:
 	docker compose -f zarf/docker/compose.yaml up
 
 compose-down:

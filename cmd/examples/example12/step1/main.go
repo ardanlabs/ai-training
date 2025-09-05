@@ -79,7 +79,7 @@ func init() {
 	}
 }
 
-const extractFrameInfoPrompt = `
+const extractKeyFramePrompt = `
 		Provide a detailed description of this image in 300 words or less.
 		Also, classify this image as: "source code", "diagram", "terminal", or "other" depending on the content it features the most.
 		If icons are present in the middle of the image and blocking the main content, classify them as "icon".
@@ -110,7 +110,6 @@ type keyFrame struct {
 	description    string
 	classification string
 	embedding      []float64
-	startTime      float64
 	duration       float64
 	mimeType       string
 	image          []byte
@@ -167,7 +166,7 @@ func run() error {
 
 	// -------------------------------------------------------------------------
 
-	totalFramesTime := 0.0
+	startingVideoTime := 0.0
 
 	chunksDir := filepath.Join(videoDir, "chunks")
 	fmt.Printf("Processing video chunks in directory: %s\n", chunksDir)
@@ -197,10 +196,10 @@ func run() error {
 
 		// Defer the total time computation until after processing the chunk.
 		defer func() {
-			totalFramesTime += duration
+			startingVideoTime += duration
 		}()
 
-		err = processChunk(ctx, col, llmChat, llmTextEmbed, llmImageEmbed, adio, videoDir, videoFileName, videoChunkFile, totalFramesTime, duration)
+		err = processChunk(ctx, col, llmChat, llmTextEmbed, llmImageEmbed, adio, videoDir, videoFileName, videoChunkFile, startingVideoTime, duration)
 		if err != nil {
 			return err
 		}
@@ -215,7 +214,7 @@ func run() error {
 	return nil
 }
 
-func processChunk(ctx context.Context, col *mongo.Collection, llmChat *client.LLM, llmTextEmbed *client.LLM, llmImageEmbed *client.LLM, adio *audio.Audio, videoDir string, videoFileName string, videoChunkFile string, totalFramesTime float64, duration float64) error {
+func processChunk(ctx context.Context, col *mongo.Collection, llmChat *client.LLM, llmTextEmbed *client.LLM, llmImageEmbed *client.LLM, adio *audio.Audio, videoDir string, videoFileName string, videoChunkFile string, startingVideoTime float64, duration float64) error {
 	exists, err := existsDocument(ctx, col, videoFileName, videoChunkFile)
 	if err != nil {
 		return fmt.Errorf("exists document: %w", err)
@@ -234,7 +233,7 @@ func processChunk(ctx context.Context, col *mongo.Collection, llmChat *client.LL
 		return fmt.Errorf("create key frame files: %w", err)
 	}
 
-	keyFrames, err := processKeyFrameFiles(ctx, videoDir, llmImageEmbed, llmChat, totalFramesTime, duration)
+	keyFrames, err := processKeyFrameFiles(ctx, videoDir, llmImageEmbed, llmChat, duration)
 	if err != nil {
 		return fmt.Errorf("process key frame files: %w", err)
 	}
@@ -242,6 +241,7 @@ func processChunk(ctx context.Context, col *mongo.Collection, llmChat *client.LL
 	fmt.Print("\n")
 	fmt.Printf("Video: %s\n", videoFileName)
 	fmt.Printf("Chunk: %s\n", filepath.Base(videoChunkFile))
+	fmt.Printf("Starting Video Time: %f\n", startingVideoTime)
 	fmt.Printf("Duration: %f\n", duration)
 	fmt.Printf("Transcription: %s\n", transcription)
 	fmt.Printf("Key Frames: %d\n", len(keyFrames))
@@ -257,15 +257,20 @@ func processChunk(ctx context.Context, col *mongo.Collection, llmChat *client.LL
 	sb.WriteString(transcription)
 	sb.WriteString("\n")
 	for _, frame := range keyFrames {
+		if frame.classification == "icon" || frame.classification == "other" || frame.classification == "terminal" {
+			continue
+		}
 		sb.WriteString(frame.description)
 		sb.WriteString("\n")
-		sb.WriteString(frame.code)
-		sb.WriteString("\n")
+		if frame.classification == "source_code" {
+			sb.WriteString(frame.code)
+			sb.WriteString("\n")
+		}
 	}
 
 	input := sb.String()
 
-	if err := insertDocument(ctx, col, llmTextEmbed, input, videoFileName, videoChunkFile, duration); err != nil {
+	if err := insertDocument(ctx, col, llmTextEmbed, input, videoFileName, videoChunkFile, startingVideoTime, duration); err != nil {
 		return fmt.Errorf("insert document: %w", err)
 	}
 
@@ -343,7 +348,7 @@ func convertVideoToWav(source string) error {
 	return nil
 }
 
-func processKeyFrameFiles(ctx context.Context, videoDir string, llmEmbed *client.LLM, llmChat *client.LLM, startTime float64, duration float64) ([]keyFrame, error) {
+func processKeyFrameFiles(ctx context.Context, videoDir string, llmEmbed *client.LLM, llmChat *client.LLM, duration float64) ([]keyFrame, error) {
 	fmt.Println("Processing key frames")
 
 	fullpath := filepath.Join(videoDir, "frames")
@@ -378,7 +383,6 @@ func processKeyFrameFiles(ctx context.Context, videoDir string, llmEmbed *client
 
 		keyFrames[i] = keyFrame{
 			fileName:  keyFrameFile,
-			startTime: startTime,
 			duration:  duration,
 			mimeType:  mimeType,
 			image:     image,
@@ -453,7 +457,7 @@ func createKeyFrameDescriptions(ctx context.Context, unqKeyFrames []keyFrame, ll
 	for i, unqKeyFrame := range unqKeyFrames {
 		fmt.Printf("\t- Creating key frame description: %s\n", filepath.Base(unqKeyFrame.fileName))
 
-		description, err := llmChat.ChatCompletions(ctx, extractFrameInfoPrompt, client.WithImage(unqKeyFrame.mimeType, unqKeyFrame.image))
+		description, err := llmChat.ChatCompletions(ctx, extractKeyFramePrompt, client.WithImage(unqKeyFrame.mimeType, unqKeyFrame.image))
 		if err != nil {
 			return fmt.Errorf("chat completions: %w", err)
 		}
@@ -469,10 +473,6 @@ func createKeyFrameDescriptions(ctx context.Context, unqKeyFrames []keyFrame, ll
 			return fmt.Errorf("unmarshal: %w: %s", err, description)
 		}
 
-		if descr.Classification == "icon" {
-			continue
-		}
-
 		unqKeyFrames[i].description = descr.Text
 		unqKeyFrames[i].classification = descr.Classification
 
@@ -480,6 +480,7 @@ func createKeyFrameDescriptions(ctx context.Context, unqKeyFrames []keyFrame, ll
 		// Extract code samples from the key frame.
 
 		if descr.Classification == "source code" {
+			fmt.Printf("\t- Extracting source code: %s\n", filepath.Base(unqKeyFrame.fileName))
 			code, err := llmChat.ChatCompletions(ctx, extractCodePrompt, client.WithImage(unqKeyFrame.mimeType, unqKeyFrame.image))
 			if err != nil {
 				return fmt.Errorf("chat completions: %w", err)

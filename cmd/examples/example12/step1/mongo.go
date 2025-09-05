@@ -22,6 +22,7 @@ const (
 type document struct {
 	Video     string    `bson:"video"`
 	Chunk     string    `bson:"chunk"`
+	StartTime float64   `bson:"start_time"`
 	Duration  float64   `bson:"duration"`
 	Text      string    `bson:"text"`
 	Embedding []float64 `bson:"embedding"`
@@ -77,7 +78,7 @@ func existsDocument(ctx context.Context, col *mongo.Collection, videoFileName st
 	return false, nil
 }
 
-func insertDocument(ctx context.Context, col *mongo.Collection, llmTextEmbed *client.LLM, input string, videoFileName string, videoChunkFile string, duration float64) error {
+func insertDocument(ctx context.Context, col *mongo.Collection, llmTextEmbed *client.LLM, input string, videoFileName string, videoChunkFile string, startingVideoTime float64, duration float64) error {
 	embed, err := llmTextEmbed.EmbedText(ctx, input)
 	if err != nil {
 		return fmt.Errorf("embed text: %w", err)
@@ -86,6 +87,7 @@ func insertDocument(ctx context.Context, col *mongo.Collection, llmTextEmbed *cl
 	doc := document{
 		Video:     videoFileName,
 		Chunk:     filepath.Base(videoChunkFile),
+		StartTime: startingVideoTime,
 		Duration:  duration,
 		Text:      input,
 		Embedding: embed,

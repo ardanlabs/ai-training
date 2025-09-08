@@ -198,7 +198,7 @@ owu-compose-up:
 owu-compose-down:
 	docker compose -f zarf/docker/compose.owu.yaml down
 
-openwebui-browse:
+owu-browse:
 	open -a "Google Chrome" http://localhost:3000/
 
 # ==============================================================================

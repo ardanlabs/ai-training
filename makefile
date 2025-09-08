@@ -192,8 +192,14 @@ compose-logs:
 # ==============================================================================
 # Running Open WebUI only
 
-owu-compose-down:
+owu-compose-down-clean:
 	docker compose -f zarf/docker/compose.owu.yaml down -v
+
+owu-compose-up-clean: owu-compose-down-clean
+	docker compose -f zarf/docker/compose.owu.yaml up
+
+owu-compose-down:
+	docker compose -f zarf/docker/compose.owu.yaml down
 
 owu-compose-up: owu-compose-down
 	docker compose -f zarf/docker/compose.owu.yaml up
@@ -204,8 +210,14 @@ owu-browse:
 # ==============================================================================
 # Running Docling only
 
-docling-compose-down:
+docling-compose-down-clean:
 	docker compose -f zarf/docker/compose.docling.yaml down -v
+
+docling-compose-up-clean: docling-compose-down-clean
+	docker compose -f zarf/docker/compose.docling.yaml up
+
+docling-compose-down:
+	docker compose -f zarf/docker/compose.docling.yaml down
 
 docling-compose-up: docling-compose-down
 	docker compose -f zarf/docker/compose.docling.yaml up

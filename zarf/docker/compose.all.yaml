@@ -40,7 +40,22 @@ services:
     volumes:
       - ./openwebui:/app/backend/data
 
+  docling:
+    image: quay.io/docling-project/docling-serve
+    container_name: docling
+    restart: always
+    environment:
+      - DOCLING_SERVE_ENABLE_UI=1
+      - DOCLING_SERVE_SCRATCH_PATH=/scratch
+    ports:
+      - 5001:5001
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    volumes:
+      - ./docling:/scratch
+
 volumes:
   postgres: {}
   mongodb: {}
   openwebui: {}
+  docling: {}

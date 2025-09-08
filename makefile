@@ -58,6 +58,7 @@ docker:
 	docker pull mongodb/mongodb-atlas-local
 	docker pull ghcr.io/open-webui/open-webui:v0.6.18
 	docker pull postgres:17.5
+	docker pull quay.io/docling-project/docling-serve
 
 ollama-pull:
 	ollama pull bge-m3:latest
@@ -171,22 +172,46 @@ example12-step2:
 	go run cmd/examples/example12/step2/*.go
 
 # ==============================================================================
-# Manage project
+# Run Postgres, MongoDB, and Open WebUI
 
 compose-up-clean:
 	rm -rf zarf/docker/db_data && \
 	mkdir -p zarf/docker/db_data/db zarf/docker/db_data/configdb && \
 	chmod -R 777 zarf/docker/db_data && \
-	docker compose -f zarf/docker/compose.yaml up
+	docker compose -f zarf/docker/compose.all.yaml up
 
 compose-up:
-	docker compose -f zarf/docker/compose.yaml up
+	docker compose -f zarf/docker/compose.all.yaml up
 
 compose-down:
-	docker compose -f zarf/docker/compose.yaml down
+	docker compose -f zarf/docker/compose.all.yaml down
 
 compose-logs:
 	docker compose logs -n 100
+
+# ==============================================================================
+# Running Open WebUI only
+
+owu-compose-up:
+	docker compose -f zarf/docker/compose.owu.yaml up
+
+owu-compose-down:
+	docker compose -f zarf/docker/compose.owu.yaml down
+
+openwebui-browse:
+	open -a "Google Chrome" http://localhost:3000/
+
+# ==============================================================================
+# Running Docling only
+
+docling-compose-up:
+	docker compose -f zarf/docker/compose.docling.yaml up
+
+docling-compose-down:
+	docker compose -f zarf/docker/compose.docling.yaml down
+
+docling-browse:
+	open -a "Google Chrome" http://localhost:5001/ui/
 
 # ==============================================================================
 # Embedding tooling
@@ -233,9 +258,6 @@ mongo:
 pgcli:
 	pgcli postgresql://postgres:postgres@localhost
 
-openwebui:
-	open -a "Google Chrome" http://localhost:3000/
-
 # ==============================================================================
 # VLLM
 # You need to add this to your .env file
@@ -249,12 +271,6 @@ vllm-update:
 
 vllm-run:
 	source .env && uv run vllm serve --host 0.0.0.0 --port 8000 "NousResearch/Hermes-3-Llama-3.1-8B"
-
-vllm-compose-up:
-	docker compose -f zarf/docker/compose-owu-vllm.yaml up
-
-vllm-compose-down:
-	docker compose -f zarf/docker/compose-owi-vllm.yaml down
 
 vllm-test:
 	curl -X POST "http://localhost:8000/v1/chat/completions" \

@@ -178,9 +178,9 @@ compose-down:
 	docker compose -f zarf/docker/compose.all.yaml down
 
 compose-up-clean: compose-down
-	rm -rf zarf/docker/db_data && \
-	mkdir -p zarf/docker/db_data/db zarf/docker/db_data/configdb && \
-	chmod -R 777 zarf/docker/db_data && \
+	rm -rf zarf/docker/mongo && \
+	mkdir -p zarf/docker/mongo/db zarf/docker/mongo/configdb && \
+	chmod -R 777 zarf/docker/mongo && \
 	docker compose -f zarf/docker/compose.all.yaml up
 
 compose-up: compose-down

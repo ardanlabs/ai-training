@@ -21,9 +21,9 @@ services:
     ports:
       - 27017-27019:27017-27019
     volumes:
-      - ./db_data:/data
-      - ./db_data/db:/data/db
-      - ./db_data/configdb:/data/configdb
+      - ./mongo:/data
+      - ./mongo/db:/data/db
+      - ./mongo/configdb:/data/configdb
     user: "503:20"
 
   openwebui:

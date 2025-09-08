@@ -12,5 +12,3 @@ services:
       - 3000:8080
     extra_hosts:
       - host.docker.internal:host-gateway
-    volumes:
-      - ./openwebui:/app/backend/data

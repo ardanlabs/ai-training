@@ -2,13 +2,11 @@ services:
   postgres:
     image: postgres:17.5
     container_name: postgres
+    restart: always
     ports:
       - "5432:5432"
     environment:
-      - POSTGRES_PASSWORD=postgres
-    volumes:
-      - ./sql-data:/var/lib/postgresql/data
-    user: "503:20"
+      - POSTGRES_PASSWORD=[REDACTED:password]
 
   mongodb:
     image: mongodb/mongodb-atlas-local:8.0
@@ -18,13 +16,9 @@ services:
     environment:
       - MONGODB_INITDB_ROOT_USERNAME=ardan
       - MONGODB_INITDB_ROOT_PASSWORD=ardan
+      - MONGODB_REPLICA_SET_NAME=rs0
     ports:
       - 27017-27019:27017-27019
-    volumes:
-      - ./mongo:/data
-      - ./mongo/db:/data/db
-      - ./mongo/configdb:/data/configdb
-    user: "503:20"
 
   openwebui:
     image: ghcr.io/open-webui/open-webui:v0.6.18
@@ -37,8 +31,6 @@ services:
       - host.docker.internal:host-gateway
     ports:
       - 3000:8080
-    volumes:
-      - ./openwebui:/app/backend/data
 
   docling:
     image: quay.io/docling-project/docling-serve
@@ -46,13 +38,10 @@ services:
     restart: always
     environment:
       - DOCLING_SERVE_ENABLE_UI=1
-      - DOCLING_SERVE_SCRATCH_PATH=/scratch
-    ports:
-      - 5001:5001
     extra_hosts:
       - host.docker.internal:host-gateway
-    volumes:
-      - ./docling:/scratch
+    ports:
+      - 5001:5001
 
 volumes:
   postgres: {}

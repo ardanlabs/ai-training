@@ -55,7 +55,7 @@ install:
 	brew install ffmpeg
 
 docker:
-	docker pull mongodb/mongodb-atlas-local
+	docker pull mongodb/mongodb-atlas-local:8.0
 	docker pull ghcr.io/open-webui/open-webui:v0.6.18
 	docker pull postgres:17.5
 	docker pull quay.io/docling-project/docling-serve

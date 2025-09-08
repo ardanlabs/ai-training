@@ -11,7 +11,7 @@ services:
     user: "503:20"
 
   mongodb:
-    image: mongodb/mongodb-atlas-local:latest
+    image: mongodb/mongodb-atlas-local:8.0
     container_name: mongo-atlas
     privileged: true
     restart: always

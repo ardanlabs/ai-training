@@ -104,6 +104,7 @@ type Tool interface {
 
 // Agent represents the chat agent that can use tools to perform tasks.
 type Agent struct {
+	chatClient      *client.LLM
 	textEmbedClient *client.LLM
 	sseClient       *client.SSEClient[client.ChatSSE]
 	col             *mongo.Collection
@@ -143,6 +144,7 @@ func NewAgent(getUserMessage func() (string, bool)) (*Agent, error) {
 	tools := map[string]Tool{}
 
 	agent := Agent{
+		chatClient:      client.NewLLM(url, model),
 		textEmbedClient: client.NewLLM(urlTextEmbed, modelTextEmbed),
 		sseClient:       client.NewSSE[client.ChatSSE](client.StdoutLogger),
 		col:             col,
@@ -381,7 +383,17 @@ func (a *Agent) Run(ctx context.Context) error {
 	return nil
 }
 
+// injectContext will add context to the user input based on the search results.
 func (a *Agent) injectContext(ctx context.Context, userInput string) (string, error) {
+	yes, err := a.isQuestionRelevant(ctx, userInput)
+	if err != nil {
+		return "", fmt.Errorf("failed to check if search is needed: %w", err)
+	}
+
+	if !yes {
+		return userInput, nil
+	}
+
 	results, err := textVectorSearch(ctx, a.textEmbedClient, a.col, userInput)
 	if err != nil {
 		return "", fmt.Errorf("failed to search for context: %w", err)
@@ -402,6 +414,43 @@ func (a *Agent) injectContext(ctx context.Context, userInput string) (string, er
 	}
 
 	return userInput, nil
+}
+
+// isQuestionRelevant will check if the user input is relevant to the Go API
+// service development class.
+func (a *Agent) isQuestionRelevant(ctx context.Context, userInput string) (bool, error) {
+	const prompt = `You are a relevance filter for a Go API service development class. 
+					Determine if the following question is relevant to learning how
+					to write API services in Go programming language.
+					
+					Relevant topics include: Go syntax, HTTP handlers, REST APIs,
+					JSON handling, middleware, routing, database connections,
+					authentication, testing, error handling, logging, configuration,
+					deployment, and Go best practices for web services.
+					
+					Irrelevant topics include: other programming languages,
+					unrelated Go topics (like GUI development), general programming
+					theory without Go context, or completely off-topic questions.
+					
+					Question: %s
+
+					Respond with only "RELEVANT" or "NOT RELEVANT" followed by a brief reason.
+`
+
+	text := fmt.Sprintf(prompt, userInput)
+
+	result, err := a.chatClient.ChatCompletions(ctx, text)
+	if err != nil {
+		return false, fmt.Errorf("failed to check if search is needed: %w", err)
+	}
+
+	fmt.Printf("\u001b[95m\n%v\u001b[0m:\n", result)
+
+	if strings.Contains(result, "NOT RELEVANT") {
+		return false, nil
+	}
+
+	return true, nil
 }
 
 // addToConversation will add new messages to the conversation history and

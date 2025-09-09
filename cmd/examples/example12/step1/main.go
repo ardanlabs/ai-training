@@ -388,7 +388,7 @@ func processKeyFrameFiles(ctx context.Context, videoDir string, llmEmbed *client
 
 	unqKeyFrames := removeDuplicateKeyFrames(keyFrames)
 
-	if err := createKeyFrameDescriptions(ctx, unqKeyFrames, llmChat); err != nil {
+	if err := createKeyFrameDescriptions(unqKeyFrames, llmChat); err != nil {
 		return nil, fmt.Errorf("create key frame descriptions: %w", err)
 	}
 
@@ -447,7 +447,7 @@ check:
 	return unqKeyFrames
 }
 
-func createKeyFrameDescriptions(ctx context.Context, unqKeyFrames []keyFrame, llmChat *client.LLM) error {
+func createKeyFrameDescriptions(unqKeyFrames []keyFrame, llmChat *client.LLM) error {
 	fmt.Printf("Creating key frame descriptions: %d\n", len(unqKeyFrames))
 
 	var g errgroup.Group
@@ -456,7 +456,7 @@ func createKeyFrameDescriptions(ctx context.Context, unqKeyFrames []keyFrame, ll
 		g.Go(func() error {
 			fmt.Printf("\t- Creating key frame description: %s\n", filepath.Base(unqKeyFrame.fileName))
 
-			ctx, cancel := context.WithTimeout(ctx, time.Second*10)
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
 			defer cancel()
 
 			response, err := llmChat.ChatCompletions(ctx, promptKeyFrameDesc, client.WithImage(unqKeyFrame.mimeType, unqKeyFrame.image))

@@ -235,17 +235,22 @@ func processChunk(ctx context.Context, col *mongo.Collection, llmChat *client.LL
 		return fmt.Errorf("create key frame files: %w", err)
 	}
 
-	keyFrames, err := processKeyFrameFiles(ctx, videoDir, llmImageEmbed, llmChat, duration)
+	chunkName := filepath.Base(videoChunkFile)
+
+	keyFrames, err := processKeyFrameFiles(ctx, chunkName, videoDir, llmImageEmbed, llmChat, duration)
 	if err != nil {
 		return fmt.Errorf("process key frame files: %w", err)
 	}
 
 	// -------------------------------------------------------------------------
 
+	fmt.Print("\n")
+
 	var sb strings.Builder
 	sb.WriteString(transcription)
 	sb.WriteString("\n")
 	for _, frame := range keyFrames {
+		fmt.Printf("FRAME: %s\n", frame.classification)
 		if frame.classification == "icon" || frame.classification == "other" {
 			continue
 		}
@@ -344,10 +349,10 @@ func convertVideoToWav(source string) error {
 	return nil
 }
 
-func processKeyFrameFiles(ctx context.Context, videoDir string, llmEmbed *client.LLM, llmChat *client.LLM, duration float64) ([]keyFrame, error) {
+func processKeyFrameFiles(ctx context.Context, chunkName string, videoDir string, llmEmbed *client.LLM, llmChat *client.LLM, duration float64) ([]keyFrame, error) {
 	fmt.Println("Processing key frames")
 
-	fullpath := filepath.Join(videoDir, "frames")
+	fullpath := filepath.Join(videoDir, "frames", chunkName)
 
 	keyFramefiles, err := getFilesFromDirectory(fullpath)
 	if err != nil {
@@ -398,30 +403,21 @@ func processKeyFrameFiles(ctx context.Context, videoDir string, llmEmbed *client
 func createKeyFrameFiles(videoChunkFile string) error {
 	fmt.Println("Creating key frame files")
 
-	if err := removePastKeyFrameFiles(videoDir); err != nil {
+	chunkName := filepath.Base(videoChunkFile)
+
+	if err := os.RemoveAll(videoDir + "/frames/" + chunkName); err != nil {
 		return fmt.Errorf("remove past work files: %w", err)
 	}
 
-	ffmpegCommand := fmt.Sprintf("ffmpeg -skip_frame nokey -i %s -frame_pts true -fps_mode vfr -loglevel error zarf/samples/videos/frames/%%05d.jpg", videoChunkFile)
+	if err := os.MkdirAll(videoDir+"/frames/"+chunkName, 0755); err != nil {
+		return fmt.Errorf("mkdirall: %w", err)
+	}
+
+	ffmpegCommand := fmt.Sprintf("ffmpeg -skip_frame nokey -i %s -frame_pts true -fps_mode vfr -loglevel error zarf/samples/videos/frames/%s/%%05d.jpg", videoChunkFile, chunkName)
 
 	out, err := exec.Command("/bin/sh", "-c", ffmpegCommand).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("error while running ffmpeg: %w: %s", err, string(out))
-	}
-
-	return nil
-}
-
-func removePastKeyFrameFiles(videoDir string) error {
-	previousFrames, err := fs.Glob(os.DirFS(videoDir), "frames/*")
-	if err != nil {
-		return fmt.Errorf("glob: %w", err)
-	}
-
-	for _, previousFrame := range previousFrames {
-		if err := os.Remove(filepath.Join(videoDir, previousFrame)); err != nil {
-			return fmt.Errorf("remove previous frame: %w", err)
-		}
 	}
 
 	return nil
@@ -456,7 +452,7 @@ func createKeyFrameDescriptions(unqKeyFrames []keyFrame, llmChat *client.LLM) er
 		g.Go(func() error {
 			fmt.Printf("\t- Creating key frame description: %s\n", filepath.Base(unqKeyFrame.fileName))
 
-			ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second*20)
 			defer cancel()
 
 			response, err := llmChat.ChatCompletions(ctx, promptKeyFrameDesc, client.WithImage(unqKeyFrame.mimeType, unqKeyFrame.image))

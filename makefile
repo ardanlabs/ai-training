@@ -174,16 +174,10 @@ example12-step2:
 # ==============================================================================
 # Run Postgres, MongoDB, and Open WebUI
 
-compose-down-clean:
-	docker compose -f zarf/docker/compose.all.yaml down -v
-
-compose-up-clean: compose-down-clean
-	docker compose -f zarf/docker/compose.all.yaml up
-
-compose-down:
+compose-clean:
 	docker compose -f zarf/docker/compose.all.yaml down
 
-compose-up: compose-down
+compose-up:
 	docker compose -f zarf/docker/compose.all.yaml up
 
 compose-logs:
@@ -192,16 +186,10 @@ compose-logs:
 # ==============================================================================
 # Running Open WebUI only
 
-owu-compose-down-clean:
-	docker compose -f zarf/docker/compose.owu.yaml down -v
-
-owu-compose-up-clean: owu-compose-down-clean
-	docker compose -f zarf/docker/compose.owu.yaml up
-
-owu-compose-down:
+owu-compose-clean:
 	docker compose -f zarf/docker/compose.owu.yaml down
 
-owu-compose-up: owu-compose-down
+owu-compose-up:
 	docker compose -f zarf/docker/compose.owu.yaml up
 
 owu-browse:
@@ -210,16 +198,10 @@ owu-browse:
 # ==============================================================================
 # Running Docling only
 
-docling-compose-down-clean:
-	docker compose -f zarf/docker/compose.docling.yaml down -v
-
-docling-compose-up-clean: docling-compose-down-clean
-	docker compose -f zarf/docker/compose.docling.yaml up
-
-docling-compose-down:
+docling-compose-clean:
 	docker compose -f zarf/docker/compose.docling.yaml down
 
-docling-compose-up: docling-compose-down
+docling-compose-up:
 	docker compose -f zarf/docker/compose.docling.yaml up
 
 docling-browse:

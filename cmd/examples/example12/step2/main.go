@@ -200,24 +200,10 @@ func (a *Agent) Run(ctx context.Context) error {
 				break
 			}
 
-			results, err := textVectorSearch(context.TODO(), a.textEmbedClient, a.col, userInput)
+			userInput, err := a.injectContext(ctx, userInput)
 			if err != nil {
 				fmt.Printf("\n\n\u001b[91mERROR:%s\u001b[0m\n\n", err)
 				continue
-			}
-
-			var extraContext string
-			for _, result := range results {
-				fmt.Printf("\u001b[94m\n%v\u001b[0m:\n", result.Score)
-				fmt.Printf("\u001b[94m\n%v\u001b[0m:\n", result.Text)
-				if result.Score >= .80 {
-					extraContext += result.Text + "\n"
-				}
-			}
-
-			if extraContext != "" {
-				prompt := "please answer the following question only using the context provided."
-				userInput = fmt.Sprintf("%s\nCONTEXT: %s\nQUESTION:%s", prompt, extraContext, userInput)
 			}
 
 			conversation = append(conversation, client.D{
@@ -393,6 +379,29 @@ func (a *Agent) Run(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+func (a *Agent) injectContext(ctx context.Context, userInput string) (string, error) {
+	results, err := textVectorSearch(ctx, a.textEmbedClient, a.col, userInput)
+	if err != nil {
+		return "", fmt.Errorf("failed to search for context: %w", err)
+	}
+
+	var extraContext string
+	for _, result := range results {
+		fmt.Printf("\u001b[95m\nScore: %.2f\u001b[0m:\n", result.Score)
+		fmt.Printf("\u001b[95m%v\u001b[0m:\n", result.Text)
+		if result.Score >= .70 {
+			extraContext += result.Text + "\n"
+		}
+	}
+
+	if extraContext != "" {
+		const prompt = "please answer the following question only using the context provided."
+		userInput = fmt.Sprintf("%s\nCONTEXT: %s\nQUESTION:%s", prompt, extraContext, userInput)
+	}
+
+	return userInput, nil
 }
 
 // addToConversation will add new messages to the conversation history and

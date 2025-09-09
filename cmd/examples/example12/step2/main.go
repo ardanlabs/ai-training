@@ -202,7 +202,7 @@ func (a *Agent) Run(ctx context.Context) error {
 				break
 			}
 
-			userInput, err := a.injectContext(ctx, userInput)
+			userInput, err := a.injectContext(ctx, conversation, userInput)
 			if err != nil {
 				fmt.Printf("\n\n\u001b[91mERROR:%s\u001b[0m\n\n", err)
 				continue
@@ -384,8 +384,8 @@ func (a *Agent) Run(ctx context.Context) error {
 }
 
 // injectContext will add context to the user input based on the search results.
-func (a *Agent) injectContext(ctx context.Context, userInput string) (string, error) {
-	yes, err := a.isQuestionRelevant(ctx, userInput)
+func (a *Agent) injectContext(ctx context.Context, conversation []client.D, userInput string) (string, error) {
+	yes, err := a.isQuestionRelevant(ctx, conversation, userInput)
 	if err != nil {
 		return "", fmt.Errorf("failed to check if search is needed: %w", err)
 	}
@@ -418,10 +418,11 @@ func (a *Agent) injectContext(ctx context.Context, userInput string) (string, er
 
 // isQuestionRelevant will check if the user input is relevant to the Go API
 // service development class.
-func (a *Agent) isQuestionRelevant(ctx context.Context, userInput string) (bool, error) {
+func (a *Agent) isQuestionRelevant(ctx context.Context, conversation []client.D, userInput string) (bool, error) {
 	const prompt = `You are a relevance filter for a Go API service development class. 
-					Determine if the following question is relevant to learning how
-					to write API services in Go programming language.
+					Determine if the following question with the current message
+					history is relevant to learning how to write API services in
+					the Go programming language.
 					
 					Relevant topics include: Go syntax, HTTP handlers, REST APIs,
 					JSON handling, middleware, routing, database connections,
@@ -431,13 +432,21 @@ func (a *Agent) isQuestionRelevant(ctx context.Context, userInput string) (bool,
 					Irrelevant topics include: other programming languages,
 					unrelated Go topics (like GUI development), general programming
 					theory without Go context, or completely off-topic questions.
+
+					History: %s
 					
 					Question: %s
 
 					Respond with only "RELEVANT" or "NOT RELEVANT" followed by a brief reason.
 `
 
-	text := fmt.Sprintf(prompt, userInput)
+	var history string
+	start := max(len(conversation)-2, 0)
+	for _, msg := range conversation[start:] {
+		history += msg["content"].(string) + "\n"
+	}
+
+	text := fmt.Sprintf(prompt, history, userInput)
 
 	result, err := a.chatClient.ChatCompletions(ctx, text)
 	if err != nil {

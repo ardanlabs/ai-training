@@ -324,6 +324,8 @@ func getVideoDuration(videoChunkFile string) (float64, error) {
 func extractAudioTranscription(ctx context.Context, videoChunkFile string, adio *audio.Audio) (string, error) {
 	fmt.Println("Extracting audio transcription")
 
+	// ffmpeg -i "zarf/samples/videos/training.mp4" -vn -af "whisper=model=zarf/audio/ggml-tiny.bin :destination=- :format=json" -loglevel error -f null -
+
 	if err := convertVideoToWav(videoChunkFile); err != nil {
 		return "", fmt.Errorf("converting video to wav: %w", err)
 	}

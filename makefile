@@ -52,7 +52,8 @@ install:
 	brew install pgcli
 	brew install uv
 	brew install pkgconf
-	brew install ffmpeg
+	brew install whisper-cpp
+	brew install homebrew-ffmpeg/ffmpeg/ffmpeg --with-whisper-cpp --HEAD
 
 docker:
 	docker pull mongodb/mongodb-atlas-local:8.0

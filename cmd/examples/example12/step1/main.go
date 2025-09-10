@@ -128,7 +128,7 @@ func run() error {
 	llmTextEmbed := client.NewLLM(urlTextEmbed, modelTextEmbed)
 	llmImageEmbed := client.NewLLM(urlImageEmbed, modelImageEmbed)
 
-	fmt.Print("\n---\n\n")
+	fmt.Print("\n---\n")
 
 	// -------------------------------------------------------------------------
 

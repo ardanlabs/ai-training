@@ -29,7 +29,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ardanlabs/ai-training/foundation/audio"
 	"github.com/ardanlabs/ai-training/foundation/client"
 	"github.com/ardanlabs/ai-training/foundation/mongodb"
 	"github.com/ardanlabs/ai-training/foundation/vector"
@@ -49,12 +48,6 @@ var (
 	similarityThreshold = 0.80
 	videoDir            = "zarf/samples/videos/"
 	videoFileName       = "test_rag_video.mp4"
-
-	audioCfg = audio.Config{
-		SetLanguage: "en",
-		Temperature: 0.1,
-		Threads:     4,
-	}
 )
 
 func init() {
@@ -135,11 +128,6 @@ func run() error {
 	llmTextEmbed := client.NewLLM(urlTextEmbed, modelTextEmbed)
 	llmImageEmbed := client.NewLLM(urlImageEmbed, modelImageEmbed)
 
-	adio, err := audio.New(client.NoopLogger, "zarf/audio/ggml-tiny.bin")
-	if err != nil {
-		return fmt.Errorf("starting audio: %w", err)
-	}
-
 	fmt.Print("\n---\n\n")
 
 	// -------------------------------------------------------------------------
@@ -201,7 +189,7 @@ func run() error {
 			startingVideoTime += duration
 		}()
 
-		err = processChunk(ctx, col, llmChat, llmTextEmbed, llmImageEmbed, adio, videoDir, videoFileName, videoChunkFile, startingVideoTime, duration)
+		err = processChunk(ctx, col, llmChat, llmTextEmbed, llmImageEmbed, videoDir, videoFileName, videoChunkFile, startingVideoTime, duration)
 		if err != nil {
 			return err
 		}
@@ -216,7 +204,7 @@ func run() error {
 	return nil
 }
 
-func processChunk(ctx context.Context, col *mongo.Collection, llmChat *client.LLM, llmTextEmbed *client.LLM, llmImageEmbed *client.LLM, adio *audio.Audio, videoDir string, videoFileName string, videoChunkFile string, startingVideoTime float64, duration float64) error {
+func processChunk(ctx context.Context, col *mongo.Collection, llmChat *client.LLM, llmTextEmbed *client.LLM, llmImageEmbed *client.LLM, videoDir string, videoFileName string, videoChunkFile string, startingVideoTime float64, duration float64) error {
 	exists, err := existsDocument(ctx, col, videoFileName, videoChunkFile)
 	if err != nil {
 		return fmt.Errorf("exists document: %w", err)
@@ -226,7 +214,7 @@ func processChunk(ctx context.Context, col *mongo.Collection, llmChat *client.LL
 		return nil
 	}
 
-	transcription, err := extractAudioTranscription(ctx, videoChunkFile, adio)
+	transcription, err := extractAudioTranscription(videoChunkFile)
 	if err != nil {
 		return fmt.Errorf("extract audio transcription: %w", err)
 	}
@@ -321,34 +309,18 @@ func getVideoDuration(videoChunkFile string) (float64, error) {
 	return duration, nil
 }
 
-func extractAudioTranscription(ctx context.Context, videoChunkFile string, adio *audio.Audio) (string, error) {
+func extractAudioTranscription(videoChunkFile string) (string, error) {
 	fmt.Println("Extracting audio transcription")
 
-	// ffmpeg -i "zarf/samples/videos/training.mp4" -vn -af "whisper=model=zarf/audio/ggml-tiny.bin :destination=- :format=json" -loglevel error -f null -
+	queue := chunkSize + 5
 
-	if err := convertVideoToWav(videoChunkFile); err != nil {
-		return "", fmt.Errorf("converting video to wav: %w", err)
-	}
-
-	response, err := adio.Process(ctx, audioCfg, "zarf/samples/audio/output.wav")
-	if err != nil {
-		return "", fmt.Errorf("process audio: %w", err)
-	}
-
-	return response.Text, nil
-}
-
-func convertVideoToWav(source string) error {
-	// Ensure there is no previous file to allow ffmpeg to create the new one.
-	_ = os.Remove("zarf/samples/audio/output.wav")
-
-	ffmpegCommand := fmt.Sprintf("ffmpeg -i %s -ar 16000 -ac 1 -c:a pcm_s16le -loglevel error zarf/samples/audio/output.wav", source)
+	ffmpegCommand := fmt.Sprintf("ffmpeg -i %s -vn -af \"whisper=model=zarf/models/ggml-tiny.bin :destination=- :format=text :queue=%d\" -loglevel error -f null -", videoChunkFile, queue)
 	out, err := exec.Command("/bin/sh", "-c", ffmpegCommand).CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("error while running ffmpeg: %w: %s", err, string(out))
+		return "", fmt.Errorf("error while running ffmpeg: %w: %s", err, string(out))
 	}
 
-	return nil
+	return string(out), nil
 }
 
 func processKeyFrameFiles(ctx context.Context, chunkName string, videoDir string, llmEmbed *client.LLM, llmChat *client.LLM, duration float64) ([]keyFrame, error) {

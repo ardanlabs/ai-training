@@ -7,10 +7,14 @@ services:
       - "5432:5432"
     environment:
       - POSTGRES_PASSWORD=[REDACTED:password]
+    volumes:
+      - ./sql-data:/var/lib/postgresql/data
+    user: "503:20"
 
   mongodb:
     image: mongodb/mongodb-atlas-local:8.0
-    container_name: mongo-atlas
+    container_name: mongodb
+    hostname: mongodb
     privileged: true
     restart: always
     environment:
@@ -19,6 +23,11 @@ services:
       - MONGODB_REPLICA_SET_NAME=rs0
     ports:
       - 27017-27019:27017-27019
+    volumes:
+      - ./mongodb:/data/
+      - ./mongodb/db:/data/db
+      - ./mongodb/configdb:/data/configdb
+    user: "503:20"
 
   openwebui:
     image: ghcr.io/open-webui/open-webui:v0.6.18
@@ -31,6 +40,8 @@ services:
       - host.docker.internal:host-gateway
     ports:
       - 3000:8080
+    volumes:
+      - ./openwebui:/app/backend/data
 
   docling:
     image: quay.io/docling-project/docling-serve
@@ -42,9 +53,19 @@ services:
       - host.docker.internal:host-gateway
     ports:
       - 5001:5001
+    volumes:
+      - ./docling:/scratch
 
 volumes:
-  postgres: {}
-  mongodb: {}
-  openwebui: {}
-  docling: {}
+  postgres:
+    external: true
+    name: postgres
+  mongodb:
+    external: true
+    name: mongodb
+  openwebui:
+    external: true
+    name: openwebui
+  docling:
+    external: true
+    name: docling

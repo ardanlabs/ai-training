@@ -9,3 +9,10 @@ services:
       - host.docker.internal:host-gateway
     ports:
       - 5001:5001
+    volumes:
+      - ./docling:/scratch
+
+volumes:
+  docling:
+    external: true
+    name: docling

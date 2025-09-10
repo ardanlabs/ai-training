@@ -174,11 +174,17 @@ example12-step2:
 # ==============================================================================
 # Run Postgres, MongoDB, and Open WebUI
 
-compose-clean:
-	docker compose -f zarf/docker/compose.all.yaml down
+compose-up-clean:
+	rm -rf zarf/docker/mongodb && \
+	mkdir -p zarf/docker/mongodb/db zarf/docker/mongodb/configdb zarf/docker/mongodb/mongot && \
+	chmod -R 777 zarf/docker/mongodb && \
+	docker compose -f zarf/docker/compose.all.yaml up
 
 compose-up:
 	docker compose -f zarf/docker/compose.all.yaml up
+
+compose-down:
+	docker compose -f zarf/docker/compose.all.yaml down
 
 compose-logs:
 	docker compose logs -n 100
@@ -186,11 +192,11 @@ compose-logs:
 # ==============================================================================
 # Running Open WebUI only
 
-owu-compose-clean:
-	docker compose -f zarf/docker/compose.owu.yaml down
-
 owu-compose-up:
 	docker compose -f zarf/docker/compose.owu.yaml up
+
+owu-compose-down:
+	docker compose -f zarf/docker/compose.owu.yaml down
 
 owu-browse:
 	open -a "Google Chrome" http://localhost:3000/
@@ -198,11 +204,11 @@ owu-browse:
 # ==============================================================================
 # Running Docling only
 
-docling-compose-clean:
-	docker compose -f zarf/docker/compose.docling.yaml down
-
 docling-compose-up:
 	docker compose -f zarf/docker/compose.docling.yaml up
+
+docling-compose-down:
+	docker compose -f zarf/docker/compose.docling.yaml down
 
 docling-browse:
 	open -a "Google Chrome" http://localhost:5001/ui/

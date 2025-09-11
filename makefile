@@ -161,11 +161,8 @@ example11-step2:
 example12-step1:
 	mkdir -p zarf/samples/videos/chunks && \
 	mkdir -p zarf/samples/videos/frames && \
-	rm -rf zarf/samples/videos/chunks/* && \
-	rm -rf zarf/samples/videos/frames/* && \
 	export OLLAMA_CONTEXT_LENGTH=$(OLLAMA_CONTEXT_LENGTH) && \
-	CC=/opt/homebrew/Cellar/llvm/21.1.0/bin/clang \
-	CXX=/opt/homebrew/Cellar/llvm/21.1.0/bin/clang++ \
+	export OLLAMA_NUM_PARALLEL=$(OLLAMA_NUM_PARALLEL) && \
 	go run ./cmd/examples/example12/step1/*.go
 
 example12-step2:
@@ -175,17 +172,17 @@ example12-step2:
 # ==============================================================================
 # Run Postgres, MongoDB, and Open WebUI
 
-compose-up-clean:
-	rm -rf zarf/docker/mongodb && \
-	mkdir -p zarf/docker/mongodb/db zarf/docker/mongodb/configdb zarf/docker/mongodb/mongot && \
-	chmod -R 777 zarf/docker/mongodb && \
-	docker compose -f zarf/docker/compose.all.yaml up
-
 compose-up:
 	docker compose -f zarf/docker/compose.all.yaml up
 
 compose-down:
 	docker compose -f zarf/docker/compose.all.yaml down
+
+compose-down-clean:
+	docker compose -f zarf/docker/compose.all.yaml down && \
+	rm -rf zarf/docker/mongodb && \
+	mkdir -p zarf/docker/mongodb/db zarf/docker/mongodb/configdb zarf/docker/mongodb/mongot && \
+	chmod -R 777 zarf/docker/mongodb
 
 compose-logs:
 	docker compose logs -n 100

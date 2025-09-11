@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"log"
+	"maps"
 	"net/http"
 	"os"
 	"strconv"
@@ -37,18 +38,37 @@ func NewLLM(url string, model string) *LLM {
 	}
 }
 
-func WithImage(mimeType string, image []byte) D {
+type withParam struct {
+	typ string
+	d   D
+}
+
+func WithImage(mimeType string, image []byte) withParam {
 	dataBase64 := base64.StdEncoding.EncodeToString(image)
 
-	return D{
-		"type": "image_url",
-		"image_url": D{
-			"url": fmt.Sprintf("data:%s;base64,%s", mimeType, dataBase64),
+	return withParam{
+		typ: "image",
+		d: D{
+			"type": "image_url",
+			"image_url": D{
+				"url": fmt.Sprintf("data:%s;base64,%s", mimeType, dataBase64),
+			},
 		},
 	}
 }
 
-func (llm *LLM) ChatCompletions(ctx context.Context, text string, options ...D) (string, error) {
+func WithParams(temperature float32, topP float32, topK int) withParam {
+	return withParam{
+		typ: "params",
+		d: D{
+			"temperature": temperature,
+			"top_p":       topP,
+			"top_k":       topK,
+		},
+	}
+}
+
+func (llm *LLM) ChatCompletions(ctx context.Context, text string, options ...withParam) (string, error) {
 	content := []D{
 		{
 			"type": "text",
@@ -56,7 +76,20 @@ func (llm *LLM) ChatCompletions(ctx context.Context, text string, options ...D) 
 		},
 	}
 
-	content = append(content, options...)
+	params := D{
+		"temperature": 1.0,
+		"top_p":       0.5,
+		"top_k":       20,
+	}
+
+	for _, opt := range options {
+		switch opt.typ {
+		case "image":
+			content = append(content, opt.d)
+		case "params":
+			params = opt.d
+		}
+	}
 
 	d := D{
 		"model": llm.model,
@@ -66,11 +99,10 @@ func (llm *LLM) ChatCompletions(ctx context.Context, text string, options ...D) 
 				"content": content,
 			},
 		},
-		"temperature": 1.0,
-		"top_p":       0.5,
-		"top_k":       20,
-		"max_tokens":  llm.contextWindow,
+		"max_tokens": llm.contextWindow,
 	}
+
+	maps.Copy(d, params)
 
 	var chat Chat
 	if err := llm.cln.Do(ctx, http.MethodPost, llm.url, d, &chat); err != nil {

@@ -81,8 +81,8 @@ const promptKeyFrameDesc = `
 		Also, classify this image as: "source code", "diagram", "terminal", or "other" depending on the content it features the most.
 		If icons are present in the middle of the image and blocking the main content, classify them as "icon".
 
-		If the classification is "source code", provide the raw text of the source code after the SOURCE CODE section.
-		If there is no source code, leave the SOURCE CODE section empty.
+		Extract any text you see in the image and keep the formatting.
+		Place that text under the TEXT section.
 
 		Encode any special characters that will be part of a JSON document.
 		Make sure all text to be placed inside a JSON documentis properly encoded and that the JSON is valid.
@@ -91,11 +91,11 @@ const promptKeyFrameDesc = `
 
 		** JSON DOCUMENT
 		{
-			"text": "<image description>",
+			"description": "<image description>",
 			"classification": "<image classification>"
 		}
 		
-		** SOURCE CODE
+		** TEXT
 `
 
 // =============================================================================
@@ -108,7 +108,7 @@ type keyFrame struct {
 	duration       float64
 	mimeType       string
 	image          []byte
-	code           string
+	text           string
 }
 
 // =============================================================================
@@ -245,7 +245,7 @@ func processChunk(ctx context.Context, col *mongo.Collection, llmChat *client.LL
 		sb.WriteString(frame.description)
 		sb.WriteString("\n")
 		if frame.classification == "source code" {
-			sb.WriteString(frame.code)
+			sb.WriteString(frame.text)
 			sb.WriteString("\n")
 		}
 	}
@@ -257,6 +257,11 @@ func processChunk(ctx context.Context, col *mongo.Collection, llmChat *client.LL
 	fmt.Printf("Chunk: %s\n", filepath.Base(videoChunkFile))
 	fmt.Printf("Starting Video Time: %f\n", startingVideoTime)
 	fmt.Printf("Duration: %f\n", duration)
+	fmt.Println("Frames:")
+	for _, frame := range keyFrames {
+		fmt.Printf("\tFileName: %s\n", frame.fileName)
+		fmt.Printf("\tClass: %s\n", frame.classification)
+	}
 	fmt.Printf("Input: %s\n", input)
 
 	if err := insertDocument(ctx, col, llmTextEmbed, input, videoFileName, videoChunkFile, startingVideoTime, duration); err != nil {
@@ -420,36 +425,56 @@ check:
 func createKeyFrameDescriptions(unqKeyFrames []keyFrame, llmChat *client.LLM) error {
 	fmt.Printf("Creating key frame descriptions: %d\n", len(unqKeyFrames))
 
+	semaphore := 1
+	v := os.Getenv("OLLAMA_NUM_PARALLEL")
+	if v != "" {
+		var err error
+		semaphore, err = strconv.Atoi(v)
+		if err != nil {
+			semaphore = 1
+		}
+	}
+
+	ch := make(chan bool, semaphore)
+
 	var g errgroup.Group
 
 	for i, unqKeyFrame := range unqKeyFrames {
 		g.Go(func() error {
-			fmt.Printf("\t- Creating key frame description: %s\n", filepath.Base(unqKeyFrame.fileName))
+			ch <- true
+			defer func() {
+				<-ch
+			}()
+
+			fmt.Printf("\t- Creating key frame description: %s\n", unqKeyFrame.fileName)
 
 			ctx, cancel := context.WithTimeout(context.Background(), time.Second*20)
 			defer cancel()
 
-			response, err := llmChat.ChatCompletions(ctx, promptKeyFrameDesc, client.WithImage(unqKeyFrame.mimeType, unqKeyFrame.image))
+			p1 := client.WithImage(unqKeyFrame.mimeType, unqKeyFrame.image)
+			p2 := client.WithParams(0.0, 0.1, 1)
+
+			response, err := llmChat.ChatCompletions(ctx, promptKeyFrameDesc, p1, p2)
 			if err != nil {
 				return fmt.Errorf("chat completions: %w", err)
 			}
 
-			jsonDoc, sourceCode, err := extractParts(response)
+			jsonDoc, text, err := extractParts(response)
 			if err != nil {
 				return fmt.Errorf("extract parts: %w: %s", err, response)
 			}
 
 			var descr struct {
-				Text           string `json:"text"`
+				Description    string `json:"description"`
 				Classification string `json:"classification"`
 			}
 			if err := json.Unmarshal([]byte(jsonDoc), &descr); err != nil {
 				return fmt.Errorf("unmarshal: %w: %s", err, jsonDoc)
 			}
 
-			unqKeyFrames[i].description = descr.Text
+			unqKeyFrames[i].description = descr.Description
 			unqKeyFrames[i].classification = descr.Classification
-			unqKeyFrames[i].code = sourceCode
+			unqKeyFrames[i].text = text
 
 			return nil
 		})
@@ -469,7 +494,7 @@ func createKeyFrameDescriptions(unqKeyFrames []keyFrame, llmChat *client.LLM) er
 
 func extractParts(description string) (string, string, error) {
 	jsonMarker := "** JSON DOCUMENT"
-	codeMarker := "** SOURCE CODE"
+	codeMarker := "** TEXT"
 
 	jsonStart := strings.Index(description, jsonMarker)
 	if jsonStart == -1 {

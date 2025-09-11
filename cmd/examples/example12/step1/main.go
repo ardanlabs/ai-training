@@ -82,6 +82,7 @@ const promptKeyFrameDesc = `
 		If icons are present in the middle of the image and blocking the main content, classify them as "icon".
 
 		Extract any text you see in the image and keep the formatting.
+		Do not alter, enhance, or change the text you see and keep any spacing or formatting as it appears in the image.
 		Place that text under the TEXT section.
 
 		Encode any special characters that will be part of a JSON document.
@@ -448,7 +449,7 @@ func createKeyFrameDescriptions(unqKeyFrames []keyFrame, llmChat *client.LLM) er
 
 			fmt.Printf("\t- Creating key frame description: %s\n", unqKeyFrame.fileName)
 
-			ctx, cancel := context.WithTimeout(context.Background(), time.Second*20)
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second*30)
 			defer cancel()
 
 			p1 := client.WithImage(unqKeyFrame.mimeType, unqKeyFrame.image)

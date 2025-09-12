@@ -447,7 +447,7 @@ func createKeyFrameDescriptions(unqKeyFrames []keyFrame, llmChat *client.LLM) er
 				<-ch
 			}()
 
-			fmt.Printf("\t- Creating key frame description: %s\n", unqKeyFrame.fileName)
+			fmt.Printf("\t- Creating key frame description: %s\n", filepath.Base(unqKeyFrame.fileName))
 
 			ctx, cancel := context.WithTimeout(context.Background(), time.Second*30)
 			defer cancel()

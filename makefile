@@ -221,7 +221,7 @@ embedding-up:
 # Ollama tooling
 
 ollama-up:
-	export OLLAMA_KV_CACHE_TYPE=fp8 && \
+	export OLLAMA_KV_CACHE_TYPE=q8_0 && \
 	export OLLAMA_FLASH_ATTENTION=true && \
 	export OLLAMA_NUM_PARALLEL=$(OLLAMA_NUM_PARALLEL) && \
 	export OLLAMA_MAX_LOADED_MODELS=$(OLLAMA_MAX_LOADED_MODELS) && \

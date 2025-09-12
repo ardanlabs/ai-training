@@ -40,7 +40,7 @@ var (
 	urlChat         = "http://localhost:11434/v1/chat/completions"
 	urlTextEmbed    = "http://localhost:11434/v1/embeddings"
 	urlImageEmbed   = "http://localhost:11439/v1/embeddings"
-	modelChat       = "gemma3:4b-it-qat"
+	modelVisionChat = "gemma3:27b-it-qat"
 	modelTextEmbed  = "bge-m3:latest"
 	modelImageEmbed = "nomic-embed-vision-v1.5"
 
@@ -55,8 +55,8 @@ func init() {
 		urlChat = v
 	}
 
-	if v := os.Getenv("LLM_CHAT_MODEL"); v != "" {
-		modelChat = v
+	if v := os.Getenv("LLM_VISION_CHAT_MODEL"); v != "" {
+		modelVisionChat = v
 	}
 
 	if v := os.Getenv("LLM_TEXT_EMBED_SERVER"); v != "" {
@@ -78,25 +78,28 @@ func init() {
 
 const promptKeyFrameDesc = `
 		Provide a detailed description of this image in 300 words or less.
+		
 		Also, classify this image as: "source code", "diagram", "terminal", or "other" depending on the content it features the most.
 		If icons are present in the middle of the image and blocking the main content, classify them as "icon".
 
-		Extract any text you see in the image and keep the formatting.
-		Do not alter, enhance, or change the text you see and keep any spacing or formatting as it appears in the image.
-		Place that text under the TEXT section.
+		Extract all the text you see in the image and keep the formatting.
+		Do not modify, enhance, or change any of the text you see.
+		Do not add any new text that isn't part of the image.
+		Keep any spacing or formatting of the text as it appears in the image.
+		Place the text under the TEXT section in the final response.
+
+		Provide the response using the following format with the provided section headers (** JSON DOCUMENT and ** TEXT):
+
+			** JSON DOCUMENT
+			{
+				"description": "<image description>",
+				"classification": "<image classification>"
+			}
+			
+			** TEXT
 
 		Encode any special characters that will be part of a JSON document.
 		Make sure all text to be placed inside a JSON documentis properly encoded and that the JSON is valid.
-
-		Provide the response using the following format:
-
-		** JSON DOCUMENT
-		{
-			"description": "<image description>",
-			"classification": "<image classification>"
-		}
-		
-		** TEXT
 `
 
 // =============================================================================
@@ -125,7 +128,7 @@ func run() error {
 
 	// -------------------------------------------------------------------------
 
-	llmChat := client.NewLLM(urlChat, modelChat)
+	llmChat := client.NewLLM(urlChat, modelVisionChat)
 	llmTextEmbed := client.NewLLM(urlTextEmbed, modelTextEmbed)
 	llmImageEmbed := client.NewLLM(urlImageEmbed, modelImageEmbed)
 

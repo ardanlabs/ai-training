@@ -65,7 +65,7 @@ ollama-pull:
 	ollama pull bge-m3:latest
 	ollama pull qwen2.5vl:latest
 	ollama pull gpt-oss:latest
-	ollama pull gemma3:4b-it-qat
+	ollama pull gemma3:27b-it-qat
 
 python-install:
 	rm -rf .venv
@@ -77,6 +77,8 @@ python-install:
 # ==============================================================================
 # Ollama Settings
 
+OLLAMA_KV_CACHE_TYPE := q8_0      # f16, q8_0, q4_0
+OLLAMA_FLASH_ATTENTION := true
 OLLAMA_CONTEXT_LENGTH := 32768
 OLLAMA_NUM_PARALLEL := 4
 OLLAMA_MAX_LOADED_MODELS := 2
@@ -221,8 +223,8 @@ embedding-up:
 # Ollama tooling
 
 ollama-up:
-	export OLLAMA_KV_CACHE_TYPE=q8_0 && \
-	export OLLAMA_FLASH_ATTENTION=true && \
+	export OLLAMA_KV_CACHE_TYPE=$(OLLAMA_KV_CACHE_TYPE) && \
+	export OLLAMA_FLASH_ATTENTION=$(OLLAMA_FLASH_ATTENTION) && \
 	export OLLAMA_NUM_PARALLEL=$(OLLAMA_NUM_PARALLEL) && \
 	export OLLAMA_MAX_LOADED_MODELS=$(OLLAMA_MAX_LOADED_MODELS) && \
 	export OLLAMA_CONTEXT_LENGTH=$(OLLAMA_CONTEXT_LENGTH) && \

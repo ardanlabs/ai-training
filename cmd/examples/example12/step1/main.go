@@ -38,15 +38,17 @@ import (
 
 var (
 	urlChat         = "http://localhost:11434/v1/chat/completions"
-	urlTextEmbed    = "http://localhost:11434/v1/embeddings"
-	urlImageEmbed   = "http://localhost:11439/v1/embeddings"
 	modelVisionChat = "gemma3:27b-it-qat"
-	modelTextEmbed  = "bge-m3:latest"
+
+	urlTextEmbed   = "http://localhost:11434/v1/embeddings"
+	modelTextEmbed = "bge-m3:latest"
 
 	chunkSize           = 60
 	similarityThreshold = 0.80
-	videoDir            = "zarf/samples/videos/"
-	videoFileName       = "test_rag_video.mp4"
+	frameDescTimeout    = time.Second * 180
+
+	videoDir      = "zarf/samples/videos/"
+	videoFileName = "test_rag_video.mp4"
 )
 
 func init() {
@@ -64,10 +66,6 @@ func init() {
 
 	if v := os.Getenv("LLM_TEXT_EMBED_MODEL"); v != "" {
 		modelTextEmbed = v
-	}
-
-	if v := os.Getenv("LLM_IMAGE_EMBED_SERVER"); v != "" {
-		urlImageEmbed = v
 	}
 }
 
@@ -409,7 +407,7 @@ func createKeyFrameDescriptions(keyFrames []keyFrame, llmChat *client.LLM) error
 				return fmt.Errorf("read image: %w", err)
 			}
 
-			ctx, cancel := context.WithTimeout(context.Background(), time.Second*120)
+			ctx, cancel := context.WithTimeout(context.Background(), frameDescTimeout)
 			defer cancel()
 
 			p1 := client.WithImage(mimeType, image)

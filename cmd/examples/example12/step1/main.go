@@ -45,7 +45,7 @@ var (
 
 	chunkSize           = 60
 	similarityThreshold = 0.80
-	frameDescTimeout    = time.Second * 180
+	frameDescTimeout    = time.Second * 300
 
 	videoDir      = "zarf/samples/videos/"
 	videoFileName = "test_rag_video.mp4"
@@ -71,6 +71,8 @@ func init() {
 
 const promptKeyFrameDesc = `
 		Provide a detailed description of this image in 300 words or less.
+		Do not include any source code in the detailed description.
+		Do not include any terminal output in the detailed description.
 		
 		Also, classify this image as: "source code", "diagram", "terminal", or "other" depending on the content it features the most.
 		If icons are present in the middle of the image and blocking the main content, classify them as "icon".

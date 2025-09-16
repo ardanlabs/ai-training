@@ -80,8 +80,8 @@ python-install:
 OLLAMA_KV_CACHE_TYPE := q8_0      # f16, q8_0, q4_0
 OLLAMA_FLASH_ATTENTION := true
 OLLAMA_CONTEXT_LENGTH := 32768
-OLLAMA_NUM_PARALLEL := 4
-OLLAMA_MAX_LOADED_MODELS := 2
+OLLAMA_NUM_PARALLEL := 2
+OLLAMA_MAX_LOADED_MODELS := 4
 
 # ==============================================================================
 # Examples
@@ -180,11 +180,13 @@ compose-up:
 compose-down:
 	docker compose -f zarf/docker/compose.all.yaml down
 
-compose-down-clean:
-	docker compose -f zarf/docker/compose.all.yaml down && \
+compose-clean-mongo:
 	rm -rf zarf/docker/mongodb && \
 	mkdir -p zarf/docker/mongodb/db zarf/docker/mongodb/configdb zarf/docker/mongodb/mongot && \
 	chmod -R 777 zarf/docker/mongodb
+
+compose-clean-sql:
+	rm -rf zarf/docker/sql-data
 
 compose-logs:
 	docker compose logs -n 100
@@ -403,4 +405,18 @@ curl-mcp-tool-call:
 			"name": "tool_list_files", \
 			"arguments": {"filter": "list any files that have the name example"} \
 		} \
+	}'
+
+curl-embed-triton:
+	curl -i -X POST https://api.predictionguard.com/embeddings \
+     -H "Authorization: Bearer $(PG_API_PREDICTIONGUARD_API_KEY)" \
+     -H "Content-Type: application/json" \
+     -d '{ \
+		"model": "bridgetower-large-itm-mlm-itc", \
+		"input": [ \
+			{ \
+				"text": "This is Bill Kennedy, a decent Go developer.", \
+				"image": "$(IMAGE)" \
+			} \
+		] \
 	}'

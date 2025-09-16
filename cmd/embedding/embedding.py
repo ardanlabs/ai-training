@@ -127,7 +127,7 @@ def decode_base64_image(base64_string: str) -> Image.Image:
 
         image_data = base64.b64decode(base64_string)
         image = Image.open(io.BytesIO(image_data))
-        return image.convert('RGB')
+        return image.convert(mode='RGB')
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Invalid base64 image: {str(e)}")
 

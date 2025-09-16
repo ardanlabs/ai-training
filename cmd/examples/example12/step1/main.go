@@ -42,7 +42,6 @@ var (
 	urlImageEmbed   = "http://localhost:11439/v1/embeddings"
 	modelVisionChat = "gemma3:27b-it-qat"
 	modelTextEmbed  = "bge-m3:latest"
-	modelImageEmbed = "nomic-embed-vision-v1.5"
 
 	chunkSize           = 60
 	similarityThreshold = 0.80
@@ -69,10 +68,6 @@ func init() {
 
 	if v := os.Getenv("LLM_IMAGE_EMBED_SERVER"); v != "" {
 		urlImageEmbed = v
-	}
-
-	if v := os.Getenv("LLM_IMAGE_EMBED_MODEL"); v != "" {
-		modelImageEmbed = v
 	}
 }
 
@@ -108,11 +103,8 @@ type keyFrame struct {
 	fileName       string
 	description    string
 	classification string
-	embedding      []float64
-	duration       float64
-	mimeType       string
-	image          []byte
 	text           string
+	embedding      []float64
 }
 
 // =============================================================================
@@ -130,7 +122,6 @@ func run() error {
 
 	llmChat := client.NewLLM(urlChat, modelVisionChat)
 	llmTextEmbed := client.NewLLM(urlTextEmbed, modelTextEmbed)
-	llmImageEmbed := client.NewLLM(urlImageEmbed, modelImageEmbed)
 
 	fmt.Print("\n---\n")
 
@@ -193,7 +184,7 @@ func run() error {
 			startingVideoTime += duration
 		}()
 
-		err = processChunk(ctx, col, llmChat, llmTextEmbed, llmImageEmbed, videoDir, videoFileName, videoChunkFile, startingVideoTime, duration)
+		err = processChunk(ctx, col, llmChat, llmTextEmbed, videoDir, videoFileName, videoChunkFile, startingVideoTime, duration)
 		if err != nil {
 			return err
 		}
@@ -208,7 +199,7 @@ func run() error {
 	return nil
 }
 
-func processChunk(ctx context.Context, col *mongo.Collection, llmChat *client.LLM, llmTextEmbed *client.LLM, llmImageEmbed *client.LLM, videoDir string, videoFileName string, videoChunkFile string, startingVideoTime float64, duration float64) error {
+func processChunk(ctx context.Context, col *mongo.Collection, llmChat *client.LLM, llmTextEmbed *client.LLM, videoDir string, videoFileName string, videoChunkFile string, startingVideoTime float64, duration float64) error {
 	exists, err := existsDocument(ctx, col, videoFileName, videoChunkFile)
 	if err != nil {
 		return fmt.Errorf("exists document: %w", err)
@@ -229,9 +220,14 @@ func processChunk(ctx context.Context, col *mongo.Collection, llmChat *client.LL
 
 	chunkName := filepath.Base(videoChunkFile)
 
-	keyFrames, err := processKeyFrameFiles(ctx, chunkName, videoDir, llmImageEmbed, llmChat, duration)
+	keyFrames, err := processKeyFrameFiles(chunkName, videoDir, llmChat)
 	if err != nil {
 		return fmt.Errorf("process key frame files: %w", err)
+	}
+
+	keyFrames, err = removeDuplicateKeyFrames(ctx, keyFrames, llmTextEmbed)
+	if err != nil {
+		return fmt.Errorf("remove duplicate key frames: %w", err)
 	}
 
 	// -------------------------------------------------------------------------
@@ -242,7 +238,6 @@ func processChunk(ctx context.Context, col *mongo.Collection, llmChat *client.LL
 	sb.WriteString(transcription)
 	sb.WriteString("\n")
 	for _, frame := range keyFrames {
-		fmt.Printf("FRAME: %s\n", frame.classification)
 		if frame.classification == "icon" || frame.classification == "other" {
 			continue
 		}
@@ -261,14 +256,14 @@ func processChunk(ctx context.Context, col *mongo.Collection, llmChat *client.LL
 	fmt.Printf("Chunk: %s\n", filepath.Base(videoChunkFile))
 	fmt.Printf("Starting Video Time: %f\n", startingVideoTime)
 	fmt.Printf("Duration: %f\n", duration)
-	fmt.Println("Frames:")
-	for _, frame := range keyFrames {
-		fmt.Printf("\tFileName: %s\n", frame.fileName)
-		fmt.Printf("\tClass: %s\n", frame.classification)
-	}
 	fmt.Printf("Input: %s\n", input)
 
-	if err := insertDocument(ctx, col, llmTextEmbed, input, videoFileName, videoChunkFile, startingVideoTime, duration); err != nil {
+	embed, err := llmTextEmbed.EmbedText(ctx, input)
+	if err != nil {
+		return fmt.Errorf("embed text: %w", err)
+	}
+
+	if err := insertDocument(ctx, col, embed, input, videoFileName, videoChunkFile, startingVideoTime, duration); err != nil {
 		return fmt.Errorf("insert document: %w", err)
 	}
 
@@ -332,7 +327,7 @@ func extractAudioTranscription(videoChunkFile string) (string, error) {
 	return string(out), nil
 }
 
-func processKeyFrameFiles(ctx context.Context, chunkName string, videoDir string, llmEmbed *client.LLM, llmChat *client.LLM, duration float64) ([]keyFrame, error) {
+func processKeyFrameFiles(chunkName string, videoDir string, llmChat *client.LLM) ([]keyFrame, error) {
 	fmt.Println("Processing key frames")
 
 	fullpath := filepath.Join(videoDir, "frames", chunkName)
@@ -342,45 +337,22 @@ func processKeyFrameFiles(ctx context.Context, chunkName string, videoDir string
 		return nil, fmt.Errorf("get files from directory: %w", err)
 	}
 
-	keyFrames := make([]keyFrame, len(keyFramefiles))
+	l := len(keyFramefiles)
+	first := 0
+	last := l - 1
+	middle := l / 2
 
-	for i, keyFrameFile := range keyFramefiles {
-		// ---------------------------------------------------------------------
-		// Read the key frame and get the image data and mime type.
-
-		image, mimeType, err := readImage(keyFrameFile)
-		if err != nil {
-			return nil, fmt.Errorf("read image: %w", err)
-		}
-
-		// ---------------------------------------------------------------------
-		// Create an embedding vector for the images. We will use this to compare
-		// the images to each other and find the most similar ones.
-
-		embedding, err := llmEmbed.EmbedWithImage(ctx, "", image, mimeType)
-		if err != nil {
-			return nil, fmt.Errorf("llm.EmbedText: %w", err)
-		}
-
-		// ---------------------------------------------------------------------
-		// Store the key frame information.
-
-		keyFrames[i] = keyFrame{
-			fileName:  keyFrameFile,
-			duration:  duration,
-			mimeType:  mimeType,
-			image:     image,
-			embedding: embedding,
-		}
+	keyFrames := []keyFrame{
+		{fileName: keyFramefiles[first]},
+		{fileName: keyFramefiles[middle]},
+		{fileName: keyFramefiles[last]},
 	}
 
-	unqKeyFrames := removeDuplicateKeyFrames(keyFrames)
-
-	if err := createKeyFrameDescriptions(unqKeyFrames, llmChat); err != nil {
+	if err := createKeyFrameDescriptions(keyFrames, llmChat); err != nil {
 		return nil, fmt.Errorf("create key frame descriptions: %w", err)
 	}
 
-	return unqKeyFrames, nil
+	return keyFrames, nil
 }
 
 func createKeyFrameFiles(videoChunkFile string) error {
@@ -406,28 +378,8 @@ func createKeyFrameFiles(videoChunkFile string) error {
 	return nil
 }
 
-func removeDuplicateKeyFrames(keyFrames []keyFrame) []keyFrame {
-	// We have identifed that 80% of the time we have 10 or less unique key frames.
-	unqKeyFrames := make([]keyFrame, 0, 10)
-
-check:
-	for _, keyFrame := range keyFrames {
-		for _, unqKeyFrame := range unqKeyFrames {
-			similarity := vector.CosineSimilarity(unqKeyFrame.embedding, keyFrame.embedding)
-
-			if similarity > similarityThreshold {
-				continue check
-			}
-		}
-
-		unqKeyFrames = append(unqKeyFrames, keyFrame)
-	}
-
-	return unqKeyFrames
-}
-
-func createKeyFrameDescriptions(unqKeyFrames []keyFrame, llmChat *client.LLM) error {
-	fmt.Printf("Creating key frame descriptions: %d\n", len(unqKeyFrames))
+func createKeyFrameDescriptions(keyFrames []keyFrame, llmChat *client.LLM) error {
+	fmt.Printf("Creating key frame descriptions: %d\n", len(keyFrames))
 
 	semaphore := 1
 	v := os.Getenv("OLLAMA_NUM_PARALLEL")
@@ -443,19 +395,24 @@ func createKeyFrameDescriptions(unqKeyFrames []keyFrame, llmChat *client.LLM) er
 
 	var g errgroup.Group
 
-	for i, unqKeyFrame := range unqKeyFrames {
+	for i, keyFrame := range keyFrames {
 		g.Go(func() error {
 			ch <- true
 			defer func() {
 				<-ch
 			}()
 
-			fmt.Printf("\t- Creating key frame description: %s\n", filepath.Base(unqKeyFrame.fileName))
+			fmt.Printf("\t- Creating key frame description: %s\n", filepath.Base(keyFrame.fileName))
 
-			ctx, cancel := context.WithTimeout(context.Background(), time.Second*30)
+			image, mimeType, err := readImage(keyFrame.fileName)
+			if err != nil {
+				return fmt.Errorf("read image: %w", err)
+			}
+
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second*120)
 			defer cancel()
 
-			p1 := client.WithImage(unqKeyFrame.mimeType, unqKeyFrame.image)
+			p1 := client.WithImage(mimeType, image)
 			p2 := client.WithParams(0.0, 0.1, 1)
 
 			response, err := llmChat.ChatCompletions(ctx, promptKeyFrameDesc, p1, p2)
@@ -476,9 +433,9 @@ func createKeyFrameDescriptions(unqKeyFrames []keyFrame, llmChat *client.LLM) er
 				return fmt.Errorf("unmarshal: %w: %s", err, jsonDoc)
 			}
 
-			unqKeyFrames[i].description = descr.Description
-			unqKeyFrames[i].classification = descr.Classification
-			unqKeyFrames[i].text = text
+			keyFrames[i].description = descr.Description
+			keyFrames[i].classification = descr.Classification
+			keyFrames[i].text = text
 
 			return nil
 		})
@@ -494,6 +451,48 @@ func createKeyFrameDescriptions(unqKeyFrames []keyFrame, llmChat *client.LLM) er
 	}
 
 	return nil
+}
+
+func removeDuplicateKeyFrames(ctx context.Context, keyFrames []keyFrame, llmTextEmbed *client.LLM) ([]keyFrame, error) {
+	fmt.Println("Remove Duplicate Key Frames")
+
+	unqKeyFrames := make([]keyFrame, 0, 3)
+
+	for i, keyFrame := range keyFrames {
+		if keyFrame.classification != "source code" {
+			continue
+		}
+
+		embed, err := llmTextEmbed.EmbedText(ctx, fmt.Sprintf("%s\n%s", keyFrame.description, keyFrame.text))
+		if err != nil {
+			return nil, fmt.Errorf("embed text: %w", err)
+		}
+
+		keyFrames[i].embedding = embed
+	}
+
+check:
+	for _, keyFrame := range keyFrames {
+		if keyFrame.classification != "source code" {
+			continue
+		}
+
+		for _, unqKeyFrame := range unqKeyFrames {
+			similarity := vector.CosineSimilarity(unqKeyFrame.embedding, keyFrame.embedding)
+
+			fmt.Printf("\t\tU: %s, K: %s, Sim: %f\n", filepath.Base(unqKeyFrame.fileName), filepath.Base(keyFrame.fileName), similarity)
+
+			if similarity > similarityThreshold {
+				continue check
+			}
+		}
+
+		fmt.Println("\t- Keeping frame:", keyFrame.fileName)
+
+		unqKeyFrames = append(unqKeyFrames, keyFrame)
+	}
+
+	return unqKeyFrames, nil
 }
 
 func extractParts(description string) (string, string, error) {

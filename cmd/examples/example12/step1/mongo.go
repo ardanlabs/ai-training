@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"github.com/ardanlabs/ai-training/foundation/client"
 	"github.com/ardanlabs/ai-training/foundation/mongodb"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -78,12 +77,7 @@ func existsDocument(ctx context.Context, col *mongo.Collection, videoFileName st
 	return false, nil
 }
 
-func insertDocument(ctx context.Context, col *mongo.Collection, llmTextEmbed *client.LLM, input string, videoFileName string, videoChunkFile string, startingVideoTime float64, duration float64) error {
-	embed, err := llmTextEmbed.EmbedText(ctx, input)
-	if err != nil {
-		return fmt.Errorf("embed text: %w", err)
-	}
-
+func insertDocument(ctx context.Context, col *mongo.Collection, embed []float64, input string, videoFileName string, videoChunkFile string, startingVideoTime float64, duration float64) error {
 	doc := document{
 		Video:     videoFileName,
 		Chunk:     filepath.Base(videoChunkFile),

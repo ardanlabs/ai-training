@@ -81,7 +81,7 @@ OLLAMA_KV_CACHE_TYPE := q8_0      # f16, q8_0, q4_0
 OLLAMA_FLASH_ATTENTION := true
 OLLAMA_CONTEXT_LENGTH := 32768
 OLLAMA_NUM_PARALLEL := 2
-OLLAMA_MAX_LOADED_MODELS := 4
+OLLAMA_MAX_LOADED_MODELS := 2
 
 # ==============================================================================
 # Examples
@@ -239,9 +239,10 @@ ollama-list-models:
 	ollama list
 
 ollama-check-models:
+	ollama run bge-m3:latest 'Hello, model!'
 	ollama run qwen2.5vl:latest 'Hello, model!'
 	ollama run gpt-oss:latest 'Hello, model!'
-	ollama run mistral-small3.2:latest 'Hello, model!'
+	ollama run gemma3:27b-it-qat 'Hello, model!'
 
 # ==============================================================================
 # Run Tooling

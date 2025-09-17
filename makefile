@@ -327,6 +327,14 @@ ffmpeg-extract-frames:
 		-loglevel error \
 		zarf/samples/videos/frames/frame-%05d.jpg
 
+ffmpeg-extract-different-frames:
+	rm -rf zarf/samples/videos/frames/*
+	ffmpeg -i zarf/samples/videos/test_rag_video.mp4 \
+		-vf "select='gt(scene,0.05)',setpts=N/FRAME_RATE/TB" \
+		-fps_mode vfr \
+		-loglevel error \
+		zarf/samples/videos/frames/frame-%05d.jpg
+
 ffmpeg-check-chunk-duration:
 	ffprobe -v quiet -print_format json -show_entries format=duration zarf/samples/videos/chunks/output_00000.mp4
 	ffprobe -v quiet -print_format json -show_entries format=duration zarf/samples/videos/chunks/output_00002.mp4

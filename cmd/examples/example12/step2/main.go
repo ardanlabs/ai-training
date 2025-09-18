@@ -419,10 +419,10 @@ func (a *Agent) injectContext(ctx context.Context, conversation []client.D, user
 // isQuestionRelevant will check if the user input is relevant to the Go API
 // service development class.
 func (a *Agent) isQuestionRelevant(ctx context.Context, conversation []client.D, userInput string) (bool, error) {
-	const prompt = `You are a relevance filter for a Go API service development class. 
+	const prompt = `You are a relevance filter for Bill's Go API service development class. 
 					Determine if the following question with the current message
 					history is relevant to learning how to write API services in
-					the Go programming language.
+					the Go programming language presented by Bill.
 					
 					Relevant topics include: Go syntax, HTTP handlers, REST APIs,
 					JSON handling, middleware, routing, database connections,
@@ -432,6 +432,9 @@ func (a *Agent) isQuestionRelevant(ctx context.Context, conversation []client.D,
 					Irrelevant topics include: other programming languages,
 					unrelated Go topics (like GUI development), general programming
 					theory without Go context, or completely off-topic questions.
+
+					If the user is asking a followup question to a previous question,
+					consider it not relevant.
 
 					History: %s
 					

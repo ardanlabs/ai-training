@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	dbName     = "example12"
+	dbName     = "example12-t4"
 	colName    = "trainingvideo"
 	dimensions = 768
 )

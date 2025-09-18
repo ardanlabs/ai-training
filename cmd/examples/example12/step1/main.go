@@ -37,7 +37,7 @@ import (
 
 var (
 	urlChat         = "http://localhost:11434/v1/chat/completions"
-	modelVisionChat = "gemma3:27b-it-qat"
+	modelVisionChat = "gemma3:12b-it-qat"
 
 	urlTextEmbed   = "http://localhost:11434/v1/embeddings"
 	modelTextEmbed = "bge-m3:latest"
@@ -232,6 +232,11 @@ func processChunk(ctx context.Context, col *mongo.Collection, llmChat *client.LL
 		return fmt.Errorf("process key frame files: %w", err)
 	}
 
+	if len(keyFrames) == 0 {
+		fmt.Println("No key frames found")
+		return nil
+	}
+
 	// -------------------------------------------------------------------------
 
 	fmt.Print("\n")
@@ -343,7 +348,7 @@ func processKeyFrameFiles(chunkName string, videoDir string, llmChat *client.LLM
 
 	switch l := len(keyFramefiles); l {
 	case 0:
-		return nil, fmt.Errorf("no key frames found")
+		return nil, nil
 
 	case 1:
 		keyFrames = []keyFrame{
@@ -379,7 +384,7 @@ func createKeyFrameFiles(videoChunkFile string) error {
 		return fmt.Errorf("mkdirall: %w", err)
 	}
 
-	ffmpegCommand := fmt.Sprintf("ffmpeg -skip_frame nokey -i %s -vf \"select='gt(scene,0.05)',scale='if(gt(iw,ih),%d,-1)':'if(gt(ih,iw),%d,-1)'\" -fps_mode vfr -frame_pts true -loglevel error zarf/samples/videos/%s/%s/%%05d.jpg", videoChunkFile, frameWidth, frameHeight, framesDir, chunkName)
+	ffmpegCommand := fmt.Sprintf("ffmpeg -skip_frame nokey -i %s -vf \"select='gt(scene,0.05)',scale='if(gt(iw,ih),%d,-1)':'if(gt(ih,iw),%d,-1)'\" -fps_mode vfr -frame_pts true -loglevel error zarf/samples/videos/%s/%s/%%05d.png", videoChunkFile, frameWidth, frameHeight, framesDir, chunkName)
 
 	out, err := exec.Command("/bin/sh", "-c", ffmpegCommand).CombinedOutput()
 	if err != nil {
@@ -500,7 +505,7 @@ func getFilesFromDirectory(directoryPath string) ([]string, error) {
 			return err
 		}
 
-		if !info.IsDir() && (filepath.Ext(info.Name()) == ".jpg" || filepath.Ext(info.Name()) == ".jpeg" || filepath.Ext(info.Name()) == ".png") {
+		if !info.IsDir() && (filepath.Ext(info.Name()) == ".png" || filepath.Ext(info.Name()) == ".jpg" || filepath.Ext(info.Name()) == ".jpeg" || filepath.Ext(info.Name()) == ".png") {
 			files = append(files, path)
 		}
 

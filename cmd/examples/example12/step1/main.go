@@ -47,8 +47,9 @@ var (
 	similarityThreshold = 0.80
 	frameDescTimeout    = time.Second * 300
 
-	videoDir      = "zarf/samples/videos/"
 	videoFileName = "test_rag_video.mp4"
+	videoDir      = "zarf/samples/videos/"
+	framesDir     = "frames"
 )
 
 func init() {
@@ -330,7 +331,7 @@ func extractAudioTranscription(videoChunkFile string) (string, error) {
 func processKeyFrameFiles(chunkName string, videoDir string, llmChat *client.LLM) ([]keyFrame, error) {
 	fmt.Println("Processing key frames")
 
-	fullpath := filepath.Join(videoDir, "frames", chunkName)
+	fullpath := filepath.Join(videoDir, framesDir, chunkName)
 
 	keyFramefiles, err := getFilesFromDirectory(fullpath)
 	if err != nil {
@@ -360,15 +361,15 @@ func createKeyFrameFiles(videoChunkFile string) error {
 
 	chunkName := filepath.Base(videoChunkFile)
 
-	if err := os.RemoveAll(videoDir + "/frames/" + chunkName); err != nil {
+	if err := os.RemoveAll(videoDir + "/" + framesDir + "/" + chunkName); err != nil {
 		return fmt.Errorf("remove past work files: %w", err)
 	}
 
-	if err := os.MkdirAll(videoDir+"/frames/"+chunkName, 0755); err != nil {
+	if err := os.MkdirAll(videoDir+"/"+framesDir+"/"+chunkName, 0755); err != nil {
 		return fmt.Errorf("mkdirall: %w", err)
 	}
 
-	ffmpegCommand := fmt.Sprintf("ffmpeg -skip_frame nokey -i %s -frame_pts true -fps_mode vfr -loglevel error zarf/samples/videos/frames/%s/%%05d.jpg", videoChunkFile, chunkName)
+	ffmpegCommand := fmt.Sprintf("ffmpeg -skip_frame nokey -i %s -vf \"select='gt(scene,0.05)',scale='if(gt(iw,ih),1024,-1)':'if(gt(ih,iw),1024,-1)'\" -fps_mode vfr -frame_pts true -loglevel error zarf/samples/videos/%s/%s/%%05d.jpg", videoChunkFile, framesDir, chunkName)
 
 	out, err := exec.Command("/bin/sh", "-c", ffmpegCommand).CombinedOutput()
 	if err != nil {

@@ -31,7 +31,6 @@ import (
 
 	"github.com/ardanlabs/ai-training/foundation/client"
 	"github.com/ardanlabs/ai-training/foundation/mongodb"
-	"github.com/ardanlabs/ai-training/foundation/vector"
 	"go.mongodb.org/mongo-driver/mongo"
 	"golang.org/x/sync/errgroup"
 )
@@ -43,14 +42,17 @@ var (
 	urlTextEmbed   = "http://localhost:11434/v1/embeddings"
 	modelTextEmbed = "bge-m3:latest"
 
-	chunkSize           = 60
-	similarityThreshold = 0.80
-	frameDescTimeout    = time.Second * 300
+	chunkSize        = 60
+	frameDescTimeout = time.Second * 300
+	frameWidth       = 640
+	frameHeight      = 360
 
 	videoFileName = "test_rag_video.mp4"
 	videoDir      = "zarf/samples/videos/"
 	framesDir     = "frames"
 )
+
+var ErrFFMPEG = errors.New("ffmpeg error")
 
 func init() {
 	if v := os.Getenv("LLM_CHAT_SERVER"); v != "" {
@@ -187,7 +189,11 @@ func run() error {
 
 		err = processChunk(ctx, col, llmChat, llmTextEmbed, videoDir, videoFileName, videoChunkFile, startingVideoTime, duration)
 		if err != nil {
-			return err
+			if errors.Is(err, ErrFFMPEG) {
+				fmt.Printf("FFMPEG error processing chunk: %s\n", err)
+				return nil
+			}
+			return fmt.Errorf("process chunk: %w", err)
 		}
 
 		return nil
@@ -216,7 +222,7 @@ func processChunk(ctx context.Context, col *mongo.Collection, llmChat *client.LL
 	}
 
 	if err := createKeyFrameFiles(videoChunkFile); err != nil {
-		return fmt.Errorf("create key frame files: %w", err)
+		return fmt.Errorf("create key frame files: %w %w", ErrFFMPEG, err)
 	}
 
 	chunkName := filepath.Base(videoChunkFile)
@@ -224,11 +230,6 @@ func processChunk(ctx context.Context, col *mongo.Collection, llmChat *client.LL
 	keyFrames, err := processKeyFrameFiles(chunkName, videoDir, llmChat)
 	if err != nil {
 		return fmt.Errorf("process key frame files: %w", err)
-	}
-
-	keyFrames, err = removeDuplicateKeyFrames(ctx, keyFrames, llmTextEmbed)
-	if err != nil {
-		return fmt.Errorf("remove duplicate key frames: %w", err)
 	}
 
 	// -------------------------------------------------------------------------
@@ -338,15 +339,24 @@ func processKeyFrameFiles(chunkName string, videoDir string, llmChat *client.LLM
 		return nil, fmt.Errorf("get files from directory: %w", err)
 	}
 
-	l := len(keyFramefiles)
-	first := 0
-	last := l - 1
-	middle := l / 2
+	var keyFrames []keyFrame
 
-	keyFrames := []keyFrame{
-		{fileName: keyFramefiles[first]},
-		{fileName: keyFramefiles[middle]},
-		{fileName: keyFramefiles[last]},
+	switch l := len(keyFramefiles); l {
+	case 0:
+		return nil, fmt.Errorf("no key frames found")
+
+	case 1:
+		keyFrames = []keyFrame{
+			{fileName: keyFramefiles[0]},
+		}
+
+	default:
+		first := 0
+		last := l - 1
+		keyFrames = []keyFrame{
+			{fileName: keyFramefiles[first]},
+			{fileName: keyFramefiles[last]},
+		}
 	}
 
 	if err := createKeyFrameDescriptions(keyFrames, llmChat); err != nil {
@@ -369,7 +379,7 @@ func createKeyFrameFiles(videoChunkFile string) error {
 		return fmt.Errorf("mkdirall: %w", err)
 	}
 
-	ffmpegCommand := fmt.Sprintf("ffmpeg -skip_frame nokey -i %s -vf \"select='gt(scene,0.05)',scale='if(gt(iw,ih),1024,-1)':'if(gt(ih,iw),1024,-1)'\" -fps_mode vfr -frame_pts true -loglevel error zarf/samples/videos/%s/%s/%%05d.jpg", videoChunkFile, framesDir, chunkName)
+	ffmpegCommand := fmt.Sprintf("ffmpeg -skip_frame nokey -i %s -vf \"select='gt(scene,0.05)',scale='if(gt(iw,ih),%d,-1)':'if(gt(ih,iw),%d,-1)'\" -fps_mode vfr -frame_pts true -loglevel error zarf/samples/videos/%s/%s/%%05d.jpg", videoChunkFile, frameWidth, frameHeight, framesDir, chunkName)
 
 	out, err := exec.Command("/bin/sh", "-c", ffmpegCommand).CombinedOutput()
 	if err != nil {
@@ -452,48 +462,6 @@ func createKeyFrameDescriptions(keyFrames []keyFrame, llmChat *client.LLM) error
 	}
 
 	return nil
-}
-
-func removeDuplicateKeyFrames(ctx context.Context, keyFrames []keyFrame, llmTextEmbed *client.LLM) ([]keyFrame, error) {
-	fmt.Println("Remove Duplicate Key Frames")
-
-	unqKeyFrames := make([]keyFrame, 0, 3)
-
-	for i, keyFrame := range keyFrames {
-		if keyFrame.classification != "source code" {
-			continue
-		}
-
-		embed, err := llmTextEmbed.EmbedText(ctx, fmt.Sprintf("%s\n%s", keyFrame.description, keyFrame.text))
-		if err != nil {
-			return nil, fmt.Errorf("embed text: %w", err)
-		}
-
-		keyFrames[i].embedding = embed
-	}
-
-check:
-	for _, keyFrame := range keyFrames {
-		if keyFrame.classification != "source code" {
-			continue
-		}
-
-		for _, unqKeyFrame := range unqKeyFrames {
-			similarity := vector.CosineSimilarity(unqKeyFrame.embedding, keyFrame.embedding)
-
-			fmt.Printf("\t\tU: %s, K: %s, Sim: %f\n", filepath.Base(unqKeyFrame.fileName), filepath.Base(keyFrame.fileName), similarity)
-
-			if similarity > similarityThreshold {
-				continue check
-			}
-		}
-
-		fmt.Println("\t- Keeping frame:", keyFrame.fileName)
-
-		unqKeyFrames = append(unqKeyFrames, keyFrame)
-	}
-
-	return unqKeyFrames, nil
 }
 
 func extractParts(description string) (string, string, error) {

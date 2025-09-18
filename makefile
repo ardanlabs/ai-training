@@ -79,9 +79,9 @@ python-install:
 
 OLLAMA_KV_CACHE_TYPE := q8_0      # f16, q8_0, q4_0
 OLLAMA_FLASH_ATTENTION := true
-OLLAMA_CONTEXT_LENGTH := 32768
-OLLAMA_NUM_PARALLEL := 3
-OLLAMA_MAX_LOADED_MODELS := 3
+OLLAMA_CONTEXT_LENGTH := 16384
+OLLAMA_NUM_PARALLEL := 2
+OLLAMA_MAX_LOADED_MODELS := 2
 
 # ==============================================================================
 # Examples

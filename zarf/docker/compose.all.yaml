@@ -6,7 +6,7 @@ services:
     ports:
       - "5432:5432"
     environment:
-      - POSTGRES_PASSWORD=[REDACTED:password]
+      - POSTGRES_PASSWORD=postgres
     volumes:
       - ./sql-data:/var/lib/postgresql/data
     user: "503:20"

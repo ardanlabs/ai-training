@@ -58,7 +58,7 @@ install:
 docker:
 	docker pull mongodb/mongodb-atlas-local:8.0
 	docker pull ghcr.io/open-webui/open-webui:v0.6.18
-	docker pull postgres:17.5
+	docker pull postgres:18.0
 	docker pull quay.io/docling-project/docling-serve
 
 ollama-pull:

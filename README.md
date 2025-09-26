@@ -39,9 +39,10 @@ make install
 
 Next you want to pull down these images:
 
-- `mongodb/mongodb-atlas-local`
+- `mongodb/mongodb-atlas-local:8.0`
 - `ghcr.io/open-webui/open-webui:v0.6.18`
-- `postgres:17.5`
+- `postgres:18.0`
+- `quay.io/docling-project/docling-serve`
 
 Run the following command to do so:
 

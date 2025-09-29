@@ -31,8 +31,8 @@ import (
 )
 
 var (
-	url   = "http://localhost:11434/v1/chat/completions"
-	model = "gpt-oss:latest"
+	urlChat   = "http://localhost:11434/v1/chat/completions"
+	modelChat = "gpt-oss:latest"
 
 	urlTextEmbed   = "http://localhost:11434/v1/embeddings"
 	modelTextEmbed = "bge-m3:latest"
@@ -52,12 +52,12 @@ func init() {
 		}
 	}
 
-	if v := os.Getenv("LLM_SERVER"); v != "" {
-		url = v
+	if v := os.Getenv("LLM_CHATSERVER"); v != "" {
+		urlChat = v
 	}
 
-	if v := os.Getenv("LLM_MODEL"); v != "" {
-		model = v
+	if v := os.Getenv("LLM_CHATMODEL"); v != "" {
+		modelChat = v
 	}
 }
 
@@ -144,7 +144,7 @@ func NewAgent(getUserMessage func() (string, bool)) (*Agent, error) {
 	tools := map[string]Tool{}
 
 	agent := Agent{
-		chatClient:      client.NewLLM(url, model),
+		chatClient:      client.NewLLM(urlChat, modelChat),
 		textEmbedClient: client.NewLLM(urlTextEmbed, modelTextEmbed),
 		sseClient:       client.NewSSE[client.ChatSSE](client.StdoutLogger),
 		col:             col,
@@ -158,8 +158,8 @@ func NewAgent(getUserMessage func() (string, bool)) (*Agent, error) {
 }
 
 // The system prompt for the model so it behaves as expected.
-const systemPrompt = `You are a helpful coding assistant that has tools to assist
-you in coding.
+const systemPrompt = `
+You are a helpful coding assistant that has tools to assist you in coding.
 
 After you request a tool call, you will receive a JSON document with two fields,
 "status" and "data". Always check the "status" field to know if the call "SUCCEED"
@@ -186,7 +186,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		"content": systemPrompt,
 	})
 
-	fmt.Printf("\nChat with %s (use 'ctrl-c' to quit)\n", model)
+	fmt.Printf("\nChat with %s (use 'ctrl-c' to quit)\n", modelChat)
 
 	timeForResult := time.NewTicker(100 * time.Millisecond)
 
@@ -229,7 +229,7 @@ func (a *Agent) Run(ctx context.Context) error {
 				select {
 				case <-timeForResult.C:
 					m := time.Since(start).Milliseconds()
-					fmt.Printf("\r\u001b[93m%s %d.%03d\u001b[0m: ", model, m/1000, m%1000)
+					fmt.Printf("\r\u001b[93m%s %d.%03d\u001b[0m: ", modelChat, m/1000, m%1000)
 
 				case <-wctx.Done():
 					fmt.Print("\n")
@@ -245,7 +245,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		// tool call or providing a user request.
 
 		d := client.D{
-			"model":          model,
+			"model":          modelChat,
 			"messages":       conversation,
 			"max_tokens":     contextWindow,
 			"temperature":    0.0,
@@ -256,12 +256,12 @@ func (a *Agent) Run(ctx context.Context) error {
 			"tool_selection": "auto",
 		}
 
-		fmt.Printf("\u001b[93m\n%s\u001b[0m: 0.000", model)
+		fmt.Printf("\u001b[93m\n%s\u001b[0m: 0.000", modelChat)
 
 		ch := make(chan client.ChatSSE, 100)
 		ctx, cancelDoCall := context.WithTimeout(ctx, time.Minute*5)
 
-		if err := a.sseClient.Do(ctx, http.MethodPost, url, d, ch); err != nil {
+		if err := a.sseClient.Do(ctx, http.MethodPost, urlChat, d, ch); err != nil {
 			fmt.Printf("\n\n\u001b[91mERROR:%s\u001b[0m\n\n", err)
 			inToolCall = false
 			cancelDoCall()
@@ -419,28 +419,29 @@ func (a *Agent) injectContext(ctx context.Context, conversation []client.D, user
 // isQuestionRelevant will check if the user input is relevant to the Go API
 // service development class.
 func (a *Agent) isQuestionRelevant(ctx context.Context, conversation []client.D, userInput string) (bool, error) {
-	const prompt = `You are a relevance filter for Bill's Go API service development class. 
-					Determine if the following question with the current message
-					history is relevant to learning how to write API services in
-					the Go programming language presented by Bill.
-					
-					Relevant topics include: Go syntax, HTTP handlers, REST APIs,
-					JSON handling, middleware, routing, database connections,
-					authentication, testing, error handling, logging, configuration,
-					deployment, and Go best practices for web services.
-					
-					Irrelevant topics include: other programming languages,
-					unrelated Go topics (like GUI development), general programming
-					theory without Go context, or completely off-topic questions.
+	const prompt = `
+	You are a relevance filter for Bill's Go API service development class. 
+	Determine if the following question with the current message
+	history is relevant to learning how to write API services in
+	the Go programming language presented by Bill.
+	
+	Relevant topics include: Go syntax, HTTP handlers, REST APIs,
+	JSON handling, middleware, routing, database connections,
+	authentication, testing, error handling, logging, configuration,
+	deployment, and Go best practices for web services.
+	
+	Irrelevant topics include: other programming languages,
+	unrelated Go topics (like GUI development), general programming
+	theory without Go context, or completely off-topic questions.
 
-					If the user is asking a followup question to a previous question,
-					consider it not relevant.
+	If the user is asking a followup question to a previous question,
+	consider it not relevant.
 
-					History: %s
-					
-					Question: %s
+	History: %s
+	
+	Question: %s
 
-					Respond with only "RELEVANT" or "NOT RELEVANT" followed by a brief reason.
+	Respond with only "RELEVANT" or "NOT RELEVANT" followed by a brief reason.
 `
 
 	var history string

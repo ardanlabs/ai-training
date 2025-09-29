@@ -146,8 +146,8 @@ func NewAgent(getUserMessage func() (string, bool)) (*Agent, error) {
 }
 
 // The system prompt for the model so it behaves as expected.
-const systemPrompt = `You are a helpful coding assistant that has tools to assist
-you in coding.
+const systemPrompt = `
+You are a helpful coding assistant that has tools to assist you in coding.
 
 After you request a tool call, you will receive a JSON document with two fields,
 "status" and "data". Always check the "status" field to know if the call "SUCCEED"

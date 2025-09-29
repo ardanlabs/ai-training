@@ -36,8 +36,8 @@ import (
 )
 
 var (
-	urlChat         = "http://localhost:11434/v1/chat/completions"
-	modelVisionChat = "gemma3:12b-it-qat"
+	urlVision   = "http://localhost:11434/v1/chat/completions"
+	modelVision = "gemma3:12b-it-qat"
 
 	urlTextEmbed   = "http://localhost:11434/v1/embeddings"
 	modelTextEmbed = "bge-m3:latest"
@@ -55,12 +55,12 @@ var (
 var ErrFFMPEG = errors.New("ffmpeg error")
 
 func init() {
-	if v := os.Getenv("LLM_CHAT_SERVER"); v != "" {
-		urlChat = v
+	if v := os.Getenv("LLM_VISION_SERVER"); v != "" {
+		urlVision = v
 	}
 
-	if v := os.Getenv("LLM_VISION_CHAT_MODEL"); v != "" {
-		modelVisionChat = v
+	if v := os.Getenv("LLM_VISION_MODEL"); v != "" {
+		modelVision = v
 	}
 
 	if v := os.Getenv("LLM_TEXT_EMBED_SERVER"); v != "" {
@@ -73,31 +73,31 @@ func init() {
 }
 
 const promptKeyFrameDesc = `
-		Provide a detailed description of this image in 300 words or less.
-		Do not include any source code in the detailed description.
-		Do not include any terminal output in the detailed description.
+	Provide a detailed description of this image in 300 words or less.
+	Do not include any source code in the detailed description.
+	Do not include any terminal output in the detailed description.
+	
+	Also, classify this image as: "source code", "diagram", "terminal", or "other" depending on the content it features the most.
+	If icons are present in the middle of the image and blocking the main content, classify them as "icon".
+
+	Extract all the text you see in the image and keep the formatting.
+	Do not modify, enhance, or change any of the text you see.
+	Do not add any new text that isn't part of the image.
+	Keep any spacing or formatting of the text as it appears in the image.
+	Place the text under the TEXT section in the final response.
+
+	Provide the response using the following format with the provided section headers (** JSON DOCUMENT and ** TEXT):
+
+		** JSON DOCUMENT
+		{
+			"description": "<image description>",
+			"classification": "<image classification>"
+		}
 		
-		Also, classify this image as: "source code", "diagram", "terminal", or "other" depending on the content it features the most.
-		If icons are present in the middle of the image and blocking the main content, classify them as "icon".
+		** TEXT
 
-		Extract all the text you see in the image and keep the formatting.
-		Do not modify, enhance, or change any of the text you see.
-		Do not add any new text that isn't part of the image.
-		Keep any spacing or formatting of the text as it appears in the image.
-		Place the text under the TEXT section in the final response.
-
-		Provide the response using the following format with the provided section headers (** JSON DOCUMENT and ** TEXT):
-
-			** JSON DOCUMENT
-			{
-				"description": "<image description>",
-				"classification": "<image classification>"
-			}
-			
-			** TEXT
-
-		Encode any special characters that will be part of a JSON document.
-		Make sure all text to be placed inside a JSON documentis properly encoded and that the JSON is valid.
+	Encode any special characters that will be part of a JSON document.
+	Make sure all text to be placed inside a JSON documentis properly encoded and that the JSON is valid.
 `
 
 // =============================================================================
@@ -123,7 +123,7 @@ func run() error {
 
 	// -------------------------------------------------------------------------
 
-	llmChat := client.NewLLM(urlChat, modelVisionChat)
+	llmVision := client.NewLLM(urlVision, modelVision)
 	llmTextEmbed := client.NewLLM(urlTextEmbed, modelTextEmbed)
 
 	fmt.Print("\n---\n")
@@ -187,7 +187,7 @@ func run() error {
 			startingVideoTime += duration
 		}()
 
-		err = processChunk(ctx, col, llmChat, llmTextEmbed, videoDir, videoFileName, videoChunkFile, startingVideoTime, duration)
+		err = processChunk(ctx, col, llmVision, llmTextEmbed, videoDir, videoFileName, videoChunkFile, startingVideoTime, duration)
 		if err != nil {
 			if errors.Is(err, ErrFFMPEG) {
 				fmt.Printf("FFMPEG error processing chunk: %s\n", err)
@@ -206,7 +206,7 @@ func run() error {
 	return nil
 }
 
-func processChunk(ctx context.Context, col *mongo.Collection, llmChat *client.LLM, llmTextEmbed *client.LLM, videoDir string, videoFileName string, videoChunkFile string, startingVideoTime float64, duration float64) error {
+func processChunk(ctx context.Context, col *mongo.Collection, llmVision *client.LLM, llmTextEmbed *client.LLM, videoDir string, videoFileName string, videoChunkFile string, startingVideoTime float64, duration float64) error {
 	exists, err := existsDocument(ctx, col, videoFileName, videoChunkFile)
 	if err != nil {
 		return fmt.Errorf("exists document: %w", err)
@@ -227,7 +227,7 @@ func processChunk(ctx context.Context, col *mongo.Collection, llmChat *client.LL
 
 	chunkName := filepath.Base(videoChunkFile)
 
-	keyFrames, err := processKeyFrameFiles(chunkName, videoDir, llmChat)
+	keyFrames, err := processKeyFrameFiles(chunkName, videoDir, llmVision)
 	if err != nil {
 		return fmt.Errorf("process key frame files: %w", err)
 	}
@@ -334,7 +334,7 @@ func extractAudioTranscription(videoChunkFile string) (string, error) {
 	return string(out), nil
 }
 
-func processKeyFrameFiles(chunkName string, videoDir string, llmChat *client.LLM) ([]keyFrame, error) {
+func processKeyFrameFiles(chunkName string, videoDir string, llmVision *client.LLM) ([]keyFrame, error) {
 	fmt.Println("Processing key frames")
 
 	fullpath := filepath.Join(videoDir, framesDir, chunkName)
@@ -364,7 +364,7 @@ func processKeyFrameFiles(chunkName string, videoDir string, llmChat *client.LLM
 		}
 	}
 
-	if err := createKeyFrameDescriptions(keyFrames, llmChat); err != nil {
+	if err := createKeyFrameDescriptions(keyFrames, llmVision); err != nil {
 		return nil, fmt.Errorf("create key frame descriptions: %w", err)
 	}
 
@@ -394,7 +394,7 @@ func createKeyFrameFiles(videoChunkFile string) error {
 	return nil
 }
 
-func createKeyFrameDescriptions(keyFrames []keyFrame, llmChat *client.LLM) error {
+func createKeyFrameDescriptions(keyFrames []keyFrame, llmVision *client.LLM) error {
 	fmt.Printf("Creating key frame descriptions: %d\n", len(keyFrames))
 
 	semaphore := 1
@@ -431,7 +431,7 @@ func createKeyFrameDescriptions(keyFrames []keyFrame, llmChat *client.LLM) error
 			p1 := client.WithImage(mimeType, image)
 			p2 := client.WithParams(0.0, 0.1, 1)
 
-			response, err := llmChat.ChatCompletions(ctx, promptKeyFrameDesc, p1, p2)
+			response, err := llmVision.ChatCompletions(ctx, promptKeyFrameDesc, p1, p2)
 			if err != nil {
 				return fmt.Errorf("chat completions: %w", err)
 			}

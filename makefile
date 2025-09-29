@@ -17,6 +17,12 @@ SHELL = $(if $(wildcard $(SHELL_PATH)),/bin/ash,/bin/bash)
 #
 
 # ==============================================================================
+# Python Support
+#	Have to do this just once and having it here incase we need to do it again.
+# 		uv pip compile pyproject.toml -o requirements.txt
+#		uv add -r requirements.txt
+
+# ==============================================================================
 # Mongo support
 #
 # db.book.find({id: 300})
@@ -69,10 +75,10 @@ ollama-pull:
 
 python-install:
 	rm -rf .venv
-	uv venv --python 3.12 && \
-	uv lock && \
-	uv sync && \
-	uv pip install -r cmd/embedding/requirements.txt
+	uv venv --python 3.12
+	uv lock
+	uv sync
+	uv pip install vllm
 
 # ==============================================================================
 # Ollama Settings
@@ -214,12 +220,6 @@ docling-compose-down:
 
 docling-browse:
 	open -a "Google Chrome" http://localhost:5001/ui/
-
-# ==============================================================================
-# Embedding tooling
-
-embedding-up:
-	uv run cmd/embedding/embedding.py
 
 # ==============================================================================
 # Ollama tooling

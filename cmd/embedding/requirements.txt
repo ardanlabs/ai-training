@@ -1,8 +1,0 @@
-fastapi==0.116.1
-uvicorn[standard]==0.23.1
-torch==2.8.0
-transformers==4.55.4
-Pillow>=11.3.0
-numpy==2.2.6
-pydantic==2.11.7
-einops==0.8.1

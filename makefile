@@ -175,10 +175,10 @@ example12-step2:
 # Run Postgres, MongoDB, and Open WebUI
 
 compose-up:
-	docker compose -f zarf/docker/compose.all.yaml up
+	docker compose -f zarf/docker/compose.yaml up
 
 compose-down:
-	docker compose -f zarf/docker/compose.all.yaml down
+	docker compose -f zarf/docker/compose.yaml down
 
 compose-clean-mongo:
 	rm -rf zarf/docker/mongodb && \
@@ -195,10 +195,10 @@ compose-logs:
 # Running Open WebUI only
 
 owu-compose-up:
-	docker compose -f zarf/docker/compose.owu.yaml up openwebui
+	docker compose -f zarf/docker/compose.yaml up openwebui
 
 owu-compose-down:
-	docker compose -f zarf/docker/compose.owu.yaml down openwebui
+	docker compose -f zarf/docker/compose.yaml down openwebui
 
 owu-browse:
 	open -a "Google Chrome" http://localhost:3000/
@@ -207,10 +207,10 @@ owu-browse:
 # Running Docling only
 
 docling-compose-up:
-	docker compose -f zarf/docker/compose.docling.yaml up docling
+	docker compose -f zarf/docker/compose.yaml up docling
 
 docling-compose-down:
-	docker compose -f zarf/docker/compose.docling.yaml down docling
+	docker compose -f zarf/docker/compose.yaml down docling
 
 docling-browse:
 	open -a "Google Chrome" http://localhost:5001/ui/
@@ -429,3 +429,12 @@ curl-embed-triton:
 			} \
 		] \
 	}'
+
+# =============================================================================
+# Docling
+
+basic-doc:
+	curl -i -X POST "http://0.0.0.0:5001/v1/convert/file" \
+		-H "Content-Type: multipart/form-data" \
+		-F 'files=@zarf/samples/docs/dinner_menu.pdf;type=application/pdf' \
+		-F 'to_formats=json'

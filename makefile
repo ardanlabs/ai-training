@@ -195,10 +195,10 @@ compose-logs:
 # Running Open WebUI only
 
 owu-compose-up:
-	docker compose -f zarf/docker/compose.owu.yaml up
+	docker compose -f zarf/docker/compose.owu.yaml up openwebui
 
 owu-compose-down:
-	docker compose -f zarf/docker/compose.owu.yaml down
+	docker compose -f zarf/docker/compose.owu.yaml down openwebui
 
 owu-browse:
 	open -a "Google Chrome" http://localhost:3000/
@@ -207,10 +207,10 @@ owu-browse:
 # Running Docling only
 
 docling-compose-up:
-	docker compose -f zarf/docker/compose.docling.yaml up
+	docker compose -f zarf/docker/compose.docling.yaml up docling
 
 docling-compose-down:
-	docker compose -f zarf/docker/compose.docling.yaml down
+	docker compose -f zarf/docker/compose.docling.yaml down docling
 
 docling-browse:
 	open -a "Google Chrome" http://localhost:5001/ui/

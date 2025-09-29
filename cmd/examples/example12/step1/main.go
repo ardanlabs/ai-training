@@ -1,6 +1,6 @@
-// This example provides a proof of concept for extracting transcriptions, code,
-// diagrams, images, and text from videos using the Ollama and Embedding services.
-// It then stores the extracted data in a MongoDB database for vector seaarch.
+// This example provides a proof of concept for extracting transcriptions and,
+// code examples from videos using the Ollama and a vision model. It then stores
+// the extracted data in a MongoDB database for vector seaarch and RAG functionality.
 //
 // # Running the example:
 //

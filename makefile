@@ -3,50 +3,112 @@ SHELL_PATH = /bin/ash
 SHELL = $(if $(wildcard $(SHELL_PATH)),/bin/ash,/bin/bash)
 
 # ==============================================================================
+# Go Installation
+#
+#	You need to have Go version 1.25 to run this code.
+#
+#	https://go.dev/dl/
+#
+#	If you are not allowed to update your Go frontend, you can install
+#	and use a 1.25 frontend.
+#
+#	$ go install golang.org/dl/go1.25@latest
+#	$ go1.25 download
+#
+#	This means you need to use `go1.25` instead of `go` for any command
+#	using the Go frontend tooling from the makefile.
+
+# ==============================================================================
+# Brew Installation
+#
+#	Having brew installed will simplify the process of installing all the tooling.
+#
+#	Run this command to install brew on your machine. This works for Linux, Mac and Windows.
+#	The script explains what it will do and then pauses before it does it.
+#	$ /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+#
+#	WINDOWS MACHINES
+#	These are extra things you will most likely need to do after installing brew
+#
+# 	Run these three commands in your terminal to add Homebrew to your PATH:
+# 	Replace <name> with your username.
+#	$ echo '# Set PATH, MANPATH, etc., for Homebrew.' >> /home/<name>/.profile
+#	$ echo 'eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"' >> /home/<name>/.profile
+#	$ eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+#
+# 	Install Homebrew's dependencies:
+#	$ sudo apt-get install build-essential
+#
+# 	Install GCC:
+#	$ brew install gcc
+
+# ==============================================================================
+# Install Tooling and Dependencies
+#
+#	This project uses Docker and it is expected to be installed. Please provide
+#	Docker at least 4 CPUs. To use Podman instead please alias Docker CLI to
+#	Podman CLI or symlink the Docker socket to the Podman socket. More
+#	information on migrating from Docker to Podman can be found at
+#	https://podman-desktop.io/docs/migrating-from-docker.
+#
+#	Run these commands to install everything needed.
+#	$ make install
+#	$ make docker
+#	$ make python-install
+
+# ==============================================================================
 # Remove Ollama Auto-Run
 #
-# We have discovered that Ollama is installing itself to run at login on all OS. 
-# MacOS
-# To remove this on the Mac go to `Settings/General/Login Items & Extensions`
-# and remove Ollama as a startup item. Then navigate to `~/Library/LaunchAgents`
-# and remove the Ollama file you will find.
+# 	We have discovered that Ollama is installing itself to run at login on all OS. 
 #
-# Linux
-# sudo systemctl stop ollama.service
-# sudo systemctl disable ollama.service
+# 	MacOS
+# 	To remove this on the Mac go to `Settings/General/Login Items & Extensions`
+# 	and remove Ollama as a startup item. Then navigate to `~/Library/LaunchAgents`
+# 	and remove the Ollama file you will find.
 #
+# 	Linux
+# 	$ sudo systemctl stop ollama.service
+# 	$ sudo systemctl disable ollama.service
 
 # ==============================================================================
-# Python Support
-#	Have to do this just once and having it here incase we need to do it again.
-# 		uv pip compile pyproject.toml -o requirements.txt
-#		uv add -r requirements.txt
+# Pulling Model Images
+#
+# Start Ollama and pull down all the images we need for this project.
+#
+#	Run these commands to download the models we need.
+#	$ make ollama-up
+#	$ make ollama-pull
 
 # ==============================================================================
-# Mongo support
+# CLASS NOTES
+# 	Python Support
+#		Have to do this just once and having it here incase we need to do it again.
+# 			uv pip compile pyproject.toml -o requirements.txt
+#			uv add -r requirements.txt
 #
-# db.book.find({id: 300})
+# 	Mongo support
+# 		db.book.find({id: 300})
 #
-# db.book.aggregate([
-# 	{
-# 		"$vectorSearch": {
-# 			"index": "vector_index",
-# 			"exact": true,
-# 			"path": "embedding",
-# 			"queryVector": [1.2, 2.2, 3.2, 4.2],
-# 			"limit": 10
-# 		}
-# 	},
-# 	{
-# 		"$project": {
-# 			"text": 1,
-# 			"embedding": 1,
-# 			"score": {
-# 				"$meta": "vectorSearchScore"
+# 		db.book.aggregate([
+# 		{
+# 			"$vectorSearch": {
+# 				"index": "vector_index",
+# 				"exact": true,
+# 				"path": "embedding",
+# 				"queryVector": [1.2, 2.2, 3.2, 4.2],
+# 				"limit": 10
+# 			}
+# 		},
+# 		{
+# 			"$project": {
+# 				"text": 1,
+# 				"embedding": 1,
+# 				"score": {
+# 					"$meta": "vectorSearchScore"
+# 				}
 # 			}
 # 		}
-# 	}
-# ])
+# 	}])
 
 # ==============================================================================
 # Install dependencies
@@ -66,12 +128,6 @@ docker:
 	docker pull ghcr.io/open-webui/open-webui:v0.6.32
 	docker pull postgres:18.0
 	docker pull quay.io/docling-project/docling-serve
-
-ollama-pull:
-	ollama pull bge-m3:latest
-	ollama pull qwen2.5vl:latest
-	ollama pull gpt-oss:latest
-	ollama pull gemma3:12b-it-qat
 
 python-install:
 	rm -rf .venv
@@ -227,6 +283,12 @@ docling-browse:
 
 # ==============================================================================
 # Ollama tooling
+
+ollama-pull:
+	ollama pull bge-m3:latest
+	ollama pull qwen2.5vl:latest
+	ollama pull gpt-oss:latest
+	ollama pull gemma3:12b-it-qat
 
 ollama-up:
 	export OLLAMA_KV_CACHE_TYPE=$(OLLAMA_KV_CACHE_TYPE) && \

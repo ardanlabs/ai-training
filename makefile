@@ -63,7 +63,7 @@ install:
 
 docker:
 	docker pull mongodb/mongodb-atlas-local:8.0
-	docker pull ghcr.io/open-webui/open-webui:v0.6.18
+	docker pull ghcr.io/open-webui/open-webui:v0.6.32
 	docker pull postgres:18.0
 	docker pull quay.io/docling-project/docling-serve
 
@@ -176,6 +176,10 @@ example12-step1:
 example12-step2:
 	export OLLAMA_CONTEXT_LENGTH=$(OLLAMA_CONTEXT_LENGTH) && \
 	go run cmd/examples/example12/step2/*.go
+
+example13-step1:
+	export OLLAMA_CONTEXT_LENGTH=$(OLLAMA_CONTEXT_LENGTH) && \
+	go run cmd/examples/example13/step1/*.go
 
 # ==============================================================================
 # Run Postgres, MongoDB, and Open WebUI
@@ -437,4 +441,9 @@ basic-doc:
 	curl -i -X POST "http://0.0.0.0:5001/v1/convert/file" \
 		-H "Content-Type: multipart/form-data" \
 		-F 'files=@zarf/samples/docs/dinner_menu.pdf;type=application/pdf' \
-		-F 'to_formats=json'
+		-F 'to_formats=md' \
+		-F 'include_images=false' \
+		-F 'table_mode=accurate' \
+		-F 'md_page_break_placeholder=---' \
+		-F 'pdf_backend=dlparse_v4' \
+		-F 'image_export_mode=placeholder'

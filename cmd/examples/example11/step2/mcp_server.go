@@ -50,7 +50,7 @@ func mcpListenAndServe(host string) {
 		}
 	}
 
-	handler := mcp.NewSSEHandler(f)
+	handler := mcp.NewSSEHandler(f, &mcp.SSEOptions{})
 	fmt.Println(http.ListenAndServe(host, handler))
 }
 

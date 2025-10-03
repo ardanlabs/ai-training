@@ -119,7 +119,7 @@ func mcpListenAndServe(host string, port string) {
 		}
 	}
 
-	handler := mcp.NewSSEHandler(f)
+	handler := mcp.NewSSEHandler(f, &mcp.SSEOptions{})
 	log.Fatal(http.ListenAndServe(addr, handler))
 }
 

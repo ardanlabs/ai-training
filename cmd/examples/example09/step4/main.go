@@ -29,18 +29,15 @@ import (
 )
 
 var (
-	urlChat         = "http://localhost:11434/v1/chat/completions"
-	urlEmbed        = "http://localhost:11434/v1/embeddings"
-	urlImageEmbed   = "http://localhost:11439/v1/embeddings"
-	modelChat       = "qwen2.5vl:latest"
-	modelEmbed      = "bge-m3:latest"
-	modelImageEmbed = "nomic-embed-vision-v1.5"
+	urlChat    = "http://localhost:11434/v1/chat/completions"
+	urlEmbed   = "http://localhost:11434/v1/embeddings"
+	modelChat  = "qwen2.5vl:latest"
+	modelEmbed = "bge-m3:latest"
 
-	imagePath       = "zarf/samples/gallery/roseimg.png"
-	dbName          = "example9"
-	colName         = "images-4"
-	dimensions      = 1024
-	imageDimensions = 768
+	imagePath  = "zarf/samples/gallery/roseimg.png"
+	dbName     = "example9"
+	colName    = "images-4"
+	dimensions = 1024
 )
 
 func init() {
@@ -52,10 +49,6 @@ func init() {
 		urlEmbed = v
 	}
 
-	if v := os.Getenv("LLM_EMBED_IMAGE_SERVER"); v != "" {
-		urlImageEmbed = v
-	}
-
 	if v := os.Getenv("LLM_CHAT_MODEL"); v != "" {
 		modelChat = v
 	}
@@ -63,19 +56,14 @@ func init() {
 	if v := os.Getenv("LLM_EMBED_MODEL"); v != "" {
 		modelEmbed = v
 	}
-
-	if v := os.Getenv("LLM_IMAGE_EMBED_MODEL"); v != "" {
-		modelImageEmbed = v
-	}
 }
 
 // =============================================================================
 
 type document struct {
-	FileName       string    `bson:"file_name"`
-	Description    string    `bson:"description"`
-	Embedding      []float64 `bson:"embedding"`
-	ImageEmbedding []float64 `bson:"image_embedding"`
+	FileName    string    `bson:"file_name"`
+	Description string    `bson:"description"`
+	Embedding   []float64 `bson:"embedding"`
 }
 
 // =============================================================================
@@ -168,26 +156,12 @@ func run() error {
 
 	// -------------------------------------------------------------------------
 
-	fmt.Println("\nGenerating embeddings for the image file:")
-
-	imageEmbedLLM := client.NewLLM(urlImageEmbed, modelImageEmbed)
-
-	imageVector, err := imageEmbedLLM.EmbedWithImage(ctx, "", image, mimeType)
-	if err != nil {
-		return fmt.Errorf("llm.EmbedWithImage: %w", err)
-	}
-
-	fmt.Printf("%v...%v\n", imageVector[0:3], imageVector[len(imageVector)-3:])
-
-	// -------------------------------------------------------------------------
-
 	fmt.Println("\nInserting image information into the database:")
 
 	d1 := document{
-		FileName:       imagePath,
-		Description:    results,
-		Embedding:      vector,
-		ImageEmbedding: imageVector,
+		FileName:    imagePath,
+		Description: results,
+		Embedding:   vector,
 	}
 
 	res, err := col.InsertOne(ctx, d1)
@@ -376,18 +350,6 @@ func initDB(ctx context.Context, client *mongo.Client) (*mongo.Collection, error
 		return nil, fmt.Errorf("createVectorIndex (text): %w", err)
 	}
 
-	const imageIndexName = "vector_image_embedding_index"
-
-	settings = mongodb.VectorIndexSettings{
-		NumDimensions: imageDimensions,
-		Path:          "image_embedding",
-		Similarity:    "cosine",
-	}
-
-	if err := mongodb.CreateVectorIndex(ctx, col, imageIndexName, settings); err != nil {
-		return nil, fmt.Errorf("createVectorIndex (text): %w", err)
-	}
-
 	return col, nil
 }
 
@@ -401,7 +363,7 @@ func vectorSearch(ctx context.Context, llm *client.LLM, col *mongo.Collection, q
 		{{
 			Key: "$vectorSearch",
 			Value: bson.M{
-				"index":       "vector_index",
+				"index":       "vector_embedding_index",
 				"exact":       true,
 				"path":        "embedding",
 				"queryVector": vector,

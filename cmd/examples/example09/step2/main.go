@@ -24,12 +24,10 @@ import (
 )
 
 var (
-	urlChat         = "http://localhost:11434/v1/chat/completions"
-	urlEmbed        = "http://localhost:11434/v1/embeddings"
-	urlImageEmbed   = "http://localhost:11439/v1/embeddings"
-	modelChat       = "qwen2.5vl:latest"
-	modelEmbed      = "bge-m3:latest"
-	modelImageEmbed = "nomic-embed-vision-v1.5"
+	urlChat    = "http://localhost:11434/v1/chat/completions"
+	urlEmbed   = "http://localhost:11434/v1/embeddings"
+	modelChat  = "qwen2.5vl:latest"
+	modelEmbed = "bge-m3:latest"
 
 	imagePath = "zarf/samples/gallery/roseimg.png"
 )
@@ -43,20 +41,12 @@ func init() {
 		urlEmbed = v
 	}
 
-	if v := os.Getenv("LLM_EMBED_IMAGE_SERVER"); v != "" {
-		urlImageEmbed = v
-	}
-
 	if v := os.Getenv("LLM_CHAT_MODEL"); v != "" {
 		modelChat = v
 	}
 
 	if v := os.Getenv("LLM_EMBED_MODEL"); v != "" {
 		modelEmbed = v
-	}
-
-	if v := os.Getenv("LLM_IMAGE_EMBED_MODEL"); v != "" {
-		modelImageEmbed = v
 	}
 }
 
@@ -120,19 +110,6 @@ func run() error {
 	}
 
 	fmt.Printf("%v...%v\n", vector[0:3], vector[len(vector)-3:])
-
-	// -------------------------------------------------------------------------
-
-	fmt.Println("\nGenerating embeddings for the image file:")
-
-	imageEmbedLLM := client.NewLLM(urlImageEmbed, modelImageEmbed)
-
-	imageVector, err := imageEmbedLLM.EmbedWithImage(ctx, "", image, mimeType)
-	if err != nil {
-		return fmt.Errorf("llm.EmbedText: %w", err)
-	}
-
-	fmt.Printf("%v...%v\n", imageVector[0:3], imageVector[len(imageVector)-3:])
 
 	// -------------------------------------------------------------------------
 

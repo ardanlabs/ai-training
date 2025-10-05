@@ -97,7 +97,7 @@ const promptKeyFrameDesc = `
 		** TEXT
 
 	Encode any special characters that will be part of a JSON document.
-	Make sure all text to be placed inside a JSON documentis properly encoded and that the JSON is valid.
+	Make sure all text to be placed inside a JSON document is properly encoded and that the JSON is valid.
 `
 
 // =============================================================================

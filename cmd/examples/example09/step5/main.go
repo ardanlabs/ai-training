@@ -33,18 +33,15 @@ import (
 )
 
 var (
-	urlChat         = "http://localhost:11434/v1/chat/completions"
-	urlEmbed        = "http://localhost:11434/v1/embeddings"
-	urlImageEmbed   = "http://localhost:11439/v1/embeddings"
-	modelChat       = "qwen2.5vl:latest"
-	modelEmbed      = "bge-m3:latest"
-	modelImageEmbed = "nomic-embed-vision-v1.5"
+	urlChat    = "http://localhost:11434/v1/chat/completions"
+	urlEmbed   = "http://localhost:11434/v1/embeddings"
+	modelChat  = "qwen2.5vl:latest"
+	modelEmbed = "bge-m3:latest"
 
-	dbName          = "example9"
-	colName         = "images-5"
-	dimensions      = 1024
-	imageDimensions = 768
-	galleryPath     = "zarf/samples/gallery/"
+	dbName      = "example9"
+	colName     = "images-5"
+	dimensions  = 1024
+	galleryPath = "zarf/samples/gallery/"
 )
 
 func init() {
@@ -56,10 +53,6 @@ func init() {
 		urlEmbed = v
 	}
 
-	if v := os.Getenv("LLM_EMBED_IMAGE_SERVER"); v != "" {
-		urlImageEmbed = v
-	}
-
 	if v := os.Getenv("LLM_CHAT_MODEL"); v != "" {
 		modelChat = v
 	}
@@ -67,19 +60,14 @@ func init() {
 	if v := os.Getenv("LLM_EMBED_MODEL"); v != "" {
 		modelEmbed = v
 	}
-
-	if v := os.Getenv("LLM_IMAGE_EMBED_MODEL"); v != "" {
-		modelImageEmbed = v
-	}
 }
 
 // =============================================================================
 
 type document struct {
-	FileName       string    `bson:"file_name"`
-	Description    string    `bson:"description"`
-	Embedding      []float64 `bson:"embedding"`
-	ImageEmbedding []float64 `bson:"image_embedding"`
+	FileName    string    `bson:"file_name"`
+	Description string    `bson:"description"`
+	Embedding   []float64 `bson:"embedding"`
 }
 
 // =============================================================================
@@ -97,7 +85,6 @@ func run() error {
 
 	llmChat := client.NewLLM(urlChat, modelChat)
 	embedLLM := client.NewLLM(urlEmbed, modelEmbed)
-	imageEmbedLLM := client.NewLLM(urlImageEmbed, modelImageEmbed)
 
 	// -------------------------------------------------------------------------
 
@@ -119,7 +106,7 @@ func run() error {
 
 	fmt.Println("Saving images in DB")
 
-	if err := saveImagesInDB(ctx, llmChat, embedLLM, imageEmbedLLM, col); err != nil {
+	if err := saveImagesInDB(ctx, llmChat, embedLLM, col); err != nil {
 		return fmt.Errorf("loadImages: %w", err)
 	}
 
@@ -144,23 +131,11 @@ func run() error {
 		var searchResults []searchResult
 		scorePass := 0.75
 
-		switch fileExists(question) {
-		case true:
-			fmt.Println("\nPerforming vector search using image file:")
+		fmt.Println("\nPerforming vector search using image description:")
 
-			searchResults, err = imageVectorSearch(ctx, imageEmbedLLM, col, question)
-			if err != nil {
-				return fmt.Errorf("vectorSearch: %w", err)
-			}
-
-			scorePass = 0.85
-		default:
-			fmt.Println("\nPerforming vector search using image description:")
-
-			searchResults, err = textVectorSearch(ctx, embedLLM, col, question)
-			if err != nil {
-				return fmt.Errorf("vectorSearch: %w", err)
-			}
+		searchResults, err = textVectorSearch(ctx, embedLLM, col, question)
+		if err != nil {
+			return fmt.Errorf("vectorSearch: %w", err)
 		}
 
 		// -------------------------------------------------------------------------
@@ -175,7 +150,7 @@ func run() error {
 	}
 }
 
-func saveImagesInDB(ctx context.Context, llm *client.LLM, embedLLM *client.LLM, imageEmbedLLM *client.LLM, col *mongo.Collection) error {
+func saveImagesInDB(ctx context.Context, llm *client.LLM, embedLLM *client.LLM, col *mongo.Collection) error {
 	const prompt = `Describe the image. Be concise and accurate. Do not be overly
 	verbose or stylistic. Make sure all the elements in the image are
 	enumerated and described. Do not include any additional details. Keep
@@ -227,22 +202,12 @@ func saveImagesInDB(ctx context.Context, llm *client.LLM, embedLLM *client.LLM, 
 
 		// ---------------------------------------------------------------------
 
-		fmt.Println("\nGenerating embeddings for the image file:")
-
-		imageVector, err := imageEmbedLLM.EmbedWithImage(ctx, "", image, mimeType)
-		if err != nil {
-			return fmt.Errorf("llm.EmbedWithImage: %w", err)
-		}
-
-		// ---------------------------------------------------------------------
-
 		fmt.Println("  - Inserting image information into the database")
 
 		d1 := document{
-			FileName:       fileName,
-			Description:    results,
-			Embedding:      vector,
-			ImageEmbedding: imageVector,
+			FileName:    fileName,
+			Description: results,
+			Embedding:   vector,
 		}
 
 		res, err := col.InsertOne(ctx, d1)
@@ -290,21 +255,6 @@ func readImage(fileName string) ([]byte, string, error) {
 		return data, mimeType, nil
 	default:
 		return nil, "", fmt.Errorf("unsupported file type: %s: filename: %s", mimeType, fileName)
-	}
-}
-
-func fileExists(filename string) bool {
-	info, err := os.Stat(filename)
-	switch {
-	case os.IsNotExist(err):
-		return false
-	case err != nil:
-		return false
-	default:
-		if info.IsDir() {
-			return false
-		}
-		return true
 	}
 }
 
@@ -437,33 +387,7 @@ func initDB(ctx context.Context, client *mongo.Client) (*mongo.Collection, error
 		return nil, fmt.Errorf("createVectorIndex (text): %w", err)
 	}
 
-	const imageIndexName = "vector_image_embedding_index"
-
-	settings = mongodb.VectorIndexSettings{
-		NumDimensions: imageDimensions,
-		Path:          "image_embedding",
-		Similarity:    "cosine",
-	}
-
-	if err := mongodb.CreateVectorIndex(ctx, col, imageIndexName, settings); err != nil {
-		return nil, fmt.Errorf("createVectorIndex (text): %w", err)
-	}
-
 	return col, nil
-}
-
-func imageVectorSearch(ctx context.Context, imageEmbedLLM *client.LLM, col *mongo.Collection, fileName string) ([]searchResult, error) {
-	image, mimeType, err := readImage(fileName)
-	if err != nil {
-		return nil, fmt.Errorf("readImage: %w", err)
-	}
-
-	vector, err := imageEmbedLLM.EmbedWithImage(ctx, "", image, mimeType)
-	if err != nil {
-		return nil, fmt.Errorf("embedImage: %w", err)
-	}
-
-	return vectorSearch(ctx, col, vector, "image_embedding")
 }
 
 func textVectorSearch(ctx context.Context, llm *client.LLM, col *mongo.Collection, question string) ([]searchResult, error) {

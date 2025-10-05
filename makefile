@@ -127,7 +127,7 @@ docker:
 	docker pull mongodb/mongodb-atlas-local:8.0
 	docker pull ghcr.io/open-webui/open-webui:v0.6.32
 	docker pull postgres:18.0
-	docker pull quay.io/docling-project/docling-serve
+	docker pull quay.io/docling-project/docling-serve:v1.6.0
 
 python-install:
 	rm -rf .venv
@@ -141,7 +141,7 @@ python-install:
 
 OLLAMA_KV_CACHE_TYPE := q8_0      # f16, q8_0, q4_0
 OLLAMA_FLASH_ATTENTION := true
-OLLAMA_CONTEXT_LENGTH := 16384
+OLLAMA_CONTEXT_LENGTH := 16384    #49152, #32768, #24576, #16384,
 OLLAMA_NUM_PARALLEL := 2
 OLLAMA_MAX_LOADED_MODELS := 2
 
@@ -280,6 +280,15 @@ docling-compose-down:
 
 docling-browse:
 	open -a "Google Chrome" http://localhost:5001/ui/
+
+# ==============================================================================
+# Running Mongo only
+
+mongo-compose-up:
+	docker compose -f zarf/docker/compose.yaml up mongodb
+
+mongo-compose-down:
+	docker compose -f zarf/docker/compose.yaml down mongodb
 
 # ==============================================================================
 # Ollama tooling

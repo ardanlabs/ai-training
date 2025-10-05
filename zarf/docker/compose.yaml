@@ -10,7 +10,6 @@ services:
       - POSTGRES_PASSWORD=postgres
     volumes:
       - ./sql-data:/var/lib/postgresql/18/docker
-    user: "${UID:-503}:${GID:-20}"
 
   mongodb:
     image: mongodb/mongodb-atlas-local:8.0

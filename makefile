@@ -144,6 +144,7 @@ OLLAMA_FLASH_ATTENTION := true
 OLLAMA_CONTEXT_LENGTH := 16384    #49152, #32768, #24576, #16384,
 OLLAMA_NUM_PARALLEL := 2
 OLLAMA_MAX_LOADED_MODELS := 2
+OLLAMA_HOST := 0.0.0.0:11434
 
 # ==============================================================================
 # Examples
@@ -305,6 +306,7 @@ ollama-up:
 	export OLLAMA_NUM_PARALLEL=$(OLLAMA_NUM_PARALLEL) && \
 	export OLLAMA_MAX_LOADED_MODELS=$(OLLAMA_MAX_LOADED_MODELS) && \
 	export OLLAMA_CONTEXT_LENGTH=$(OLLAMA_CONTEXT_LENGTH) && \
+	export OLLAMA_HOST=$(OLLAMA_HOST) && \
 	ollama serve
 
 ollama-logs:

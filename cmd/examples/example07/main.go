@@ -33,7 +33,7 @@ import (
 var (
 	urlChat    = "http://localhost:11434/v1/chat/completions"
 	urlEmbed   = "http://localhost:11434/v1/embeddings"
-	modelChat  = "qwen2.5vl:latest"
+	modelChat  = "gemma3:12b-it-qat"
 	modelEmbed = "bge-m3:latest"
 
 	dbName  = "example06"

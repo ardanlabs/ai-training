@@ -26,7 +26,7 @@ import (
 
 var (
 	url   = "http://localhost:11434/v1/chat/completions"
-	model = "qwen2.5vl:latest"
+	model = "gemma3:12b-it-qat"
 )
 
 func init() {

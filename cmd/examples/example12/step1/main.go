@@ -1,6 +1,6 @@
 // This example provides a proof of concept for extracting transcriptions and,
 // code examples from videos using the Ollama and a vision model. It then stores
-// the extracted data in a MongoDB database for vector seaarch and RAG functionality.
+// the extracted data in a MongoDB database for vector search and RAG functionality.
 //
 // # Running the example:
 //
@@ -47,7 +47,7 @@ var (
 	frameWidth       = 640
 	frameHeight      = 360
 
-	videoFileName = "test_rag_video.mp4"
+	videoFileName = "training.mp4"
 	videoDir      = "zarf/samples/videos/"
 	framesDir     = "frames"
 )
@@ -384,7 +384,7 @@ func createKeyFrameFiles(videoChunkFile string) error {
 		return fmt.Errorf("mkdirall: %w", err)
 	}
 
-	ffmpegCommand := fmt.Sprintf("ffmpeg -skip_frame nokey -i %s -vf \"select='gt(scene,0.05)',scale='if(gt(iw,ih),%d,-1)':'if(gt(ih,iw),%d,-1)'\" -fps_mode vfr -frame_pts true -loglevel error zarf/samples/videos/%s/%s/%%05d.png", videoChunkFile, frameWidth, frameHeight, framesDir, chunkName)
+	ffmpegCommand := fmt.Sprintf("ffmpeg -skip_frame nokey -i %s -vf \"scale='if(gt(iw,ih),%d,-1)':'if(gt(ih,iw),%d,-1)'\" -fps_mode vfr -frame_pts true -loglevel error zarf/samples/videos/%s/%s/%%05d.png", videoChunkFile, frameWidth, frameHeight, framesDir, chunkName)
 
 	out, err := exec.Command("/bin/sh", "-c", ffmpegCommand).CombinedOutput()
 	if err != nil {

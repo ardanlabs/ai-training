@@ -296,7 +296,6 @@ mongo-compose-down:
 
 ollama-pull:
 	ollama pull bge-m3:latest
-	ollama pull qwen2.5vl:latest
 	ollama pull gpt-oss:latest
 	ollama pull gemma3:12b-it-qat
 
@@ -317,7 +316,6 @@ ollama-list-models:
 
 ollama-check-models:
 	ollama run bge-m3:latest 'Hello, model!'
-	ollama run qwen2.5vl:latest 'Hello, model!'
 	ollama run gpt-oss:latest 'Hello, model!'
 	ollama run gemma3:12b-it-qat 'Hello, model!'
 

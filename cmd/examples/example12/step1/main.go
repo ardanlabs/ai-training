@@ -1,6 +1,5 @@
-// This example provides a proof of concept for extracting transcriptions and,
-// code examples from videos using the Ollama and a vision model. It then stores
-// the extracted data in a MongoDB database for vector search and RAG functionality.
+// This example provides shows you how to query the Docling API to extract
+// data from a PDF and have it processed by an LLM.
 //
 // # Running the example:
 //
@@ -8,109 +7,60 @@
 //
 // # This requires running the following commands:
 //
-//	$ make ollama-up    // This starts the Ollama service.
-//	$ make embedding-up // This starts the Embedding service.
-//	$ make compose-up   // This starts Mongo service.
+//	$ make ollama-up          // This starts the Ollama service.
+//	$ make docling-compose-up // This starts the Docling service.
 
 package main
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
+	"encoding/csv"
 	"fmt"
-	"io/fs"
 	"log"
 	"net/http"
 	"os"
-	"os/exec"
-	"path/filepath"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/ardanlabs/ai-training/foundation/client"
-	"github.com/ardanlabs/ai-training/foundation/mongodb"
-	"go.mongodb.org/mongo-driver/mongo"
-	"golang.org/x/sync/errgroup"
+	"github.com/ardanlabs/ai-training/foundation/docling"
 )
 
 var (
-	urlVision   = "http://localhost:11434/v1/chat/completions"
-	modelVision = "gemma3:12b-it-qat"
+	urlModel = "http://localhost:11434/v1/chat/completions"
+	model    = "gpt-oss:latest"
 
-	urlTextEmbed   = "http://localhost:11434/v1/embeddings"
-	modelTextEmbed = "bge-m3:latest"
+	urlDocling = "http://localhost:5001/v1/convert/file"
 
-	chunkSize        = 60
-	frameDescTimeout = time.Second * 300
-	frameWidth       = 640
-	frameHeight      = 360
+	documentPath = "zarf/samples/docs/dinner_menu.pdf"
 
-	videoFileName = "training.mp4"
-	videoDir      = "zarf/samples/videos/"
-	framesDir     = "frames"
+	// The context window represents the maximum number of tokens that can be sent
+	// and received by the model. The default for Ollama is 4K. In the makefile
+	// it has been increased to 64K.
+	contextWindow = 1024 * 4
 )
 
-var ErrFFMPEG = errors.New("ffmpeg error")
-
 func init() {
-	if v := os.Getenv("LLM_VISION_SERVER"); v != "" {
-		urlVision = v
-	}
-
-	if v := os.Getenv("LLM_VISION_MODEL"); v != "" {
-		modelVision = v
-	}
-
-	if v := os.Getenv("LLM_TEXT_EMBED_SERVER"); v != "" {
-		urlTextEmbed = v
-	}
-
-	if v := os.Getenv("LLM_TEXT_EMBED_MODEL"); v != "" {
-		modelTextEmbed = v
-	}
-}
-
-const promptKeyFrameDesc = `
-	Provide a detailed description of this image in 300 words or less.
-	Do not include any source code in the detailed description.
-	Do not include any terminal output in the detailed description.
-	
-	Also, classify this image as: "source code", "diagram", "terminal", or "other" depending on the content it features the most.
-	If icons are present in the middle of the image and blocking the main content, classify them as "icon".
-
-	Extract all the text you see in the image and keep the formatting.
-	Do not modify, enhance, or change any of the text you see.
-	Do not add any new text that isn't part of the image.
-	Keep any spacing or formatting of the text as it appears in the image.
-	Place the text under the TEXT section in the final response.
-
-	Provide the response using the following format with the provided section headers (** JSON DOCUMENT and ** TEXT):
-
-		** JSON DOCUMENT
-		{
-			"description": "<image description>",
-			"classification": "<image classification>"
+	if v := os.Getenv("OLLAMA_CONTEXT_LENGTH"); v != "" {
+		var err error
+		contextWindow, err = strconv.Atoi(v)
+		if err != nil {
+			log.Fatal(err)
 		}
-		
-		** TEXT
+	}
 
-	Encode any special characters that will be part of a JSON document.
-	Make sure all text to be placed inside a JSON document is properly encoded and that the JSON is valid.
-`
+	if v := os.Getenv("LLM_SERVER"); v != "" {
+		urlModel = v
+	}
 
-// =============================================================================
+	if v := os.Getenv("LLM_MODEL"); v != "" {
+		model = v
+	}
 
-type keyFrame struct {
-	fileName       string
-	description    string
-	classification string
-	text           string
-	embedding      []float64
+	if v := os.Getenv("DOC_SERVER"); v != "" {
+		urlDocling = v
+	}
 }
-
-// =============================================================================
 
 func main() {
 	if err := run(); err != nil {
@@ -123,411 +73,118 @@ func run() error {
 
 	// -------------------------------------------------------------------------
 
-	llmVision := client.NewLLM(urlVision, modelVision)
-	llmTextEmbed := client.NewLLM(urlTextEmbed, modelTextEmbed)
+	fmt.Println("\nExtract content from document")
 
-	fmt.Print("\n---\n")
+	doc := docling.New(urlDocling)
 
-	// -------------------------------------------------------------------------
+	fields := map[string]string{
+		"to_formats":                "md",
+		"include_images":            "false",
+		"table_mode":                "accurate",
+		"md_page_break_placeholder": "---",
+		"pdf_backend":               "dlparse_v4",
+		"image_export_mode":         "placeholder",
+	}
 
-	fmt.Println("\nConnecting to MongoDB")
-
-	dbClient, err := mongodb.Connect(ctx, "mongodb://localhost:27017", "ardan", "ardan")
+	data, err := doc.ConvertFile(ctx, documentPath, fields)
 	if err != nil {
-		return fmt.Errorf("mongodb.Connect: %w", err)
+		return fmt.Errorf("docling: %w", err)
 	}
 
-	fmt.Println("Initializing Database")
+	fmt.Println("\nExtracted content")
+	fmt.Printf("\u001b[92m%s\u001b[0m", data)
 
-	col, err := initDB(ctx, dbClient)
+	// -------------------------------------------------------------------------
+
+	fmt.Println("\nProcess against the LLM")
+
+	csvData, err := ollama(ctx, data)
 	if err != nil {
-		return fmt.Errorf("initDB: %w", err)
+		return fmt.Errorf("ollama: %w", err)
 	}
 
 	// -------------------------------------------------------------------------
 
-	videoPath := filepath.Join(videoDir, videoFileName)
+	fmt.Print("\n\nParsed CSV:\n\n")
 
-	if err := splitVideoIntoChunks(videoPath); err != nil {
-		return fmt.Errorf("splitting video into chunks: %w", err)
+	reader := csv.NewReader(strings.NewReader(csvData))
+	records, err := reader.ReadAll()
+	if err != nil {
+		return fmt.Errorf("parse csv: %w", err)
 	}
 
-	// -------------------------------------------------------------------------
-
-	startingVideoTime := 0.0
-
-	chunksDir := filepath.Join(videoDir, "chunks")
-	fmt.Printf("Processing video chunks in directory: %s\n", chunksDir)
-
-	f := func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-
-		if d.IsDir() {
-			return nil
-		}
-
-		if !strings.HasSuffix(path, ".mp4") {
-			return nil
-		}
-
-		videoChunkFile := filepath.Join(videoDir, "chunks", path)
-
-		fmt.Print("\n=================================================\n\n")
-		fmt.Printf("Processing chunk file: %s\n", videoChunkFile)
-
-		duration, err := getVideoDuration(videoChunkFile)
-		if err != nil {
-			return fmt.Errorf("get video duration: %w", err)
-		}
-
-		// Defer the total time computation until after processing the chunk.
-		defer func() {
-			startingVideoTime += duration
-		}()
-
-		err = processChunk(ctx, col, llmVision, llmTextEmbed, videoDir, videoFileName, videoChunkFile, startingVideoTime, duration)
-		if err != nil {
-			if errors.Is(err, ErrFFMPEG) {
-				fmt.Printf("FFMPEG error processing chunk: %s\n", err)
-				return nil
-			}
-			return fmt.Errorf("process chunk: %w", err)
-		}
-
-		return nil
-	}
-
-	if err := fs.WalkDir(os.DirFS(chunksDir), ".", f); err != nil {
-		return fmt.Errorf("walk directory: %w", err)
+	for _, record := range records {
+		fmt.Printf("\u001b[93m%s\u001b[0m", record)
 	}
 
 	return nil
 }
 
-func processChunk(ctx context.Context, col *mongo.Collection, llmVision *client.LLM, llmTextEmbed *client.LLM, videoDir string, videoFileName string, videoChunkFile string, startingVideoTime float64, duration float64) error {
-	exists, err := existsDocument(ctx, col, videoFileName, videoChunkFile)
-	if err != nil {
-		return fmt.Errorf("exists document: %w", err)
-	}
-	if exists {
-		fmt.Printf("Document exists: %s, %s\n", videoFileName, filepath.Base(videoChunkFile))
-		return nil
-	}
+func ollama(ctx context.Context, data string) (string, error) {
+	const prompt = `
+		This data represents a menu. Structure this data to align the categories,
+		items, descriptions, and prices together in a CSV format. First categorize
+		the items, then make sure each item is matched to a category and
+		description. Only output the CSV data and nothing else.
+		
+		Use this as an example:
 
-	transcription, err := extractAudioTranscription(videoChunkFile)
-	if err != nil {
-		return fmt.Errorf("extract audio transcription: %w", err)
-	}
+		"CATEGORY","ITEM","DESC",PRICE
+	`
 
-	if err := createKeyFrameFiles(videoChunkFile); err != nil {
-		return fmt.Errorf("create key frame files: %w %w", ErrFFMPEG, err)
-	}
-
-	chunkName := filepath.Base(videoChunkFile)
-
-	keyFrames, err := processKeyFrameFiles(chunkName, videoDir, llmVision)
-	if err != nil {
-		return fmt.Errorf("process key frame files: %w", err)
+	conversation := []client.D{
+		{
+			"role":    "user",
+			"content": prompt,
+		},
+		{
+			"role":    "user",
+			"content": data,
+		},
 	}
 
-	if len(keyFrames) == 0 {
-		fmt.Println("No key frames found")
-		return nil
+	d := client.D{
+		"model":       model,
+		"messages":    conversation,
+		"max_tokens":  contextWindow,
+		"temperature": 0.0,
+		"top_p":       0.1,
+		"top_k":       1,
+		"stream":      true,
+	}
+
+	ch := make(chan client.ChatSSE, 100)
+
+	sseClient := client.NewSSE[client.ChatSSE](client.StdoutLogger)
+	if err := sseClient.Do(ctx, http.MethodPost, urlModel, d, ch); err != nil {
+		return "", fmt.Errorf("do request: %w", err)
 	}
 
 	// -------------------------------------------------------------------------
 
-	fmt.Print("\n")
+	fmt.Print("\nReasoning:\n")
+	reasoning := true
 
-	var sb strings.Builder
-	sb.WriteString(transcription)
-	sb.WriteString("\n")
-	for _, frame := range keyFrames {
-		if frame.classification == "icon" || frame.classification == "other" {
+	var csvData strings.Builder
+
+	for resp := range ch {
+		if len(resp.Choices) == 0 {
 			continue
 		}
-		sb.WriteString(frame.description)
-		sb.WriteString("\n")
-		if frame.classification == "source code" {
-			sb.WriteString(frame.text)
-			sb.WriteString("\n")
-		}
-	}
 
-	input := sb.String()
-
-	fmt.Print("\n")
-	fmt.Printf("Video: %s\n", videoFileName)
-	fmt.Printf("Chunk: %s\n", filepath.Base(videoChunkFile))
-	fmt.Printf("Starting Video Time: %f\n", startingVideoTime)
-	fmt.Printf("Duration: %f\n", duration)
-	fmt.Printf("Input: %s\n", input)
-
-	embed, err := llmTextEmbed.EmbedText(ctx, input)
-	if err != nil {
-		return fmt.Errorf("embed text: %w", err)
-	}
-
-	if err := insertDocument(ctx, col, embed, input, videoFileName, videoChunkFile, startingVideoTime, duration); err != nil {
-		return fmt.Errorf("insert document: %w", err)
-	}
-
-	return nil
-}
-
-// =============================================================================
-
-func splitVideoIntoChunks(videoPath string) error {
-	fmt.Printf("Splitting video into chunks: %s\n", videoPath)
-
-	ffmpegCommand := fmt.Sprintf("ffmpeg -i %s -c copy -map 0 -f segment -segment_time %d -reset_timestamps 1 -loglevel error zarf/samples/videos/chunks/output_%%05d.mp4", videoPath, chunkSize)
-	out, err := exec.Command("/bin/sh", "-c", ffmpegCommand).CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("error while running ffmpeg: %s, %w: %s", videoPath, err, string(out))
-	}
-
-	return nil
-}
-
-func getVideoDuration(videoChunkFile string) (float64, error) {
-	fmt.Println("Getting video duration")
-
-	cmd := exec.Command("ffprobe", "-v", "quiet", "-print_format", "json",
-		"-show_entries", "format=duration", videoChunkFile)
-
-	output, err := cmd.Output()
-	if err != nil {
-		return 0, err
-	}
-
-	var probe struct {
-		Format struct {
-			Duration string `json:"duration"`
-		} `json:"format"`
-	}
-
-	if err := json.Unmarshal(output, &probe); err != nil {
-		return 0, err
-	}
-
-	duration, err := strconv.ParseFloat(probe.Format.Duration, 64)
-	if err != nil {
-		return 0, err
-	}
-
-	return duration, nil
-}
-
-func extractAudioTranscription(videoChunkFile string) (string, error) {
-	fmt.Println("Extracting audio transcription")
-
-	queue := chunkSize + 5
-
-	ffmpegCommand := fmt.Sprintf("ffmpeg -i %s -vn -af \"whisper=model=zarf/models/ggml-tiny.bin :destination=- :format=text :queue=%d\" -loglevel error -f null -", videoChunkFile, queue)
-	out, err := exec.Command("/bin/sh", "-c", ffmpegCommand).CombinedOutput()
-	if err != nil {
-		return "", fmt.Errorf("error while running ffmpeg: %w: %s", err, string(out))
-	}
-
-	return string(out), nil
-}
-
-func processKeyFrameFiles(chunkName string, videoDir string, llmVision *client.LLM) ([]keyFrame, error) {
-	fmt.Println("Processing key frames")
-
-	fullpath := filepath.Join(videoDir, framesDir, chunkName)
-
-	keyFramefiles, err := getFilesFromDirectory(fullpath)
-	if err != nil {
-		return nil, fmt.Errorf("get files from directory: %w", err)
-	}
-
-	var keyFrames []keyFrame
-
-	switch l := len(keyFramefiles); l {
-	case 0:
-		return nil, nil
-
-	case 1:
-		keyFrames = []keyFrame{
-			{fileName: keyFramefiles[0]},
-		}
-
-	default:
-		first := 0
-		last := l - 1
-		keyFrames = []keyFrame{
-			{fileName: keyFramefiles[first]},
-			{fileName: keyFramefiles[last]},
-		}
-	}
-
-	if err := createKeyFrameDescriptions(keyFrames, llmVision); err != nil {
-		return nil, fmt.Errorf("create key frame descriptions: %w", err)
-	}
-
-	return keyFrames, nil
-}
-
-func createKeyFrameFiles(videoChunkFile string) error {
-	fmt.Println("Creating key frame files")
-
-	chunkName := filepath.Base(videoChunkFile)
-
-	if err := os.RemoveAll(videoDir + "/" + framesDir + "/" + chunkName); err != nil {
-		return fmt.Errorf("remove past work files: %w", err)
-	}
-
-	if err := os.MkdirAll(videoDir+"/"+framesDir+"/"+chunkName, 0755); err != nil {
-		return fmt.Errorf("mkdirall: %w", err)
-	}
-
-	ffmpegCommand := fmt.Sprintf("ffmpeg -skip_frame nokey -i %s -vf \"scale='if(gt(iw,ih),%d,-1)':'if(gt(ih,iw),%d,-1)'\" -fps_mode vfr -frame_pts true -loglevel error zarf/samples/videos/%s/%s/%%05d.png", videoChunkFile, frameWidth, frameHeight, framesDir, chunkName)
-
-	out, err := exec.Command("/bin/sh", "-c", ffmpegCommand).CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("error while running ffmpeg: %w: %s", err, string(out))
-	}
-
-	return nil
-}
-
-func createKeyFrameDescriptions(keyFrames []keyFrame, llmVision *client.LLM) error {
-	fmt.Printf("Creating key frame descriptions: %d\n", len(keyFrames))
-
-	semaphore := 1
-	v := os.Getenv("OLLAMA_NUM_PARALLEL")
-	if v != "" {
-		var err error
-		semaphore, err = strconv.Atoi(v)
-		if err != nil {
-			semaphore = 1
-		}
-	}
-
-	ch := make(chan bool, semaphore)
-
-	var g errgroup.Group
-
-	for i, keyFrame := range keyFrames {
-		g.Go(func() error {
-			ch <- true
-			defer func() {
-				<-ch
-			}()
-
-			fmt.Printf("\t- Creating key frame description: %s\n", filepath.Base(keyFrame.fileName))
-
-			image, mimeType, err := readImage(keyFrame.fileName)
-			if err != nil {
-				return fmt.Errorf("read image: %w", err)
+		switch {
+		case resp.Choices[0].Delta.Content != "":
+			if reasoning {
+				fmt.Print("\n\nOutput:\n")
+				reasoning = false
 			}
+			fmt.Print(resp.Choices[0].Delta.Content)
+			csvData.WriteString(resp.Choices[0].Delta.Content)
 
-			ctx, cancel := context.WithTimeout(context.Background(), frameDescTimeout)
-			defer cancel()
-
-			p1 := client.WithImage(mimeType, image)
-			p2 := client.WithParams(0.0, 0.1, 1)
-
-			response, err := llmVision.ChatCompletions(ctx, promptKeyFrameDesc, p1, p2)
-			if err != nil {
-				return fmt.Errorf("chat completions: %w", err)
-			}
-
-			jsonDoc, text, err := extractParts(response)
-			if err != nil {
-				return fmt.Errorf("extract parts: %w: %s", err, response)
-			}
-
-			var descr struct {
-				Description    string `json:"description"`
-				Classification string `json:"classification"`
-			}
-			if err := json.Unmarshal([]byte(jsonDoc), &descr); err != nil {
-				return fmt.Errorf("unmarshal: %w: %s", err, jsonDoc)
-			}
-
-			keyFrames[i].description = descr.Description
-			keyFrames[i].classification = descr.Classification
-			keyFrames[i].text = text
-
-			return nil
-		})
-	}
-
-	if err := g.Wait(); err != nil {
-		if errors.Is(err, context.DeadlineExceeded) {
-			fmt.Println("createKeyFrameDescriptions: context deadline exceeded")
-			return nil
+		case resp.Choices[0].Delta.Reasoning != "":
+			fmt.Printf("\u001b[91m%s\u001b[0m", resp.Choices[0].Delta.Reasoning)
 		}
-
-		return fmt.Errorf("createKeyFrameDescriptions: %w", err)
 	}
 
-	return nil
-}
-
-func extractParts(description string) (string, string, error) {
-	jsonMarker := "** JSON DOCUMENT"
-	codeMarker := "** TEXT"
-
-	jsonStart := strings.Index(description, jsonMarker)
-	if jsonStart == -1 {
-		return "", "", fmt.Errorf("JSON document marker not found")
-	}
-
-	codeStart := strings.Index(description, codeMarker)
-	if codeStart == -1 {
-		// If no source code marker, just return JSON part and empty code
-		jsonDoc := strings.TrimSpace(description[jsonStart+len(jsonMarker):])
-		return jsonDoc, "", nil
-	}
-
-	jsonDoc := strings.TrimSpace(description[jsonStart+len(jsonMarker) : codeStart])
-	sourceCode := strings.TrimSpace(description[codeStart+len(codeMarker):])
-
-	jsonDoc = strings.Trim(jsonDoc, "`")
-	jsonDoc = strings.TrimPrefix(jsonDoc, "json")
-
-	sourceCode = strings.Trim(sourceCode, "`")
-	sourceCode = strings.TrimPrefix(sourceCode, "go")
-
-	return jsonDoc, sourceCode, nil
-}
-
-func getFilesFromDirectory(directoryPath string) ([]string, error) {
-	var files []string
-
-	err := filepath.Walk(directoryPath, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-
-		if !info.IsDir() && (filepath.Ext(info.Name()) == ".png" || filepath.Ext(info.Name()) == ".jpg" || filepath.Ext(info.Name()) == ".jpeg" || filepath.Ext(info.Name()) == ".png") {
-			files = append(files, path)
-		}
-
-		return nil
-	})
-	if err != nil {
-		return nil, fmt.Errorf("walk directory: %w", err)
-	}
-
-	return files, nil
-}
-
-func readImage(fileName string) ([]byte, string, error) {
-	data, err := os.ReadFile(fileName)
-	if err != nil {
-		return nil, "", fmt.Errorf("read file: %w", err)
-	}
-
-	switch mimeType := http.DetectContentType(data); mimeType {
-	case "image/jpeg", "image/png":
-		return data, mimeType, nil
-	default:
-		return nil, "", fmt.Errorf("unsupported file type: %s: filename: %s", mimeType, fileName)
-	}
+	return csvData.String(), nil
 }

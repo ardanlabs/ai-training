@@ -1,13 +1,14 @@
-// This example shows you how to use the program from cmd/examples/example10/step4/main.go
-// and move the tooling to a MCP service that is called by the tooling.
+// This example provides a chat interface for the video that was processed
+// in step1.
 //
 // # Running the example:
 //
-//	$ make example10-step4
+//	$ make example11-step2
 //
 // # This requires running the following commands:
 //
 //	$ make ollama-up  // This starts the Ollama service.
+
 package main
 
 import (
@@ -24,16 +25,20 @@ import (
 	"time"
 
 	"github.com/ardanlabs/ai-training/foundation/client"
+	"github.com/ardanlabs/ai-training/foundation/mongodb"
 	"github.com/ardanlabs/ai-training/foundation/tiktoken"
+	"go.mongodb.org/mongo-driver/mongo"
 )
 
 var (
-	url     = "http://localhost:11434/v1/chat/completions"
-	model   = "gpt-oss:latest"
-	mcpHost = "localhost:8080"
+	urlChat   = "http://localhost:11434/v1/chat/completions"
+	modelChat = "gpt-oss:latest"
+
+	urlTextEmbed   = "http://localhost:11434/v1/embeddings"
+	modelTextEmbed = "bge-m3:latest"
 
 	// The context window represents the maximum number of tokens that can be sent
-	// and received by the model. The default for Ollama is 8K. In the makefile
+	// and received by the model. The default for Ollama is 4K. In the makefile
 	// it has been increased to 64K.
 	contextWindow = 1024 * 4
 )
@@ -47,18 +52,16 @@ func init() {
 		}
 	}
 
-	if v := os.Getenv("LLM_SERVER"); v != "" {
-		url = v
+	if v := os.Getenv("LLM_CHATSERVER"); v != "" {
+		urlChat = v
 	}
 
-	if v := os.Getenv("LLM_MODEL"); v != "" {
-		model = v
-	}
-
-	if v := os.Getenv("MCP_HOST"); v != "" {
-		mcpHost = v
+	if v := os.Getenv("LLM_CHATMODEL"); v != "" {
+		modelChat = v
 	}
 }
+
+// =============================================================================
 
 func main() {
 	if err := run(); err != nil {
@@ -80,8 +83,7 @@ func run() error {
 	}
 
 	// -------------------------------------------------------------------------
-	// Construct the logger, client to talk to the model, and the agent. Then
-	// start the agent.
+	// Construct the agent and get it started.
 
 	agent, err := NewAgent(getUserMessage)
 	if err != nil {
@@ -102,16 +104,31 @@ type Tool interface {
 
 // Agent represents the chat agent that can use tools to perform tasks.
 type Agent struct {
-	sseClient      *client.SSEClient[client.ChatSSE]
-	mcpClient      *mcpClient
-	getUserMessage func() (string, bool)
-	tke            *tiktoken.Tiktoken
-	tools          map[string]Tool
-	toolDocuments  []client.D
+	chatClient      *client.LLM
+	textEmbedClient *client.LLM
+	sseClient       *client.SSEClient[client.ChatSSE]
+	col             *mongo.Collection
+	getUserMessage  func() (string, bool)
+	tke             *tiktoken.Tiktoken
+	tools           map[string]Tool
+	toolDocuments   []client.D
 }
 
 // NewAgent creates a new instance of Agent.
 func NewAgent(getUserMessage func() (string, bool)) (*Agent, error) {
+	// -------------------------------------------------------------------------
+	// Init access to the DB.
+
+	ctx := context.Background()
+	dbClient, err := mongodb.Connect(ctx, "mongodb://localhost:27017", "ardan", "ardan")
+	if err != nil {
+		return nil, fmt.Errorf("mongodb.Connect: %w", err)
+	}
+
+	col, err := initDB(ctx, dbClient)
+	if err != nil {
+		return nil, fmt.Errorf("initDB: %w", err)
+	}
 
 	// -------------------------------------------------------------------------
 	// Construct the tokenizer.
@@ -124,22 +141,17 @@ func NewAgent(getUserMessage func() (string, bool)) (*Agent, error) {
 	// -------------------------------------------------------------------------
 	// Construct the agent.
 
-	mcpClient := newMCPClient()
-
 	tools := map[string]Tool{}
 
 	agent := Agent{
-		sseClient:      client.NewSSE[client.ChatSSE](client.StdoutLogger),
-		mcpClient:      newMCPClient(),
-		getUserMessage: getUserMessage,
-		tke:            tke,
-		tools:          tools,
-		toolDocuments: []client.D{
-			RegisterReadFile(mcpClient, tools),
-			RegisterSearchFiles(mcpClient, tools),
-			RegisterCreateFile(mcpClient, tools),
-			RegisterGoCodeEditor(mcpClient, tools),
-		},
+		chatClient:      client.NewLLM(urlChat, modelChat),
+		textEmbedClient: client.NewLLM(urlTextEmbed, modelTextEmbed),
+		sseClient:       client.NewSSE[client.ChatSSE](client.StdoutLogger),
+		col:             col,
+		getUserMessage:  getUserMessage,
+		tke:             tke,
+		tools:           tools,
+		toolDocuments:   []client.D{},
 	}
 
 	return &agent, nil
@@ -174,7 +186,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		"content": systemPrompt,
 	})
 
-	fmt.Printf("\nChat with %s (use 'ctrl-c' to quit)\n", model)
+	fmt.Printf("\nChat with %s (use 'ctrl-c' to quit)\n", modelChat)
 
 	timeForResult := time.NewTicker(100 * time.Millisecond)
 
@@ -188,6 +200,12 @@ func (a *Agent) Run(ctx context.Context) error {
 			userInput, ok := a.getUserMessage()
 			if !ok {
 				break
+			}
+
+			userInput, err := a.injectContext(ctx, conversation, userInput)
+			if err != nil {
+				fmt.Printf("\n\n\u001b[91mERROR:%s\u001b[0m\n\n", err)
+				continue
 			}
 
 			conversation = append(conversation, client.D{
@@ -211,7 +229,7 @@ func (a *Agent) Run(ctx context.Context) error {
 				select {
 				case <-timeForResult.C:
 					m := time.Since(start).Milliseconds()
-					fmt.Printf("\r\u001b[93m%s %d.%03d\u001b[0m: ", model, m/1000, m%1000)
+					fmt.Printf("\r\u001b[93m%s %d.%03d\u001b[0m: ", modelChat, m/1000, m%1000)
 
 				case <-wctx.Done():
 					fmt.Print("\n")
@@ -227,7 +245,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		// tool call or providing a user request.
 
 		d := client.D{
-			"model":          model,
+			"model":          modelChat,
 			"messages":       conversation,
 			"max_tokens":     contextWindow,
 			"temperature":    0.0,
@@ -238,12 +256,12 @@ func (a *Agent) Run(ctx context.Context) error {
 			"tool_selection": "auto",
 		}
 
-		fmt.Printf("\u001b[93m\n%s\u001b[0m: 0.000", model)
+		fmt.Printf("\u001b[93m\n%s\u001b[0m: 0.000", modelChat)
 
 		ch := make(chan client.ChatSSE, 100)
 		ctx, cancelDoCall := context.WithTimeout(ctx, time.Minute*5)
 
-		if err := a.sseClient.Do(ctx, http.MethodPost, url, d, ch); err != nil {
+		if err := a.sseClient.Do(ctx, http.MethodPost, urlChat, d, ch); err != nil {
 			fmt.Printf("\n\n\u001b[91mERROR:%s\u001b[0m\n\n", err)
 			inToolCall = false
 			cancelDoCall()
@@ -363,6 +381,89 @@ func (a *Agent) Run(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// injectContext will add context to the user input based on the search results.
+func (a *Agent) injectContext(ctx context.Context, conversation []client.D, userInput string) (string, error) {
+	yes, err := a.isQuestionRelevant(ctx, conversation, userInput)
+	if err != nil {
+		return "", fmt.Errorf("failed to check if search is needed: %w", err)
+	}
+
+	if !yes {
+		return userInput, nil
+	}
+
+	results, err := textVectorSearch(ctx, a.textEmbedClient, a.col, userInput)
+	if err != nil {
+		return "", fmt.Errorf("failed to search for context: %w", err)
+	}
+
+	var extraContext string
+	for _, result := range results {
+		fmt.Printf("\u001b[95m\nScore: %.2f\u001b[0m:\n", result.Score)
+		fmt.Printf("\u001b[95m%v\u001b[0m:\n", result.Text)
+		if result.Score >= .70 {
+			extraContext += result.Text + "\n"
+		}
+	}
+
+	if extraContext != "" {
+		const prompt = "please answer the following question only using the context provided."
+		userInput = fmt.Sprintf("%s\nCONTEXT: %s\nQUESTION:%s", prompt, extraContext, userInput)
+	}
+
+	return userInput, nil
+}
+
+// isQuestionRelevant will check if the user input is relevant to the Go API
+// service development class.
+func (a *Agent) isQuestionRelevant(ctx context.Context, conversation []client.D, userInput string) (bool, error) {
+	const prompt = `
+	You are a relevance filter for Bill's Go API service development class. 
+	Determine if the following question with the current message
+	history is relevant to learning how to write API services in
+	the Go programming language presented by Bill.
+	
+	Relevant topics include: Go syntax, HTTP handlers, REST APIs,
+	JSON handling, middleware, routing, database connections,
+	authentication, testing, error handling, logging, configuration,
+	deployment, and Go best practices for web services.
+	
+	Irrelevant topics include: other programming languages,
+	unrelated Go topics (like GUI development), general programming
+	theory without Go context, or completely off-topic questions.
+
+	If the user is asking a followup question to a previous question,
+	consider it not relevant.
+
+	History: %s
+	
+	Question: %s
+
+	Respond with only "RELEVANT" or "NOT RELEVANT" followed by a brief reason.
+`
+
+	var history string
+	start := max(len(conversation)-2, 0)
+	for _, msg := range conversation[start:] {
+		history += msg["content"].(string) + "\n"
+	}
+
+	text := fmt.Sprintf(prompt, history, userInput)
+
+	result, err := a.chatClient.ChatCompletions(ctx, text)
+	if err != nil {
+		return false, fmt.Errorf("failed to check if search is needed: %w", err)
+	}
+
+	fmt.Printf("\u001b[95m\n%v\u001b[0m:\n", result)
+
+	if strings.Contains(result, "NOT RELEVANT") {
+		return false, nil
+	}
+
+	return true, nil
 }
 
 // addToConversation will add new messages to the conversation history and

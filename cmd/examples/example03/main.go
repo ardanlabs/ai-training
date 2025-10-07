@@ -1,47 +1,69 @@
-// This example shows you how to train the word2vec model with your own content
-// and leverage the model's nearest neighbor support. It also shows you how to
-// use the cosine similarity algorithm to test similarity.
+// This example shows you how to use MongoDB as a vector database to perform
+// a nearest neighbor vector search. The example will create a vector search
+// index, store 2 documents, and perform a vector search.
 //
 // # Running the example:
 //
-//	$ make example03
+//  $ make example03
 //
 // # This requires running the following command:
 //
-//  $ make download-data // This will download and uncompress the data file.
+//	$ make compose-up
 //
-// # Data File:
+// # You can use this command to open a prompt to mongodb:
 //
-//  http://snap.stanford.edu/data/amazon/productGraph/categoryFiles/reviews_Cell_Phones_and_Accessories_5.json.gz
-//
-// # WARNING
-//
-//	This example uses a C++ based dynamic library that implements the Google
-// 	word2vec model service. That dynamic library was pre-built by me. That
-// 	library can be found under `foundation/word2vec/libw2v/lib/libw2v.dylib`.
-//
-// 	If you don't want to use that dynamic library, the instructions to build your
-// 	own version exists here: https://github.com/fogfish/word2vec
-//
-// 	brew install cmake
-// 	cd foundation/word2vec/libw2v
-// 	cmake -DCMAKE_BUILD_TYPE=Release ../libw2v
-// 	make
+//  $ make mongo
 
 package main
 
 import (
-	"bufio"
-	"encoding/json"
+	"context"
 	"fmt"
 	"log"
-	"os"
-	"runtime"
+	"time"
 
-	"github.com/ardanlabs/ai-training/foundation/stopwords"
+	"github.com/ardanlabs/ai-training/foundation/client"
+	"github.com/ardanlabs/ai-training/foundation/mongodb"
 	"github.com/ardanlabs/ai-training/foundation/vector"
-	"github.com/ardanlabs/ai-training/foundation/word2vec"
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
+
+const (
+	dbName     = "example3"
+	colName    = "book"
+	dimensions = 1024
+)
+
+var (
+	url   = "http://localhost:11434/v1/embeddings"
+	model = "bge-m3:latest"
+)
+
+// =============================================================================
+
+type document struct {
+	ID        int       `bson:"id"`
+	Name      string    `bson:"name"`
+	Text      string    `bson:"text"`
+	Embedding []float64 `bson:"embedding"`
+}
+
+// Vector can convert the specified data into a vector.
+func (d document) Vector() []float64 {
+	return d.Embedding
+}
+
+type searchResult struct {
+	ID        int       `bson:"id"`
+	Name      string    `bson:"name"`
+	Text      string    `bson:"text"`
+	Embedding []float64 `bson:"embedding"`
+	Score     float64   `bson:"score"`
+}
+
+// =============================================================================
 
 func main() {
 	if err := run(); err != nil {
@@ -50,142 +72,194 @@ func main() {
 }
 
 func run() error {
-	if err := cleanData(); err != nil {
-		return fmt.Errorf("cleanData: %w", err)
-	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
 
-	if err := trainModel(); err != nil {
-		return fmt.Errorf("trainModel: %w", err)
-	}
-
-	if err := testModel(); err != nil {
-		return fmt.Errorf("trainModel: %w", err)
-	}
-
-	return nil
-}
-
-func cleanData() error {
-	type document struct {
-		ReviewText string
-	}
-
-	input, err := os.Open("zarf/data/example3.json")
-	if err != nil {
-		return fmt.Errorf("open file: %w", err)
-	}
-	defer input.Close()
-
-	output, err := os.Create("zarf/data/example3.words")
-	if err != nil {
-		return fmt.Errorf("create file: %w", err)
-	}
-	defer output.Close()
-
-	var counter int
-
-	fmt.Print("\033[s")
-
-	scanner := bufio.NewScanner(input)
-	for scanner.Scan() {
-		s := scanner.Text()
-
-		var d document
-		err := json.Unmarshal([]byte(s), &d)
-		if err != nil {
-			return fmt.Errorf("unmarshal: %w", err)
-		}
-
-		v := stopwords.Remove(d.ReviewText)
-
-		output.WriteString(v)
-		output.WriteString("\n")
-
-		counter++
-
-		fmt.Print("\033[u\033[K")
-		fmt.Printf("Reading/Cleaning Data: %d", counter)
-	}
-
-	fmt.Print("\n")
-
-	return nil
-}
-
-func trainModel() error {
-	fmt.Println("Training Model ...")
-	fmt.Print("\n")
-
-	config := word2vec.Config{
-		Corpus: word2vec.ConfigCorpus{
-			InputFile: "zarf/data/example3.words",
-			Tokenizer: " \n,.-!?:;/\"#$%&'()*+<=>@[]\\^_`{|}~\t\v\f\r",
-			Sequencer: ".\n?!",
-		},
-		Vector: word2vec.ConfigWordVector{
-			Vector:    300,
-			Window:    5,
-			Threshold: 1e-3,
-			Frequency: 5,
-		},
-		Learning: word2vec.ConfigLearning{
-			Epoch: 10,
-			Rate:  0.05,
-		},
-		UseSkipGram:            false,
-		UseCBOW:                true,
-		UseNegativeSampling:    true,
-		UseHierarchicalSoftMax: false,
-		SizeNegativeSampling:   5,
-		Threads:                runtime.GOMAXPROCS(0),
-		Verbose:                true,
-		Output:                 "zarf/data/example3.model",
-	}
-
-	if err := word2vec.Train(config); err != nil {
-		return fmt.Errorf("train: %w", err)
-	}
-
-	fmt.Print("\n")
-
-	return nil
-}
-
-func testModel() error {
-	fmt.Println("Testing Model ...")
-	fmt.Print("\n")
-
-	w2v, err := word2vec.Load("zarf/data/example3.model", 300)
-	if err != nil {
-		return err
-	}
-
-	seq := make([]word2vec.Nearest, 10)
-	w2v.Lookup("bad", seq)
-
-	fmt.Println("Top 10 words similar to \"bad\"")
-	fmt.Println(seq)
-	fmt.Print("\n")
+	// Construct the llm client for access the model server.
+	llm := client.NewLLM(url, model)
 
 	// -------------------------------------------------------------------------
 
-	words := []string{"terrible", "horrible", "price", "battery", "great", "nice"}
+	fmt.Println("\nConnecting to MongoDB")
 
-	for i := 0; i < len(words); i = i + 2 {
-		var word1 [300]float32
-		if err := w2v.VectorOf(words[i], word1[:]); err != nil {
-			return err
-		}
+	client, err := mongodb.Connect(ctx, "mongodb://localhost:27017", "ardan", "ardan")
+	if err != nil {
+		return fmt.Errorf("mongodb.Connect: %w", err)
+	}
+	defer client.Disconnect(ctx)
 
-		var word2 [300]float32
-		if err := w2v.VectorOf(words[i+1], word2[:]); err != nil {
-			return err
-		}
+	// -------------------------------------------------------------------------
 
-		v := vector.CosineSimilarity32(word1[:], word2[:])
+	fmt.Println("Initializing Database")
 
-		fmt.Printf("The cosine similarity between the word %q and %q: %.3f%%\n", words[i], words[i+1], v*100)
+	col, err := initDB(ctx, client)
+	if err != nil {
+		return fmt.Errorf("initDB: %w", err)
 	}
 
+	// -------------------------------------------------------------------------
+
+	if err := insertDocuments(ctx, llm, col); err != nil {
+		return err
+	}
+
+	// -------------------------------------------------------------------------
+
+	fmt.Print("\n---- VECTOR SEARCH ----\n\n")
+
+	search := func(searchDocument string) {
+		fmt.Printf("Searching for: %q\n", searchDocument)
+
+		results, err := vectorSearch(ctx, col, llm, searchDocument, 10)
+		if err != nil {
+			fmt.Printf("error while searching: %v", fmt.Errorf("storeDocuments: %w", err))
+		}
+
+		for _, result := range results {
+			fmt.Printf("%s -> %s: %.2f%% similar\n",
+				result.Name,
+				result.Text,
+				result.Score)
+		}
+
+		fmt.Printf("\n\n")
+	}
+
+	search("worker")
+	search("worker woman")
+	search("human worker woman")
+
+	fmt.Printf("\n\n")
+	
 	return nil
+}
+
+func initDB(ctx context.Context, client *mongo.Client) (*mongo.Collection, error) {
+	db := client.Database(dbName)
+
+	col, err := mongodb.CreateCollection(ctx, db, colName)
+	if err != nil {
+		return nil, fmt.Errorf("createCollection: %w", err)
+	}
+
+	const indexName = "vector_index"
+
+	settings := mongodb.VectorIndexSettings{
+		NumDimensions: dimensions,
+		Path:          "embedding",
+		Similarity:    "cosine",
+	}
+
+	if err := mongodb.CreateVectorIndex(ctx, col, indexName, settings); err != nil {
+		return nil, fmt.Errorf("createVectorIndex: %w", err)
+	}
+
+	unique := true
+	indexModel := mongo.IndexModel{
+		Keys:    bson.D{{Key: "id", Value: 1}},
+		Options: &options.IndexOptions{Unique: &unique},
+	}
+	col.Indexes().CreateOne(ctx, indexModel)
+
+	// Delete any documents that might be there.
+	col.DeleteMany(ctx, bson.D{})
+
+	return col, nil
+}
+
+func insertDocuments(ctx context.Context, llm *client.LLM, col *mongo.Collection) error {
+	fmt.Println("Inserting Documents")
+
+	// Apply the feature vectors to the hand crafted data points.
+	// This time you need to use words since we are using a word based model.
+	documents := []vector.Data{
+		document{ID: 1, Name: "Horse   ", Text: "Animal Female"},
+		document{ID: 2, Name: "Man     ", Text: "Human  Male   Pants Poor Worker"},
+		document{ID: 3, Name: "Woman   ", Text: "Human  Female Dress Poor Worker"},
+		document{ID: 4, Name: "King    ", Text: "Human  Male   Pants Rich Ruler"},
+		document{ID: 5, Name: "Queen   ", Text: "Human  Female Dress Rich Ruler"},
+	}
+
+	fmt.Print("\n")
+
+	var data []any
+
+	// Iterate over each data point and use the LLM to generate the vector
+	// embedding related to the model.
+	for i, dp := range documents {
+		dataPoint := dp.(document)
+
+		embedding, err := llm.EmbedText(ctx, dataPoint.Text)
+		if err != nil {
+			return fmt.Errorf("embedding: %w", err)
+		}
+
+		dataPoint.Embedding = embedding
+		documents[i] = dataPoint
+
+		data = append(data, dataPoint)
+
+		fmt.Printf("Vector: Name(%s) len(%d) %v...%v\n", dataPoint.Name, len(embedding), embedding[0:2], embedding[len(embedding)-2:])
+	}
+
+	res, err := col.InsertMany(ctx, data)
+	if err != nil {
+		return fmt.Errorf("insert: %w", err)
+	}
+
+	fmt.Println("\nInserted IDs:")
+
+	for _, insertedID := range res.InsertedIDs {
+		fmt.Printf("%v\n", insertedID)
+	}
+
+	// We need to give Mongo a little time to index the documents.
+	time.Sleep(time.Second)
+
+	return nil
+}
+
+func vectorSearch(ctx context.Context, col *mongo.Collection, llm *client.LLM, searchDocument string, limit int) ([]searchResult, error) {
+	embedding, err := llm.EmbedText(ctx, searchDocument)
+	if err != nil {
+		return nil, fmt.Errorf("embedding: %w", err)
+	}
+
+	pipeline := mongo.Pipeline{
+		{{
+			Key: "$vectorSearch",
+			Value: bson.M{
+				"index":       "vector_index",
+				"exact":       true,
+				"path":        "embedding",
+				"queryVector": embedding,
+				"limit":       limit,
+			}},
+		},
+		{{
+			Key: "$project",
+			Value: bson.M{
+				"id":        1,
+				"name":      1,
+				"text":      1,
+				"embedding": 1,
+				"score": bson.M{
+					"$meta": "vectorSearchScore",
+				},
+			}},
+		},
+	}
+
+	cur, err := col.Aggregate(ctx, pipeline)
+	if err != nil {
+		return nil, fmt.Errorf("aggregate: %w", err)
+	}
+	defer cur.Close(ctx)
+
+	var results []searchResult
+	if err := cur.All(ctx, &results); err != nil {
+		return nil, fmt.Errorf("all: %w", err)
+	}
+
+	return results, nil
 }

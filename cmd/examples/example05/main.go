@@ -1,5 +1,17 @@
-// This example shows you how to Ollama to create a reasonable response to a
-// question with provided content.
+// This example shows you how to use MongoDB and Ollama to create a proper vector
+// embedding database of the Ultimate Go Notebook. With this vector database,
+// you will be able to query for content that has a strong similarity to your
+// question.
+//
+// The book has already been pre-processed into chunks based on the books TOC.
+// For chunks over 500 words, those chunks have been chunked again into 250
+// blocks. The code will create a vector embedding for each chunk.
+// That data can be found under `zarf/data/book.chunks`.
+//
+// The original version of the book in text format has been retained. The program
+// to clean that document into chunks can be found under `cmd/cleaner`. You can
+// run that program using `make clean-data`. This is here if you want to play
+// with your own chunking. How you chunk the data is critical to accuracy.
 //
 // # Running the example:
 //
@@ -7,23 +19,37 @@
 //
 // # This requires running the following command:
 //
-//  $ make ollama-up
+//	$ make compose-up // This starts MongoDB and OpenWebUI in docker compose.
+//  $ make ollama-up  // This starts the Ollama service.
 
 package main
 
 import (
+	"bufio"
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"os"
+	"regexp"
+	"strings"
 	"time"
 
 	"github.com/ardanlabs/ai-training/foundation/client"
+	"github.com/ardanlabs/ai-training/foundation/mongodb"
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 var (
-	url   = "http://localhost:11434/v1/chat/completions"
-	model = "gemma3:12b-it-qat"
+	url   = "http://localhost:11434/v1/embeddings"
+	model = "bge-m3:latest"
+
+	dbName     = "example06"
+	colName    = "book"
+	dimensions = 1024
 )
 
 func init() {
@@ -38,6 +64,14 @@ func init() {
 
 // =============================================================================
 
+type document struct {
+	ID        int       `bson:"id"`
+	Text      string    `bson:"text"`
+	Embedding []float64 `bson:"embedding"`
+}
+
+// =============================================================================
+
 func main() {
 	if err := run(); err != nil {
 		log.Fatal(err)
@@ -45,67 +79,185 @@ func main() {
 }
 
 func run() error {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	const prompt = `
-		Use the following pieces of information to answer the user's question.
-		If you don't know the answer, say that you don't know.
-		
-		Context: %s
-		
-		Question: %s
+	fmt.Println("\nCreating Embeddings")
 
-		Answer the question and provide additional helpful information, but be concise.
-
-		Responses should be properly formatted to be easily read.
-	`
-
-	question := `Is there value in the book and why?`
-
-	fmt.Printf("\nContent:\n%s\n", fakeContent)
-	fmt.Printf("\nQuestion:\n\n%s\n", question)
-
-	finalPrompt := fmt.Sprintf(prompt, fakeContent, question)
+	if err := createBookEmbeddings(ctx); err != nil {
+		return fmt.Errorf("createBookEmbeddings: %w", err)
+	}
 
 	// -------------------------------------------------------------------------
 
-	llm := client.NewLLM(url, model)
+	fmt.Println("Initializing Database")
 
-	ch, err := llm.ChatCompletionsSSE(ctx, finalPrompt)
+	client, err := mongodb.Connect(ctx, "mongodb://localhost:27017", "ardan", "ardan")
 	if err != nil {
-		return fmt.Errorf("chat completions: %w", err)
+		return fmt.Errorf("mongodb.Connect: %w", err)
 	}
 
-	fmt.Print("\nModel Response:\n\n")
-
-	for resp := range ch {
-		fmt.Print(resp.Choices[0].Delta.Content)
+	col, err := initDB(ctx, client)
+	if err != nil {
+		return fmt.Errorf("initDB: %w", err)
 	}
+
+	// -------------------------------------------------------------------------
+
+	if err := insertBookEmbeddings(ctx, col); err != nil {
+		return fmt.Errorf("insertBookEmbeddings: %w", err)
+	}
+
+	fmt.Println("\nYou can now use example07 to ask questions about this content.")
 
 	return nil
 }
 
-const fakeContent = `
-Intended Audience This notebook has been written and designed
-to provide a reference to everything that I say in the Ultimate Go class
-Its not necessarily a beginners Go book since it doesnt focus on the
-specifics of Gos syntax I would recommend the Go In Action book I wrote
-back in 2015 for that type of content Its still accurate and relevant
-Many of the things I say in the classroom over the 20 plus hours of
-instruction has been incorporated Ive tried to capture all the guidelines
-design philosophy whiteboarding and notes I share at the same moments I
-share them If you have taken the class before I believe this notebook will
-be invaluable for reminders on the content If you have never taken the class
-I still believe there is value in this book It covers more advanced topics
-not found in other books today Ive tried to provide a well rounded curriculum
-of topics from types to profiling I have also been able to provide examples
-for writing generic function and types in Go which will be available in
-version 118 of Go The book is written in the first person to drive home the
-idea that this is my book of notes from the Ultimate Go class The first
-chapter provides a set of design philosophies quotes and extra reading to
-help prepare your mind for the material Chapters 213 provide the core content
-from the class Chapter 14 provides a reediting of important blog posts Ive
-written in the past These posts are presented here to enhance some of the
-more technical chapters like garbage collection and concurrency If you are
-struggling with this book please provide me any feedback over email at`
+func createBookEmbeddings(ctx context.Context) error {
+	llm := client.NewLLM(url, model)
+
+	if _, err := os.Stat("zarf/data/book.embeddings"); err == nil {
+		return nil
+	}
+
+	data, err := os.ReadFile("zarf/data/book.chunks")
+	if err != nil {
+		return fmt.Errorf("read file: %w", err)
+	}
+
+	output, err := os.Create("zarf/data/book.embeddings")
+	if err != nil {
+		return fmt.Errorf("create file: %w", err)
+	}
+	defer output.Close()
+
+	fmt.Print("\n")
+	fmt.Print("\033[s")
+
+	r := regexp.MustCompile(`<CHUNK>[\w\W]*?<\/CHUNK>`)
+	chunks := r.FindAllString(string(data), -1)
+
+	// Read one chunk at a time (each line) and get the vector embedding.
+	for counter, chunk := range chunks {
+		fmt.Print("\033[u\033[K")
+		fmt.Printf("Vectorizing Data: %d of %d", counter, len(chunks))
+
+		chunk := strings.Trim(chunk, "<CHUNK>")
+		chunk = strings.Trim(chunk, "</CHUNK>")
+
+		// YOU WILL WANT TO KNOW HOW MANY TOKENS ARE CURRENTLY IN THE CHUNK
+		// SO YOU DON'T EXCEED THE NUMBER OF TOKENS THE MODEL WILL USE TO
+		// CREATE THE VECTOR EMBEDDING. THE MODEL WILL TRUNCATE YOUR CHUNK IF IT
+		// EXCEEDS THE NUMBER OF TOKENS IT CAN USE TO CREATE THE VECTOR
+		// EMBEDDING. THERE ARE MODELS THAT ONLY VECTORIZE AS LITTLE AS 512
+		// TOKENS. THERE IS A TIKTOKEN PACKAGE IN FOUNDATION TO HELP YOU WITH
+		// THIS.
+
+		vector, err := llm.EmbedText(ctx, chunk)
+		if err != nil {
+			return fmt.Errorf("embedding: %w", err)
+		}
+
+		doc := document{
+			ID:        counter,
+			Text:      chunk,
+			Embedding: vector,
+		}
+
+		data, err := json.Marshal(doc)
+		if err != nil {
+			return fmt.Errorf("marshal: %w", err)
+		}
+
+		// Write the json document to the embeddings file.
+		if _, err := output.Write(data); err != nil {
+			return fmt.Errorf("write: %w", err)
+		}
+
+		// Write a crlf for easier read access.
+		if _, err := output.Write([]byte{'\n'}); err != nil {
+			return fmt.Errorf("write crlf: %w", err)
+		}
+	}
+
+	fmt.Print("\n")
+
+	return nil
+}
+
+func insertBookEmbeddings(ctx context.Context, col *mongo.Collection) error {
+	input, err := os.Open("zarf/data/book.embeddings")
+	if err != nil {
+		return fmt.Errorf("open file: %w", err)
+	}
+	defer input.Close()
+
+	var counter int
+
+	fmt.Print("\n")
+	fmt.Print("\033[s")
+
+	// Read one document at a time (each line) and insert into mongodb.
+	scanner := bufio.NewScanner(input)
+	for scanner.Scan() {
+		counter++
+
+		// Pull the next document from the file.
+		doc := scanner.Text()
+
+		fmt.Print("\033[u\033[K")
+		fmt.Printf("Insering Data: %d", counter)
+
+		var d document
+		if err := json.Unmarshal([]byte(doc), &d); err != nil {
+			return fmt.Errorf("unmarshal: %w", err)
+		}
+
+		res := col.FindOne(ctx, bson.D{{Key: "id", Value: d.ID}})
+		if res.Err() == nil {
+			continue
+		}
+
+		if !errors.Is(res.Err(), mongo.ErrNoDocuments) {
+			return fmt.Errorf("find: %w", err)
+		}
+
+		if _, err := col.InsertOne(ctx, d); err != nil {
+			return fmt.Errorf("insert: %w", err)
+		}
+	}
+
+	fmt.Print("\n")
+
+	return nil
+}
+
+func initDB(ctx context.Context, client *mongo.Client) (*mongo.Collection, error) {
+	db := client.Database(dbName)
+
+	col, err := mongodb.CreateCollection(ctx, db, colName)
+	if err != nil {
+		return nil, fmt.Errorf("createCollection: %w", err)
+	}
+
+	const indexName = "vector_index"
+
+	settings := mongodb.VectorIndexSettings{
+		NumDimensions: dimensions,
+		Path:          "embedding",
+		Similarity:    "cosine",
+	}
+
+	if err := mongodb.CreateVectorIndex(ctx, col, indexName, settings); err != nil {
+		return nil, fmt.Errorf("createVectorIndex: %w", err)
+	}
+
+	unique := true
+	indexModel := mongo.IndexModel{
+		Keys:    bson.D{{Key: "id", Value: 1}},
+		Options: &options.IndexOptions{Unique: &unique},
+	}
+	col.Indexes().CreateOne(ctx, indexModel)
+
+	return col, nil
+}

@@ -1,69 +1,56 @@
-// This example takes step3 and shows you how to search for an image based on
-// its description.
+// This example shows you how add tool calling to the chat agent from
+// steps 2 and 3.
 //
 // # Running the example:
 //
-//	$ make example9-step4
+//	$ make example09-step4
 //
 // # This requires running the following commands:
 //
-//	$ make ollama-up
-//	$ make embedding-up
-//	$ make compose-up
+//	$ make ollama-up  // This starts the Ollama service.
 
 package main
 
 import (
+	"bufio"
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/ardanlabs/ai-training/foundation/client"
-	"github.com/ardanlabs/ai-training/foundation/mongodb"
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/mongo"
 )
 
 var (
-	urlChat    = "http://localhost:11434/v1/chat/completions"
-	urlEmbed   = "http://localhost:11434/v1/embeddings"
-	modelChat  = "gemma3:12b-it-qat"
-	modelEmbed = "bge-m3:latest"
+	url   = "http://localhost:11434/v1/chat/completions"
+	model = "gpt-oss:latest"
 
-	imagePath  = "zarf/samples/gallery/roseimg.png"
-	dbName     = "example9"
-	colName    = "images-4"
-	dimensions = 1024
+	// The context window represents the maximum number of tokens that can be sent
+	// and received by the model. The default for Ollama is 4K. In the makefile
+	// it has been increased to 64K.
+	contextWindow = 1024 * 4
 )
 
 func init() {
-	if v := os.Getenv("LLM_CHAT_SERVER"); v != "" {
-		urlChat = v
+	if v := os.Getenv("OLLAMA_CONTEXT_LENGTH"); v != "" {
+		var err error
+		contextWindow, err = strconv.Atoi(v)
+		if err != nil {
+			log.Fatal(err)
+		}
 	}
 
-	if v := os.Getenv("LLM_EMBED_SERVER"); v != "" {
-		urlEmbed = v
+	if v := os.Getenv("LLM_SERVER"); v != "" {
+		url = v
 	}
 
-	if v := os.Getenv("LLM_CHAT_MODEL"); v != "" {
-		modelChat = v
+	if v := os.Getenv("LLM_MODEL"); v != "" {
+		model = v
 	}
-
-	if v := os.Getenv("LLM_EMBED_MODEL"); v != "" {
-		modelEmbed = v
-	}
-}
-
-// =============================================================================
-
-type document struct {
-	FileName    string    `bson:"file_name"`
-	Description string    `bson:"description"`
-	Embedding   []float64 `bson:"embedding"`
 }
 
 // =============================================================================
@@ -75,324 +62,254 @@ func main() {
 }
 
 func run() error {
-	ctx, cancel := context.WithTimeout(context.Background(), 240*time.Second)
-	defer cancel()
-
-	// -------------------------------------------------------------------------
-
-	fmt.Println("\nConnecting to MongoDB")
-
-	dbClient, err := mongodb.Connect(ctx, "mongodb://localhost:27017", "ardan", "ardan")
-	if err != nil {
-		return fmt.Errorf("mongodb.Connect: %w", err)
-	}
-
-	fmt.Println("Initializing Database")
-
-	col, err := initDB(ctx, dbClient)
-	if err != nil {
-		return fmt.Errorf("initDB: %w", err)
-	}
-
-	// -------------------------------------------------------------------------
-
-	findRes := col.FindOne(ctx, bson.D{{Key: "file_name", Value: imagePath}})
-	if findRes.Err() == nil {
-		fmt.Println("Deleting existing image from database")
-		_, err := col.DeleteOne(ctx, bson.D{{Key: "file_name", Value: imagePath}})
-		if err != nil {
-			return fmt.Errorf("col.DeleteOne: %w", err)
+	scanner := bufio.NewScanner(os.Stdin)
+	getUserMessage := func() (string, bool) {
+		if !scanner.Scan() {
+			return "", false
 		}
+		return scanner.Text(), true
 	}
 
-	// -------------------------------------------------------------------------
-
-	fmt.Println("\nGenerating image description:")
-
-	image, mimeType, err := readImage(imagePath)
+	agent, err := NewAgent(getUserMessage)
 	if err != nil {
-		return fmt.Errorf("readImage: %w", err)
+		return fmt.Errorf("failed to create agent: %w", err)
 	}
 
-	// -------------------------------------------------------------------------
-
-	const prompt = `
-		Describe the image and be concise and accurate keeping the description under 200 words.
-
-		Do not be overly verbose or stylistic.
-
-		Make sure all the elements in the image are enumerated and described.
-
-		At the end of the description, create a list of tags with the names of all the
-		elements in the image and do not output anything past this list.
-
-		Encode the list as valid JSON, as in this example:
-		["tag1","tag2","tag3",...]
-
-		Make sure the JSON is valid, doesn't have any extra spaces, and is
-		properly formatted.`
-
-	llm := client.NewLLM(urlChat, modelChat)
-
-	results, err := llm.ChatCompletions(ctx, prompt, client.WithImage(mimeType, image))
-	if err != nil {
-		return fmt.Errorf("llm.ChatCompletions: %w", err)
-	}
-
-	fmt.Printf("%s\n", results)
-
-	// -------------------------------------------------------------------------
-
-	fmt.Println("\nGenerating embeddings for the image description:")
-
-	embedLLM := client.NewLLM(urlEmbed, modelEmbed)
-
-	vector, err := embedLLM.EmbedText(ctx, results)
-	if err != nil {
-		return fmt.Errorf("llm.EmbedText: %w", err)
-	}
-
-	fmt.Printf("%v...%v\n", vector[0:3], vector[len(vector)-3:])
-
-	// -------------------------------------------------------------------------
-
-	fmt.Println("\nInserting image information into the database:")
-
-	d1 := document{
-		FileName:    imagePath,
-		Description: results,
-		Embedding:   vector,
-	}
-
-	res, err := col.InsertOne(ctx, d1)
-	if err != nil {
-		return fmt.Errorf("col.InsertOne: %w", err)
-	}
-
-	fmt.Printf("%s\n", res.InsertedID)
-
-	// We need to give mongodb some time to index the document.
-	// There is no way to know when this gets done.
-	time.Sleep(time.Second)
-
-	// -------------------------------------------------------------------------
-
-	fmt.Println("\nAsk a single question about images:")
-
-	question := "Do you have any images of roses?"
-	fmt.Printf("%s\n", question)
-
-	// -------------------------------------------------------------------------
-
-	fmt.Println("\nPerforming vector search:")
-
-	searchResults, err := vectorSearch(ctx, embedLLM, col, question)
-	if err != nil {
-		return fmt.Errorf("vectorSearch: %w", err)
-	}
-
-	for _, result := range searchResults {
-		fmt.Printf("FileName[%s] Score[%.2f]\n", result.FileName, result.Score)
-	}
-
-	// -------------------------------------------------------------------------
-
-	fmt.Println("\nProviding response")
-
-	if err := questionResponse(ctx, llm, question, searchResults); err != nil {
-		return fmt.Errorf("questionResponse: %w", err)
-	}
-
-	// -------------------------------------------------------------------------
-
-	fmt.Println("\n\nDONE")
-	return nil
-}
-
-func readImage(fileName string) ([]byte, string, error) {
-	data, err := os.ReadFile(fileName)
-	if err != nil {
-		return nil, "", fmt.Errorf("read file: %w", err)
-	}
-
-	switch mimeType := http.DetectContentType(data); mimeType {
-	case "image/jpeg", "image/png":
-		return data, mimeType, nil
-	default:
-		return nil, "", fmt.Errorf("unsupported file type: %s: filename: %s", mimeType, fileName)
-	}
-}
-
-func questionResponse(ctx context.Context, llm *client.LLM, question string, results []searchResult) error {
-	type searchResult struct {
-		FileName    string `json:"file_name"`
-		Description string `json:"image_description"`
-	}
-
-	fmt.Println("\nUsing these vectors:")
-
-	var finalResults []searchResult
-
-	for _, result := range results {
-		if result.Score >= 0.75 {
-			fmt.Printf("FileName[%s] Score[%.2f]\n", result.FileName, result.Score)
-			finalResults = append(finalResults, searchResult{
-				FileName:    result.FileName,
-				Description: result.Description,
-			})
-		}
-	}
-
-	content, err := json.Marshal(finalResults)
-	if err != nil {
-		return fmt.Errorf("marshal: %w", err)
-	}
-
-	// -------------------------------------------------------------------------
-	// Let's ask the LLM to provide a response
-
-	prompt := `
-		INSTRUCTIONS:
-		
-		- Use the following RESULTS to answer the user's question.
-
-		- The data will be a JSON array with the following fields:
-		
-		[
-			{
-				"file_name":string,
-				"image_description":string
-			},
-			{
-				"file_name":string,
-				"image_description":string
-			}
-		]
-
-		- The response should be in a JSON array with the following fields:
-		
-		[
-			{
-				"status": string,
-				"filename": string,
-				"description": string
-			},
-			{
-				"status": string,
-				"filename": string,
-				"description": string
-			}
-		]
-
-		- If there are no RESULTS, provide this response:
-		
-		[
-			{
-				"status": "not found"
-			}
-		]
-
-		- Do not change anything related to the file_name provided.
-		- Only provide a brief description of the image.
-		- Only provide a valid JSON response.
-
-		RESULTS:
-		
-		%s
-			
-		QUESTION:
-		
-		%s
-	`
-
-	finalPrompt := fmt.Sprintf(prompt, string(content), question)
-
-	ch, err := llm.ChatCompletionsSSE(ctx, finalPrompt)
-	if err != nil {
-		return fmt.Errorf("chat completions: %w", err)
-	}
-
-	fmt.Println("\nModel Response:")
-
-	for resp := range ch {
-		fmt.Print(resp.Choices[0].Delta.Content)
-	}
-
-	return nil
+	return agent.Run(context.TODO())
 }
 
 // =============================================================================
 
-type searchResult struct {
-	FileName    string    `bson:"file_name" json:"file_name"`
-	Description string    `bson:"description" json:"image_description"`
-	Embedding   []float64 `bson:"embedding" json:"-"`
-	Score       float64   `bson:"score" json:"-"`
+// DECLARE A TOOL INTERFACE TO ALLOW THE AGENT TO CALL ANY TOOL FUNCTION
+// WE DEFINE WITHOUT THE AGENT KNOWING THE EXACT TOOL IT IS USING.
+
+type Tool interface {
+	Call(ctx context.Context, toolCall client.ToolCall) client.D
 }
 
-func initDB(ctx context.Context, client *mongo.Client) (*mongo.Collection, error) {
-	db := client.Database(dbName)
+// =============================================================================
 
-	col, err := mongodb.CreateCollection(ctx, db, colName)
-	if err != nil {
-		return nil, fmt.Errorf("createCollection: %w", err)
-	}
+type Agent struct {
+	sseClient      *client.SSEClient[client.ChatSSE]
+	getUserMessage func() (string, bool)
 
-	const textIndexName = "vector_embedding_index"
-
-	settings := mongodb.VectorIndexSettings{
-		NumDimensions: dimensions,
-		Path:          "embedding",
-		Similarity:    "cosine",
-	}
-
-	if err := mongodb.CreateVectorIndex(ctx, col, textIndexName, settings); err != nil {
-		return nil, fmt.Errorf("createVectorIndex (text): %w", err)
-	}
-
-	return col, nil
+	// WE NEED TO ADD TOOL SUPPORT TO THE AGENT. WE NEED TO HAVE A SET OF
+	// TOOLS THAT THE AGENT CAN USE TO PERFORM TASKS AND THE CORRESPONDING
+	// DOCUMENTATION FOR THE MODEL.
+	tools         map[string]Tool
+	toolDocuments []client.D
 }
 
-func vectorSearch(ctx context.Context, llm *client.LLM, col *mongo.Collection, question string) ([]searchResult, error) {
-	vector, err := llm.EmbedText(ctx, question)
-	if err != nil {
-		return nil, fmt.Errorf("embed text: %w", err)
-	}
+func NewAgent(getUserMessage func() (string, bool)) (*Agent, error) {
 
-	pipeline := mongo.Pipeline{
-		{{
-			Key: "$vectorSearch",
-			Value: bson.M{
-				"index":       "vector_embedding_index",
-				"exact":       true,
-				"path":        "embedding",
-				"queryVector": vector,
-				"limit":       5,
-			}},
-		},
-		{{
-			Key: "$project",
-			Value: bson.M{
-				"file_name":   1,
-				"description": 1,
-				"embedding":   1,
-				"score": bson.M{
-					"$meta": "vectorSearchScore",
-				},
-			}},
+	// CONSTRUCT THE TOOLS MAP HERE BECAUSE IT IS PASSED ON TOOL CONSTRUCTION
+	// SO TOOLS CAN REGISTER THEMSELVES IN THIS MAP OF AVAILABLE TOOLS.
+	tools := map[string]Tool{}
+
+	agent := Agent{
+		sseClient:      client.NewSSE[client.ChatSSE](client.StdoutLogger),
+		getUserMessage: getUserMessage,
+
+		// ADD THE TOOLNG SUPPORT TO THE AGENT.
+		tools: tools,
+		toolDocuments: []client.D{
+			RegisterGetWeather(tools),
 		},
 	}
 
-	cur, err := col.Aggregate(ctx, pipeline)
-	if err != nil {
-		return nil, fmt.Errorf("aggregate: %w", err)
-	}
-	defer cur.Close(ctx)
+	return &agent, nil
+}
 
-	var results []searchResult
-	if err := cur.All(ctx, &results); err != nil {
-		return nil, fmt.Errorf("all: %w", err)
+// WE NEED TO EXTEND THE SYSTEM PROMPT TO INCLUDE THE TOOLING INSTRUCTIONS.
+
+const systemPrompt = `
+You are a helpful coding assistant that has tools to assist you in coding.
+
+After you request a tool call, you will receive a JSON document with two fields,
+"status" and "data". Always check the "status" field to know if the call "SUCCEED"
+or "FAILED". The information you need to respond will be provided under the "data"
+field. If the called "FAILED", just inform the user and don't try using the tool
+again for the current response.
+
+When reading Go source code always start counting lines of code from the top of
+the source code file.
+
+If you get back results from a tool call, do not verify the results.
+
+Reasoning: high
+`
+
+func (a *Agent) Run(ctx context.Context) error {
+	var conversation []client.D
+
+	// WE WILL KEEP TRACK OF WHETHER WE ARE IN A TOOL CALL.
+	var inToolCall bool
+
+	conversation = append(conversation, client.D{
+		"role":    "system",
+		"content": systemPrompt,
+	})
+
+	fmt.Printf("Chat with %s (use 'ctrl-c' to quit)\n", model)
+
+	for {
+		// CHECK IF WE ARE IN A TOOL CALL BEFORE ASKING FOR INPUT.
+		if !inToolCall {
+			fmt.Print("\u001b[94m\nYou\u001b[0m: ")
+			userInput, ok := a.getUserMessage()
+			if !ok {
+				break
+			}
+
+			conversation = append(conversation, client.D{
+				"role":    "user",
+				"content": userInput,
+			})
+		}
+
+		// WE NEED TO RESET THE TOOL CALL FLAG ON EACH ITERATION.
+		inToolCall = false
+
+		d := client.D{
+			"model":       model,
+			"messages":    conversation,
+			"max_tokens":  contextWindow,
+			"temperature": 0.1,
+			"top_p":       0.1,
+			"top_k":       1,
+			"stream":      true,
+
+			// ADDING TOOL CALLING TO THE REQUEST.
+			"tools":          a.toolDocuments,
+			"tool_selection": "auto",
+		}
+
+		fmt.Printf("\u001b[93m\n%s\u001b[0m: ", model)
+
+		ch := make(chan client.ChatSSE, 100)
+		ctx, cancelDoCall := context.WithTimeout(ctx, time.Minute*5)
+
+		if err := a.sseClient.Do(ctx, http.MethodPost, url, d, ch); err != nil {
+			fmt.Printf("\n\n\u001b[91mERROR:%s\u001b[0m\n\n", err)
+			cancelDoCall()
+			continue
+		}
+
+		var chunks []string
+		reasonThinking := false
+		contentThinking := false
+
+		fmt.Print("\n")
+
+		for resp := range ch {
+			if len(resp.Choices) == 0 {
+				continue
+			}
+
+			switch {
+
+			// WE NEED TO CHECK IF WE ARE ASKING TO MAKE A TOOL CALL.
+			case len(resp.Choices[0].Delta.ToolCalls) > 0:
+				toolCall := resp.Choices[0].Delta.ToolCalls[0]
+
+				// ADD THE TOOL CALL TO THE CONVERSATION SO THE MODEL HAS
+				// CONTEXT OF THE TOOL CALL.
+				conversation = append(conversation, client.D{
+					"role": "assistant",
+					"content": fmt.Sprintf("Tool call %s: %s(%v)",
+						toolCall.ID,
+						toolCall.Function.Name,
+						toolCall.Function.Arguments),
+				})
+
+				// WE NEED TO EXECUTE THE TOOL CALL.
+				results := a.callTools(ctx, resp.Choices[0].Delta.ToolCalls)
+
+				// NOW WE NEED TO CHECK IF THE TOOL CALLS PROVIDED ANY RESULTS
+				// TO ADD TO THE CONVERSATION AND MARK WE ARE IN A TOOL CALL.
+				if len(results) > 0 {
+					conversation = append(conversation, results...)
+					inToolCall = true
+				}
+
+			case resp.Choices[0].Delta.Content != "":
+				if reasonThinking {
+					reasonThinking = false
+					fmt.Print("\n\n")
+				}
+
+				switch resp.Choices[0].Delta.Content {
+				case "<think>":
+					contentThinking = true
+					continue
+				case "</think>":
+					contentThinking = false
+					continue
+				}
+
+				switch {
+				case !contentThinking:
+					fmt.Print(resp.Choices[0].Delta.Content)
+					chunks = append(chunks, resp.Choices[0].Delta.Content)
+
+				case contentThinking:
+					fmt.Printf("\u001b[91m%s\u001b[0m", resp.Choices[0].Delta.Content)
+				}
+
+			case resp.Choices[0].Delta.Reasoning != "":
+				if !reasonThinking {
+					fmt.Print("\n")
+				}
+
+				reasonThinking = true
+
+				fmt.Printf("\u001b[91m%s\u001b[0m", resp.Choices[0].Delta.Reasoning)
+			}
+		}
+
+		cancelDoCall()
+
+		// WE NEED TO CHECK IF WE ARE IN A TOOL CALL BECAUSE WE NEED TO GIVE THE
+		// MODEL THE RESULTS WITHOUT ANY NOISE. THE CHUNKS SHOULD BE EMPTY IN
+		// THIS CASE BUT I DON'T TRUST MODELS.
+
+		if !inToolCall && len(chunks) > 0 {
+			fmt.Print("\n")
+
+			content := strings.Join(chunks, " ")
+			content = strings.TrimLeft(content, "\n")
+
+			if content != "" {
+				conversation = append(conversation, client.D{
+					"role":    "assistant",
+					"content": strings.Join(chunks, " "),
+				})
+			}
+		}
 	}
 
-	return results, nil
+	return nil
+}
+
+// WE NEED A FUNCTION THAT LOOKS UP THE REQUESTED TOOL BY NAME AND CALLS IT
+// WITH THE MODEL PROVIDED PARAMETERS.
+
+func (a *Agent) callTools(ctx context.Context, toolCalls []client.ToolCall) []client.D {
+	var resps []client.D
+
+	for _, toolCall := range toolCalls {
+		tool, exists := a.tools[toolCall.Function.Name]
+		if !exists {
+			continue
+		}
+
+		fmt.Printf("\n\n\u001b[92m%s(%v)\u001b[0m:\n\n", toolCall.Function.Name, toolCall.Function.Arguments)
+
+		resp := tool.Call(ctx, toolCall)
+		resps = append(resps, resp)
+
+		fmt.Printf("%#v\n", resps)
+	}
+
+	return resps
 }

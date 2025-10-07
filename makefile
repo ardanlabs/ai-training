@@ -156,25 +156,42 @@ example02:
 	go run cmd/examples/example02/main.go
 
 example03:
-	go run -exec "env DYLD_LIBRARY_PATH=$$GOPATH/src/github.com/ardanlabs/ai-training/foundation/word2vec/libw2v/lib" cmd/examples/example03/main.go
+	go run cmd/examples/example03/main.go
 
 example04:
+	export OLLAMA_CONTEXT_LENGTH=$(OLLAMA_CONTEXT_LENGTH) && \
 	go run cmd/examples/example04/main.go
 
 example05:
-	export OLLAMA_CONTEXT_LENGTH=$(OLLAMA_CONTEXT_LENGTH) && \
 	go run cmd/examples/example05/main.go
 
 example06:
+	export OLLAMA_CONTEXT_LENGTH=$(OLLAMA_CONTEXT_LENGTH) && \
 	go run cmd/examples/example06/main.go
 
 example07:
 	export OLLAMA_CONTEXT_LENGTH=$(OLLAMA_CONTEXT_LENGTH) && \
 	go run cmd/examples/example07/main.go
 
-example08:
+example08-step1:
 	export OLLAMA_CONTEXT_LENGTH=$(OLLAMA_CONTEXT_LENGTH) && \
-	go run cmd/examples/example08/*.go
+	go run cmd/examples/example08/step1/main.go
+
+example08-step2:
+	export OLLAMA_CONTEXT_LENGTH=$(OLLAMA_CONTEXT_LENGTH) && \
+	go run cmd/examples/example08/step2/main.go
+
+example08-step3:
+	export OLLAMA_CONTEXT_LENGTH=$(OLLAMA_CONTEXT_LENGTH) && \
+	go run cmd/examples/example08/step3/main.go
+
+example08-step4:
+	export OLLAMA_CONTEXT_LENGTH=$(OLLAMA_CONTEXT_LENGTH) && \
+	go run cmd/examples/example08/step4/main.go
+
+example08-step5:
+	export OLLAMA_CONTEXT_LENGTH=$(OLLAMA_CONTEXT_LENGTH) && \
+	go run cmd/examples/example08/step5/main.go
 
 example09-step1:
 	export OLLAMA_CONTEXT_LENGTH=$(OLLAMA_CONTEXT_LENGTH) && \
@@ -190,53 +207,33 @@ example09-step3:
 
 example09-step4:
 	export OLLAMA_CONTEXT_LENGTH=$(OLLAMA_CONTEXT_LENGTH) && \
-	go run cmd/examples/example09/step4/main.go
+	go run cmd/examples/example09/step4/*.go
 
 example09-step5:
 	export OLLAMA_CONTEXT_LENGTH=$(OLLAMA_CONTEXT_LENGTH) && \
-	go run cmd/examples/example09/step5/main.go
+	go run cmd/examples/example09/step5/*.go
 
 example10-step1:
-	export OLLAMA_CONTEXT_LENGTH=$(OLLAMA_CONTEXT_LENGTH) && \
 	go run cmd/examples/example10/step1/main.go
 
 example10-step2:
 	export OLLAMA_CONTEXT_LENGTH=$(OLLAMA_CONTEXT_LENGTH) && \
-	go run cmd/examples/example10/step2/main.go
-
-example10-step3:
-	export OLLAMA_CONTEXT_LENGTH=$(OLLAMA_CONTEXT_LENGTH) && \
-	go run cmd/examples/example10/step3/main.go
-
-example10-step4:
-	export OLLAMA_CONTEXT_LENGTH=$(OLLAMA_CONTEXT_LENGTH) && \
-	go run cmd/examples/example10/step4/*.go
-
-example10-step5:
-	export OLLAMA_CONTEXT_LENGTH=$(OLLAMA_CONTEXT_LENGTH) && \
-	go run cmd/examples/example10/step5/*.go
+	go run cmd/examples/example10/step2/*.go
 
 example11-step1:
-	go run cmd/examples/example11/step1/main.go
+	mkdir -p zarf/samples/videos/chunks && \
+	mkdir -p zarf/samples/videos/frames && \
+	export OLLAMA_CONTEXT_LENGTH=$(OLLAMA_CONTEXT_LENGTH) && \
+	export OLLAMA_NUM_PARALLEL=$(OLLAMA_NUM_PARALLEL) && \
+	go run ./cmd/examples/example11/step1/*.go
 
 example11-step2:
 	export OLLAMA_CONTEXT_LENGTH=$(OLLAMA_CONTEXT_LENGTH) && \
 	go run cmd/examples/example11/step2/*.go
 
 example12-step1:
-	mkdir -p zarf/samples/videos/chunks && \
-	mkdir -p zarf/samples/videos/frames && \
 	export OLLAMA_CONTEXT_LENGTH=$(OLLAMA_CONTEXT_LENGTH) && \
-	export OLLAMA_NUM_PARALLEL=$(OLLAMA_NUM_PARALLEL) && \
-	go run ./cmd/examples/example12/step1/*.go
-
-example12-step2:
-	export OLLAMA_CONTEXT_LENGTH=$(OLLAMA_CONTEXT_LENGTH) && \
-	go run cmd/examples/example12/step2/*.go
-
-example13-step1:
-	export OLLAMA_CONTEXT_LENGTH=$(OLLAMA_CONTEXT_LENGTH) && \
-	go run cmd/examples/example13/step1/*.go
+	go run cmd/examples/example12/step1/*.go
 
 # ==============================================================================
 # Run Postgres, MongoDB, and Open WebUI

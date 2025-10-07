@@ -1,68 +1,53 @@
-// This example takes step2 and shows you how to store the image details
-// into a vector database for similarity searching.
+// This example shows you the workflow and mechanics for tool calling.
 //
 // # Running the example:
 //
-//	$ make example9-step3
+//	$ make example09-step3
 //
 // # This requires running the following commands:
 //
-//	$ make ollama-up
-//	$ make embedding-up
-//	$ make compose-up
+//	$ make ollama-up  // This starts the Ollama service.
 
 package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
-	"time"
+	"strconv"
 
 	"github.com/ardanlabs/ai-training/foundation/client"
-	"github.com/ardanlabs/ai-training/foundation/mongodb"
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/mongo"
 )
 
 var (
-	urlChat    = "http://localhost:11434/v1/chat/completions"
-	urlEmbed   = "http://localhost:11434/v1/embeddings"
-	modelChat  = "gemma3:12b-it-qat"
-	modelEmbed = "bge-m3:latest"
+	url   = "http://localhost:11434/v1/chat/completions"
+	model = "gpt-oss:latest"
 
-	imagePath  = "zarf/samples/gallery/roseimg.png"
-	dbName     = "example9"
-	colName    = "images-3"
-	dimensions = 1024
+	// The context window represents the maximum number of tokens that can be sent
+	// and received by the model. The default for Ollama is 4K. In the makefile
+	// it has been increased to 64K.
+	contextWindow = 1024 * 4
 )
 
 func init() {
-	if v := os.Getenv("LLM_CHAT_SERVER"); v != "" {
-		urlChat = v
+	if v := os.Getenv("OLLAMA_CONTEXT_LENGTH"); v != "" {
+		var err error
+		contextWindow, err = strconv.Atoi(v)
+		if err != nil {
+			log.Fatal(err)
+		}
 	}
 
-	if v := os.Getenv("LLM_EMBED_SERVER"); v != "" {
-		urlEmbed = v
+	if v := os.Getenv("LLM_SERVER"); v != "" {
+		url = v
 	}
 
-	if v := os.Getenv("LLM_CHAT_MODEL"); v != "" {
-		modelChat = v
+	if v := os.Getenv("LLM_MODEL"); v != "" {
+		model = v
 	}
-
-	if v := os.Getenv("LLM_EMBED_MODEL"); v != "" {
-		modelEmbed = v
-	}
-}
-
-// =============================================================================
-
-type document struct {
-	FileName    string    `bson:"file_name"`
-	Description string    `bson:"description"`
-	Embedding   []float64 `bson:"embedding"`
 }
 
 // =============================================================================
@@ -74,143 +59,188 @@ func main() {
 }
 
 func run() error {
-	ctx, cancel := context.WithTimeout(context.Background(), 240*time.Second)
-	defer cancel()
-
-	// -------------------------------------------------------------------------
-
-	fmt.Println("\nConnecting to MongoDB")
-
-	dbClient, err := mongodb.Connect(ctx, "mongodb://localhost:27017", "ardan", "ardan")
-	if err != nil {
-		return fmt.Errorf("mongodb.Connect: %w", err)
+	if err := weatherQuestion(context.TODO()); err != nil {
+		return fmt.Errorf("weatherQuestion: %w", err)
 	}
 
-	fmt.Println("Initializing Database")
+	return nil
+}
 
-	col, err := initDB(ctx, dbClient)
-	if err != nil {
-		return fmt.Errorf("initDB: %w", err)
+func weatherQuestion(ctx context.Context) error {
+	cln := client.NewSSE[client.ChatSSE](client.StdoutLogger)
+
+	// -------------------------------------------------------------------------
+	// Start by asking what the weather is like in New York City
+
+	q := "What is the weather like in New York City?"
+
+	fmt.Printf("\nQuestion:\n\n%s\n", q)
+
+	conversation := []client.D{
+		{
+			"role":    "user",
+			"content": q,
+		},
+	}
+
+	toolName := "tool_get_weather"
+
+	d := client.D{
+		"model":       model,
+		"messages":    conversation,
+		"max_tokens":  contextWindow,
+		"temperature": 0.1,
+		"top_p":       0.1,
+		"top_k":       1,
+		"stream":      true,
+		"tools": []client.D{
+			{
+				"type": "function",
+				"function": client.D{
+					"name":        toolName,
+					"description": "Get the current weather for a location",
+					"parameters": client.D{
+						"type": "object",
+						"properties": client.D{
+							"location": client.D{
+								"type":        "string",
+								"description": "The location to get the weather for, e.g. San Francisco, CA",
+							},
+						},
+						"required": []string{"location"},
+					},
+				},
+			},
+		},
+		"tool_selection": "auto",
+	}
+
+	ch := make(chan client.ChatSSE, 100)
+	if err := cln.Do(ctx, http.MethodPost, url, d, ch); err != nil {
+		return fmt.Errorf("do: %w", err)
 	}
 
 	// -------------------------------------------------------------------------
+	// The model will respond asking us to make the get_current_weather function
+	// call. We will make the call and then send the response back to the model.
 
-	findRes := col.FindOne(ctx, bson.D{{Key: "file_name", Value: imagePath}})
-	if findRes.Err() == nil {
-		fmt.Println("Deleting existing image from database")
-		_, err := col.DeleteOne(ctx, bson.D{{Key: "file_name", Value: imagePath}})
-		if err != nil {
-			return fmt.Errorf("col.DeleteOne: %w", err)
+	fmt.Print("\n")
+
+	for resp := range ch {
+		switch {
+		case len(resp.Choices[0].Delta.ToolCalls) > 0:
+			toolCall := resp.Choices[0].Delta.ToolCalls[0]
+
+			fmt.Printf("\n\n\u001b[92mModel Asking For Tool Call:\n\nToolID[%s]: %s(%s)\u001b[0m\n\n",
+				toolCall.ID,
+				toolCall.Function.Name,
+				toolCall.Function.Arguments)
+
+			conversation = append(conversation, client.D{
+				"role": "assistant",
+				"content": fmt.Sprintf("Tool call %s: %s(%v)",
+					toolCall.ID,
+					toolCall.Function.Name,
+					toolCall.Function.Arguments),
+			})
+
+			resp := GetWeatherTool(ctx, toolName, toolCall)
+			conversation = append(conversation, resp)
+
+			fmt.Printf("%s\n\n", resp)
+
+		case resp.Choices[0].Delta.Content != "":
+			fmt.Print(resp.Choices[0].Delta.Content)
+
+		case resp.Choices[0].Delta.Reasoning != "":
+			fmt.Printf("\u001b[91m%s\u001b[0m", resp.Choices[0].Delta.Reasoning)
 		}
 	}
 
 	// -------------------------------------------------------------------------
+	// Send the result of the tool call back to the model
 
-	fmt.Println("\nGenerating image description:")
+	d = client.D{
+		"model":       model,
+		"messages":    conversation,
+		"max_tokens":  contextWindow,
+		"temperature": 0.1,
+		"top_p":       0.1,
+		"top_k":       50,
+		"stream":      true,
+	}
 
-	image, mimeType, err := readImage(imagePath)
-	if err != nil {
-		return fmt.Errorf("readImage: %w", err)
+	ch = make(chan client.ChatSSE, 100)
+	if err := cln.Do(ctx, http.MethodPost, url, d, ch); err != nil {
+		return fmt.Errorf("do: %w", err)
 	}
 
 	// -------------------------------------------------------------------------
+	// The model should provide the answer based on the tool call
 
-	const prompt = `
-		Describe the image and be concise and accurate keeping the description under 200 words.
+	fmt.Print("Final Result:\n\n")
 
-		Do not be overly verbose or stylistic.
+	var reasoning bool
 
-		Make sure all the elements in the image are enumerated and described.
+	for resp := range ch {
+		switch {
+		case resp.Choices[0].Delta.Content != "":
+			if reasoning {
+				fmt.Print("\n\n")
+				reasoning = false
+			}
 
-		At the end of the description, create a list of tags with the names of all the
-		elements in the image and do not output anything past this list.
+			fmt.Print(resp.Choices[0].Delta.Content)
 
-		Encode the list as valid JSON, as in this example:
-		["tag1","tag2","tag3",...]
-
-		Make sure the JSON is valid, doesn't have any extra spaces, and is
-		properly formatted.`
-
-	llm := client.NewLLM(urlChat, modelChat)
-
-	results, err := llm.ChatCompletions(ctx, prompt, client.WithImage(mimeType, image))
-	if err != nil {
-		return fmt.Errorf("llm.ChatCompletions: %w", err)
+		case resp.Choices[0].Delta.Reasoning != "":
+			reasoning = true
+			fmt.Printf("\u001b[91m%s\u001b[0m", resp.Choices[0].Delta.Reasoning)
+		}
 	}
 
-	fmt.Printf("%s\n", results)
-
-	// -------------------------------------------------------------------------
-
-	fmt.Println("\nGenerating embeddings for the image description:")
-
-	embedLLM := client.NewLLM(urlEmbed, modelEmbed)
-
-	vector, err := embedLLM.EmbedText(ctx, results)
-	if err != nil {
-		return fmt.Errorf("llm.EmbedText: %w", err)
-	}
-
-	fmt.Printf("%v...%v\n", vector[0:3], vector[len(vector)-3:])
-
-	// -------------------------------------------------------------------------
-
-	fmt.Println("\nInserting image information into the database:")
-
-	d1 := document{
-		FileName:    imagePath,
-		Description: results,
-		Embedding:   vector,
-	}
-
-	res, err := col.InsertOne(ctx, d1)
-	if err != nil {
-		return fmt.Errorf("col.InsertOne: %w", err)
-	}
-
-	fmt.Printf("%s\n", res.InsertedID)
-
-	// ---------------------------------------------------------------------
-
-	fmt.Println("\nDONE")
 	return nil
-}
-
-func readImage(fileName string) ([]byte, string, error) {
-	data, err := os.ReadFile(fileName)
-	if err != nil {
-		return nil, "", fmt.Errorf("read file: %w", err)
-	}
-
-	switch mimeType := http.DetectContentType(data); mimeType {
-	case "image/jpeg", "image/png":
-		return data, mimeType, nil
-	default:
-		return nil, "", fmt.Errorf("unsupported file type: %s: filename: %s", mimeType, fileName)
-	}
 }
 
 // =============================================================================
 
-func initDB(ctx context.Context, client *mongo.Client) (*mongo.Collection, error) {
-	db := client.Database(dbName)
+// GetWeatherTool is the function that is called by the agent to get the weather
+// when the model requests the tool with the specified parameters.
+func GetWeatherTool(ctx context.Context, toolName string, toolCall client.ToolCall) (resp client.D) {
 
-	col, err := mongodb.CreateCollection(ctx, db, colName)
+	// We are going to hardcode a result for now so we can test the tool.
+
+	location := toolCall.Function.Arguments["location"].(string)
+
+	info := struct {
+		Status string         `json:"status"`
+		Data   map[string]any `json:"data"`
+	}{
+		Status: "SUCCESS",
+		Data: map[string]any{
+			"temperature": 28,
+			"humidity":    80,
+			"wind_speed":  10,
+			"description": fmt.Sprintln("The weather in", location, "is hot and humid"),
+		},
+	}
+
+	// Return the weather information as structured data using JSON which is
+	// easier for the model to interpret.
+
+	d, err := json.Marshal(info)
 	if err != nil {
-		return nil, fmt.Errorf("createCollection: %w", err)
+		return client.D{
+			"role":         "tool",
+			"tool_call_id": toolCall.ID,
+			"tool_name":    toolName,
+			"content":      fmt.Sprintf(`{"status": "FAILED", "data": "%s"}`, err),
+		}
 	}
 
-	const textIndexName = "vector_embedding_index"
-
-	settings := mongodb.VectorIndexSettings{
-		NumDimensions: dimensions,
-		Path:          "embedding",
-		Similarity:    "cosine",
+	return client.D{
+		"role":         "tool",
+		"tool_call_id": toolCall.ID,
+		"tool_name":    toolName,
+		"content":      string(d),
 	}
-
-	if err := mongodb.CreateVectorIndex(ctx, col, textIndexName, settings); err != nil {
-		return nil, fmt.Errorf("createVectorIndex (text): %w", err)
-	}
-
-	return col, nil
 }

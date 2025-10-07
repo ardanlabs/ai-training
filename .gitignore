@@ -11,7 +11,7 @@
 *.dll
 *.so
 
-cmd/examples/example13/step3/audio
+cmd/examples/example12/step3/audio
 output.*
 output_*.mp4
 test_rag_video.mp4

@@ -1,18 +1,13 @@
-// This example shows you how to use MongoDB as a vector database to perform
-// a nearest neighbor vector search. The example will create a vector search
-// index, store 2 documents, and perform a vector search.
+// This example shows you how to Ollama to create a reasonable response to a
+// question with provided content.
 //
 // # Running the example:
 //
-//  $ make example04
+//	$ make example04
 //
 // # This requires running the following command:
 //
-//	$ make compose-up
-//
-// # You can use this command to open a prompt to mongodb:
-//
-//  $ make mongo
+//  $ make ollama-up
 
 package main
 
@@ -20,33 +15,25 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
 	"time"
 
-	"github.com/ardanlabs/ai-training/foundation/mongodb"
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
+	"github.com/ardanlabs/ai-training/foundation/client"
 )
 
-const (
-	dbName     = "example4"
-	colName    = "book"
-	dimensions = 4
+var (
+	url   = "http://localhost:11434/v1/chat/completions"
+	model = "gemma3:12b-it-qat"
 )
 
-// =============================================================================
+func init() {
+	if v := os.Getenv("LLM_SERVER"); v != "" {
+		url = v
+	}
 
-type document struct {
-	ID        int       `bson:"id"`
-	Text      string    `bson:"text"`
-	Embedding []float64 `bson:"embedding"`
-}
-
-type searchResult struct {
-	ID        int       `bson:"id"`
-	Text      string    `bson:"text"`
-	Embedding []float64 `bson:"embedding"`
-	Score     float64   `bson:"score"`
+	if v := os.Getenv("LLM_MODEL"); v != "" {
+		model = v
+	}
 }
 
 // =============================================================================
@@ -58,145 +45,67 @@ func main() {
 }
 
 func run() error {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
+	const prompt = `
+		Use the following pieces of information to answer the user's question.
+		If you don't know the answer, say that you don't know.
+		
+		Context: %s
+		
+		Question: %s
+
+		Answer the question and provide additional helpful information, but be concise.
+
+		Responses should be properly formatted to be easily read.
+	`
+
+	question := `Is there value in the book and why?`
+
+	fmt.Printf("\nContent:\n%s\n", fakeContent)
+	fmt.Printf("\nQuestion:\n\n%s\n", question)
+
+	finalPrompt := fmt.Sprintf(prompt, fakeContent, question)
+
 	// -------------------------------------------------------------------------
 
-	fmt.Println("\nConnecting to MongoDB")
+	llm := client.NewLLM(url, model)
 
-	client, err := mongodb.Connect(ctx, "mongodb://localhost:27017", "ardan", "ardan")
+	ch, err := llm.ChatCompletionsSSE(ctx, finalPrompt)
 	if err != nil {
-		return fmt.Errorf("mongodb.Connect: %w", err)
-	}
-	defer client.Disconnect(ctx)
-
-	// -------------------------------------------------------------------------
-
-	fmt.Println("Initializing Database")
-
-	col, err := initDB(ctx, client)
-	if err != nil {
-		return fmt.Errorf("initDB: %w", err)
+		return fmt.Errorf("chat completions: %w", err)
 	}
 
-	// -------------------------------------------------------------------------
+	fmt.Print("\nModel Response:\n\n")
 
-	fmt.Println("Inserting Documents")
-
-	if err := insertDocuments(ctx, col); err != nil {
-		return fmt.Errorf("insertDocuments: %w", err)
+	for resp := range ch {
+		fmt.Print(resp.Choices[0].Delta.Content)
 	}
-
-	// We need to give Mongo a little time to index the documents.
-	time.Sleep(time.Second)
-
-	// -------------------------------------------------------------------------
-
-	fmt.Print("\n---- VECTOR SEARCH ----\n\n")
-
-	results, err := vectorSearch(ctx, col, []float64{1.2, 2.2, 3.2, 4.2}, 10)
-	if err != nil {
-		return fmt.Errorf("storeDocuments: %w", err)
-	}
-
-	fmt.Printf("%#v\n", results)
 
 	return nil
 }
 
-func initDB(ctx context.Context, client *mongo.Client) (*mongo.Collection, error) {
-	db := client.Database(dbName)
-
-	col, err := mongodb.CreateCollection(ctx, db, colName)
-	if err != nil {
-		return nil, fmt.Errorf("createCollection: %w", err)
-	}
-
-	const indexName = "vector_index"
-
-	settings := mongodb.VectorIndexSettings{
-		NumDimensions: dimensions,
-		Path:          "embedding",
-		Similarity:    "cosine",
-	}
-
-	if err := mongodb.CreateVectorIndex(ctx, col, indexName, settings); err != nil {
-		return nil, fmt.Errorf("createVectorIndex: %w", err)
-	}
-
-	unique := true
-	indexModel := mongo.IndexModel{
-		Keys:    bson.D{{Key: "id", Value: 1}},
-		Options: &options.IndexOptions{Unique: &unique},
-	}
-	col.Indexes().CreateOne(ctx, indexModel)
-
-	// Delete any documents that might be there.
-	col.DeleteOne(ctx, bson.D{{Key: "id", Value: 1}})
-	col.DeleteOne(ctx, bson.D{{Key: "id", Value: 2}})
-
-	return col, nil
-}
-
-func insertDocuments(ctx context.Context, col *mongo.Collection) error {
-	d1 := document{
-		ID:        1,
-		Text:      "this is text 1",
-		Embedding: []float64{1.0, 2.0, 3.0, 4.0},
-	}
-
-	d2 := document{
-		ID:        2,
-		Text:      "this is text 2",
-		Embedding: []float64{1.5, 2.5, 3.5, 4.5},
-	}
-
-	res, err := col.InsertMany(ctx, []any{d1, d2})
-	if err != nil {
-		return fmt.Errorf("insert: %w", err)
-	}
-
-	fmt.Printf("%v\n", res.InsertedIDs)
-
-	return nil
-}
-
-func vectorSearch(ctx context.Context, col *mongo.Collection, vector []float64, limit int) ([]searchResult, error) {
-	pipeline := mongo.Pipeline{
-		{{
-			Key: "$vectorSearch",
-			Value: bson.M{
-				"index":       "vector_index",
-				"exact":       true,
-				"path":        "embedding",
-				"queryVector": vector,
-				"limit":       limit,
-			}},
-		},
-		{{
-			Key: "$project",
-			Value: bson.M{
-				"id":        1,
-				"text":      1,
-				"embedding": 1,
-				"score": bson.M{
-					"$meta": "vectorSearchScore",
-				},
-			}},
-		},
-	}
-
-	cur, err := col.Aggregate(ctx, pipeline)
-	if err != nil {
-		return nil, fmt.Errorf("aggregate: %w", err)
-	}
-	defer cur.Close(ctx)
-
-	var results []searchResult
-	if err := cur.All(ctx, &results); err != nil {
-		return nil, fmt.Errorf("all: %w", err)
-	}
-
-	return results, nil
-}
+const fakeContent = `
+Intended Audience This notebook has been written and designed
+to provide a reference to everything that I say in the Ultimate Go class
+Its not necessarily a beginners Go book since it doesnt focus on the
+specifics of Gos syntax I would recommend the Go In Action book I wrote
+back in 2015 for that type of content Its still accurate and relevant
+Many of the things I say in the classroom over the 20 plus hours of
+instruction has been incorporated Ive tried to capture all the guidelines
+design philosophy whiteboarding and notes I share at the same moments I
+share them If you have taken the class before I believe this notebook will
+be invaluable for reminders on the content If you have never taken the class
+I still believe there is value in this book It covers more advanced topics
+not found in other books today Ive tried to provide a well rounded curriculum
+of topics from types to profiling I have also been able to provide examples
+for writing generic function and types in Go which will be available in
+version 118 of Go The book is written in the first person to drive home the
+idea that this is my book of notes from the Ultimate Go class The first
+chapter provides a set of design philosophies quotes and extra reading to
+help prepare your mind for the material Chapters 213 provide the core content
+from the class Chapter 14 provides a reediting of important blog posts Ive
+written in the past These posts are presented here to enhance some of the
+more technical chapters like garbage collection and concurrency If you are
+struggling with this book please provide me any feedback over email at`

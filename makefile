@@ -338,8 +338,7 @@ vllm-install:
 	uv pip install vllm
 
 vllm-update:
-	uv pip install --upgrade vllm
-	uv lock --upgrade
+	uv lock --upgrade && uv sync
 
 vllm-run:
 	source .env && uv run vllm serve --host 0.0.0.0 --port 8000 --max_num_batched_tokens 131072 "NousResearch/Hermes-3-Llama-3.1-8B"

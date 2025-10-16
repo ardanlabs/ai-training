@@ -81,10 +81,6 @@ SHELL = $(if $(wildcard $(SHELL_PATH)),/bin/ash,/bin/bash)
 
 # ==============================================================================
 # CLASS NOTES
-# 	Python Support
-#		Have to do this just once and having it here incase we need to do it again.
-# 			uv pip compile pyproject.toml -o requirements.txt
-#			uv add -r requirements.txt
 #
 # 	Mongo support
 # 		db.book.find({id: 300})
@@ -343,7 +339,6 @@ vllm-install:
 
 vllm-update:
 	uv pip install --upgrade vllm
-	uv pip freeze > requirements.txt
 	uv lock --upgrade
 
 vllm-run:

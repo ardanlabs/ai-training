@@ -14,6 +14,8 @@ import (
 	move the model files to the `zarf/models/` folder.
 	https://huggingface.co/ggml-org/Qwen2.5-VL-3B-Instruct-GGUF/resolve/main/Qwen2.5-VL-3B-Instruct-Q8_0.gguf?download=true
 	https://huggingface.co/ggml-org/Qwen2.5-VL-3B-Instruct-GGUF/resolve/main/mmproj-Qwen2.5-VL-3B-Instruct-Q8_0.gguf?download=true
+
+	You can use `make yzma-models` to download all the models for these examples.
 */
 
 var (

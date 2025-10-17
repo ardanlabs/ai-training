@@ -12,6 +12,8 @@ import (
 	This is the model to use for this example. Once downloaded, move the
 	model to the `zarf/models/` folder.
 	https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-fp16.gguf?download=true
+
+	You can use `make yzma-models` to download all the models for these examples.
 */
 
 var (

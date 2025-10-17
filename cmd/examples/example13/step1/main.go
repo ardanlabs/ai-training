@@ -16,6 +16,8 @@ import (
 	model to the `zarf/models/` folder.
 	https://huggingface.co/QuantFactory/SmolLM-135M-GGUF/resolve/main/SmolLM-135M.Q2_K.gguf?download=true
 
+	You can use `make yzma-models` to download all the models for these examples.
+
 	I had to tell the MacOS Gatekeeper to allow these libraries to be loaded. I
 	am not sure how to automate this process.
 */

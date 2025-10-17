@@ -132,6 +132,12 @@ python-install:
 	uv sync
 	uv pip install vllm
 
+yzma-models:
+	curl -L -o zarf/models/SmolLM-135M.Q2_K.gguf "https://huggingface.co/QuantFactory/SmolLM-135M-GGUF/resolve/main/SmolLM-135M.Q2_K.gguf?download=true"
+	curl -L -o zarf/models/Qwen2.5-VL-3B-Instruct-Q8_0.gguf "https://huggingface.co/ggml-org/Qwen2.5-VL-3B-Instruct-GGUF/resolve/main/Qwen2.5-VL-3B-Instruct-Q8_0.gguf?download=true"
+	curl -L -o zarf/models/mmproj-Qwen2.5-VL-3B-Instruct-Q8_0.gguf "https://huggingface.co/ggml-org/Qwen2.5-VL-3B-Instruct-GGUF/resolve/main/mmproj-Qwen2.5-VL-3B-Instruct-Q8_0.gguf?download=true"
+	curl -L -o zarf/models/qwen2.5-0.5b-instruct-fp16.gguf "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-fp16.gguf?download=true"
+
 # ==============================================================================
 # Ollama Settings
 

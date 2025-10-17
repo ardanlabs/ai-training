@@ -18,35 +18,26 @@ import (
 	You can use `make yzma-models` to download all the models for these examples.
 */
 
-var (
-	messages []llama.ChatMessage
-)
-
 func main() {
 	if err := handleFlags(); err != nil {
 		showUsage()
 		os.Exit(0)
 	}
 
+	// -------------------------------------------------------------------------
+
 	if err := llama.Load(*libPath); err != nil {
 		fmt.Println("unable to load library", err.Error())
 		os.Exit(1)
-	}
-	if err := mtmd.Load(*libPath); err != nil {
-		fmt.Println("unable to load library", err.Error())
-		os.Exit(1)
-	}
-
-	mctxParams := mtmd.ContextParamsDefault()
-	if !*verbose {
-		llama.LogSet(llama.LogSilent())
-		mctxParams.Verbosity = llama.LogLevelContinue
 	}
 
 	llama.Init()
 	defer llama.BackendFree()
 
-	fmt.Println("Loading model", *modelFile)
+	// -------------------------------------------------------------------------
+
+	fmt.Println("***> Loading Model", *modelFile)
+
 	model := llama.ModelLoadFromFile(*modelFile, llama.ModelDefaultParams())
 	defer llama.ModelFree(model)
 
@@ -58,30 +49,56 @@ func main() {
 	defer llama.Free(lctx)
 
 	vocab := llama.ModelGetVocab(model)
-	// TODO: pass in flags as params to samplers
+
 	sampler := llama.NewSampler(model, llama.DefaultSamplers)
+
+	// -------------------------------------------------------------------------
+
+	fmt.Println("***> Init mtmd")
+
+	if err := mtmd.Load(*libPath); err != nil {
+		fmt.Println("unable to load library", err.Error())
+		os.Exit(1)
+	}
+
+	mctxParams := mtmd.ContextParamsDefault()
+	if !*verbose {
+		llama.LogSet(llama.LogSilent())
+		mctxParams.Verbosity = llama.LogLevelContinue
+	}
+
 	mtmdCtx := mtmd.InitFromFile(*projFile, model, mctxParams)
 	defer mtmd.Free(mtmdCtx)
+
+	// -------------------------------------------------------------------------
+
+	fmt.Println("***> Tokenize")
 
 	if *template == "" {
 		*template = llama.ModelChatTemplate(model, "")
 	}
 
-	messages = make([]llama.ChatMessage, 0)
+	var messages []llama.ChatMessage
 	if *systemPrompt != "" {
 		messages = append(messages, llama.NewChatMessage("system", *systemPrompt))
 	}
 	messages = append(messages, llama.NewChatMessage("user", *prompt+mtmd.DefaultMarker()))
 
 	output := mtmd.InputChunksInit()
-	input := mtmd.NewInputText(chatTemplate(true), true, true)
+	input := mtmd.NewInputText(chatTemplate(true, *template, messages), true, true)
 	bitmap := mtmd.BitmapInitFromFile(mtmdCtx, *imageFile)
 	defer mtmd.BitmapFree(bitmap)
 
 	mtmd.Tokenize(mtmdCtx, output, input, []mtmd.Bitmap{bitmap})
 
+	// -------------------------------------------------------------------------
+
+	fmt.Println("***> HelperEvalChunks")
+
 	var n llama.Pos
 	mtmd.HelperEvalChunks(mtmdCtx, lctx, output, 0, 0, int32(ctxParams.NBatch), true, &n)
+
+	// -------------------------------------------------------------------------
 
 	var sz int32 = 1
 	batch := llama.BatchInit(1, 0, 1)
@@ -90,9 +107,12 @@ func main() {
 	seqs := unsafe.SliceData([]llama.SeqId{0})
 	batch.SeqId = &seqs
 
-	fmt.Println()
+	// -------------------------------------------------------------------------
+
+	fmt.Println("***> Extract Response")
 
 	for range llama.MaxToken {
+		llama.Decode(lctx, batch)
 		token := llama.SamplerSample(sampler, lctx, -1)
 
 		if llama.VocabIsEOG(vocab, token) {
@@ -101,21 +121,17 @@ func main() {
 		}
 
 		buf := make([]byte, 128)
-		llama.TokenToPiece(vocab, token, buf, 0, true)
+		len := llama.TokenToPiece(vocab, token, buf, 0, true)
 
-		fmt.Print(string(buf))
+		fmt.Print(string(buf[:len]))
 
-		batch.Token = &token
-		batch.Pos = &n
-
-		llama.Decode(lctx, batch)
-		n++
+		batch = llama.BatchGetOne([]llama.Token{token})
 	}
 }
 
-func chatTemplate(add bool) string {
+func chatTemplate(add bool, template string, messages []llama.ChatMessage) string {
 	buf := make([]byte, 1024)
-	len := llama.ChatApplyTemplate(*template, messages, add, buf)
+	len := llama.ChatApplyTemplate(template, messages, add, buf)
 	result := string(buf[:len])
 	return result
 }

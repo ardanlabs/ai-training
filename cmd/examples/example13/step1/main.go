@@ -23,20 +23,33 @@ import (
 */
 
 var (
-	modelFile            = "zarf/models/SmolLM-135M.Q2_K.gguf"
-	prompt               = "Are you ready to go?"
-	libPath              = os.Getenv("YZMA_LIB")
-	responseLength int32 = 12
+	modelFile      = "zarf/models/SmolLM-135M.Q2_K.gguf"
+	prompt         = "Are you ready to go?"
+	libPath        = os.Getenv("YZMA_LIB")
+	responseLength = int32(52)
 )
 
 func main() {
-	llama.Load(libPath)
+	if err := llama.Load(libPath); err != nil {
+		fmt.Println("unable to load library", err.Error())
+		os.Exit(1)
+	}
 	llama.Init()
+	defer llama.BackendFree()
+
+	// -------------------------------------------------------------------------
+
+	fmt.Println("***> Loading Model", modelFile)
 
 	model := llama.ModelLoadFromFile(modelFile, llama.ModelDefaultParams())
+	defer llama.ModelFree(model)
+
 	lctx := llama.InitFromModel(model, llama.ContextDefaultParams())
+	defer llama.Free(lctx)
 
 	vocab := llama.ModelGetVocab(model)
+
+	// -------------------------------------------------------------------------
 
 	// Call once to get the size of the tokens from the prompt.
 	count := llama.Tokenize(vocab, prompt, nil, true, false)
@@ -45,10 +58,16 @@ func main() {
 	tokens := make([]llama.Token, count)
 	llama.Tokenize(vocab, prompt, tokens, true, false)
 
-	batch := llama.BatchGetOne(tokens)
+	// -------------------------------------------------------------------------
 
 	sampler := llama.SamplerChainInit(llama.SamplerChainDefaultParams())
 	llama.SamplerChainAdd(sampler, llama.SamplerInitGreedy())
+
+	// -------------------------------------------------------------------------
+
+	fmt.Println("***> Extract Response")
+
+	batch := llama.BatchGetOne(tokens)
 
 	for pos := int32(0); pos+batch.NTokens < count+responseLength; pos += batch.NTokens {
 		llama.Decode(lctx, batch)
@@ -59,7 +78,7 @@ func main() {
 			break
 		}
 
-		buf := make([]byte, 36)
+		buf := make([]byte, 128)
 		len := llama.TokenToPiece(vocab, token, buf, 0, true)
 
 		fmt.Print(string(buf[:len]))
@@ -67,5 +86,7 @@ func main() {
 		batch = llama.BatchGetOne([]llama.Token{token})
 	}
 
-	fmt.Println()
+	// -------------------------------------------------------------------------
+
+	fmt.Print("\n\n")
 }

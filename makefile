@@ -231,6 +231,16 @@ example12-step1:
 	export OLLAMA_CONTEXT_LENGTH=$(OLLAMA_CONTEXT_LENGTH) && \
 	go run cmd/examples/example12/step1/*.go
 
+example13-step1-macos-arm64:
+	export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:zarf/llamacpp/macos-arm64 && \
+	export YZMA_LIB=zarf/llamacpp/macos-arm64 && \
+	go run cmd/examples/example13/step1/*.go
+
+example13-step2-macos-arm64:
+	export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:zarf/llamacpp/macos-arm64 && \
+	export YZMA_LIB=zarf/llamacpp/macos-arm64 && \
+	go run cmd/examples/example13/step2/*.go -model zarf/models/Qwen2.5-VL-3B-Instruct-Q8_0.gguf -mmproj zarf/models/mmproj-Qwen2.5-VL-3B-Instruct-Q8_0.gguf -image zarf/samples/gallery/giraffe.jpg -p "What is in this picture?"
+
 # ==============================================================================
 # Run Postgres, MongoDB, and Open WebUI
 

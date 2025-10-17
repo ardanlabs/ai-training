@@ -1,3 +1,17 @@
+// This example shows you how to use yzma to execute a simple prompt
+// against a vision model using llamacpp directly via a native Go application.
+//
+// # Running the example:
+//
+//	$ make example13-step2-macos-arm64
+//
+// # This requires running the following command:
+//
+//	$ make yzma-models // This downloads the needed models
+//
+// If you are not running on macos under the arch64 architecture, we will need
+// to add support for you. Please contact bill at bill@ardanlabs.com
+
 package main
 
 import (
@@ -36,7 +50,7 @@ func main() {
 
 	// -------------------------------------------------------------------------
 
-	fmt.Println("***> Loading Model", *modelFile)
+	fmt.Println("\n- Loading Model", *modelFile)
 
 	model := llama.ModelLoadFromFile(*modelFile, llama.ModelDefaultParams())
 	defer llama.ModelFree(model)
@@ -54,7 +68,7 @@ func main() {
 
 	// -------------------------------------------------------------------------
 
-	fmt.Println("***> Init mtmd")
+	fmt.Println("- Init mtmd")
 
 	if err := mtmd.Load(*libPath); err != nil {
 		fmt.Println("unable to load library", err.Error())
@@ -72,7 +86,7 @@ func main() {
 
 	// -------------------------------------------------------------------------
 
-	fmt.Println("***> Tokenize")
+	fmt.Println("- Tokenize")
 
 	if *template == "" {
 		*template = llama.ModelChatTemplate(model, "")
@@ -86,6 +100,7 @@ func main() {
 
 	output := mtmd.InputChunksInit()
 	input := mtmd.NewInputText(chatTemplate(true, *template, messages), true, true)
+
 	bitmap := mtmd.BitmapInitFromFile(mtmdCtx, *imageFile)
 	defer mtmd.BitmapFree(bitmap)
 
@@ -93,7 +108,7 @@ func main() {
 
 	// -------------------------------------------------------------------------
 
-	fmt.Println("***> HelperEvalChunks")
+	fmt.Print("- HelperEvalChunks\n\n")
 
 	var n llama.Pos
 	mtmd.HelperEvalChunks(mtmdCtx, lctx, output, 0, 0, int32(ctxParams.NBatch), true, &n)
@@ -109,7 +124,7 @@ func main() {
 
 	// -------------------------------------------------------------------------
 
-	fmt.Println("***> Extract Response")
+	fmt.Print("\n- Extract Response\n\n")
 
 	for range llama.MaxToken {
 		llama.Decode(lctx, batch)

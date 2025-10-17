@@ -240,17 +240,17 @@ example12-step1:
 example13-step1-macos-arm64:
 	export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:zarf/llamacpp/macos-arm64 && \
 	export YZMA_LIB=zarf/llamacpp/macos-arm64 && \
-	go run cmd/examples/example13/step1/*.go
+	go run cmd/examples/example13/step1/*.go 2>/dev/null
 
 example13-step2-macos-arm64:
 	export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:zarf/llamacpp/macos-arm64 && \
 	export YZMA_LIB=zarf/llamacpp/macos-arm64 && \
-	go run cmd/examples/example13/step2/*.go -model zarf/models/Qwen2.5-VL-3B-Instruct-Q8_0.gguf -mmproj zarf/models/mmproj-Qwen2.5-VL-3B-Instruct-Q8_0.gguf -image zarf/samples/gallery/domestic_llama.jpg -p "What is in this picture?"
+	go run cmd/examples/example13/step2/*.go -model zarf/models/Qwen2.5-VL-3B-Instruct-Q8_0.gguf -mmproj zarf/models/mmproj-Qwen2.5-VL-3B-Instruct-Q8_0.gguf -image zarf/samples/gallery/domestic_llama.jpg -p "What is in this picture?"  2>/dev/null
 
 example13-step3-macos-arm64:
 	export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:zarf/llamacpp/macos-arm64 && \
 	export YZMA_LIB=zarf/llamacpp/macos-arm64 && \
-	go run cmd/examples/example13/step3/*.go -model zarf/models/qwen2.5-0.5b-instruct-fp16.gguf
+	go run cmd/examples/example13/step3/*.go -model zarf/models/qwen2.5-0.5b-instruct-fp16.gguf 2>/dev/null
 
 # ==============================================================================
 # Run Postgres, MongoDB, and Open WebUI

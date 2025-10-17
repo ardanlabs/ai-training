@@ -1,5 +1,5 @@
-// This example provides shows you how to query the Docling API to extract
-// data from a PDF and have it processed by an LLM.
+// This example shows you how to query the Docling API to extract data from a
+// PDF and have it processed by an LLM.
 //
 // # Running the example:
 //

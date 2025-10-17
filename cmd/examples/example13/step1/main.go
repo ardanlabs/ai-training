@@ -1,3 +1,17 @@
+// This example shows you how to use yzma to execute a simple prompt
+// against a model using llamacpp directly via a native Go application.
+//
+// # Running the example:
+//
+//	$ make example13-step1-macos-arm64
+//
+// # This requires running the following command:
+//
+//	$ make yzma-models // This downloads the needed models
+//
+// If you are not running on macos under the arch64 architecture, we will need
+// to add support for you. Please contact bill at bill@ardanlabs.com
+
 package main
 
 import (
@@ -39,7 +53,7 @@ func main() {
 
 	// -------------------------------------------------------------------------
 
-	fmt.Println("***> Loading Model", modelFile)
+	fmt.Println("\n- Loading Model", modelFile)
 
 	model := llama.ModelLoadFromFile(modelFile, llama.ModelDefaultParams())
 	defer llama.ModelFree(model)
@@ -65,7 +79,7 @@ func main() {
 
 	// -------------------------------------------------------------------------
 
-	fmt.Println("***> Extract Response")
+	fmt.Println("- Extract Response")
 
 	batch := llama.BatchGetOne(tokens)
 
@@ -88,5 +102,5 @@ func main() {
 
 	// -------------------------------------------------------------------------
 
-	fmt.Print("\n\n")
+	fmt.Println()
 }

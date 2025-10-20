@@ -31,6 +31,11 @@ func main() {
 		os.Exit(0)
 	}
 
+	if err := installLlamaCPP(*libPath); err != nil {
+		fmt.Println("unable to install llamacpp", err)
+		os.Exit(0)
+	}
+
 	if err := llama.Load(*libPath); err != nil {
 		fmt.Println("unable to load library", err.Error())
 		os.Exit(1)

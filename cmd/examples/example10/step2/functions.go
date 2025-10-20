@@ -11,7 +11,6 @@ import (
 
 // mcpClient is a client for the MCP server.
 type mcpClient struct {
-	host   string
 	client *mcp.Client
 }
 

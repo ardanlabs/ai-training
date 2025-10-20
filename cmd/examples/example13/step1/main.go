@@ -22,8 +22,9 @@ import (
 )
 
 /*
-	This link will provide access to the llamacpp libraries. We can
-	add the OS-ARCH support as needed.
+	This link will provide access to the llamacpp libraries. Thanks to ymza,
+	we have an installer process that is called when the program starts. The
+	right libraries for your OS and ARCH are loaded into the zarf/llamacpp folder.
 	https://github.com/ggml-org/llama.cpp/releases
 
 	This is the model to use for this example. Once downloaded, move the

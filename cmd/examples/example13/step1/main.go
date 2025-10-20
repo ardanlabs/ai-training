@@ -44,7 +44,7 @@ var (
 )
 
 func main() {
-	if err := installLlamaCPP(libPath); err != nil {
+	if err := installLlamaCPP(); err != nil {
 		fmt.Println("unable to install llamacpp", err)
 		os.Exit(0)
 	}

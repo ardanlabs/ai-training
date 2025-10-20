@@ -9,9 +9,11 @@ import (
 	"github.com/hybridgroup/yzma/pkg/download"
 )
 
-func installLlamaCPP(libPath string) error {
-	if _, err := os.Stat(filepath.Join(download.LibraryName(runtime.GOOS))); !os.IsNotExist(err) {
-		fmt.Println("llama.cpp already installed at", libPath)
+func installLlamaCPP() error {
+	libPath := os.Getenv("YZMA_LIB")
+
+	if _, err := os.Stat(filepath.Join(libPath, download.LibraryName(runtime.GOOS))); !os.IsNotExist(err) {
+		fmt.Println("- llama.cpp already installed at", libPath)
 		return nil
 	}
 

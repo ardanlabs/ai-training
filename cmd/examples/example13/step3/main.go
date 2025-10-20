@@ -16,88 +16,97 @@ import (
 	You can use `make yzma-models` to download all the models for these examples.
 */
 
-var (
-	vocab   llama.Vocab
-	model   llama.Model
-	lctx    llama.Context
-	sampler llama.Sampler
-
-	messages []llama.ChatMessage
-)
-
 func main() {
 	if err := handleFlags(); err != nil {
 		showUsage()
 		os.Exit(0)
 	}
 
-	if err := installLlamaCPP(*libPath); err != nil {
+	if err := installLlamaCPP(); err != nil {
 		fmt.Println("unable to install llamacpp", err)
 		os.Exit(0)
 	}
+
+	// -------------------------------------------------------------------------
 
 	if err := llama.Load(*libPath); err != nil {
 		fmt.Println("unable to load library", err.Error())
 		os.Exit(1)
 	}
 
+	llama.Init()
+	defer llama.BackendFree()
+
 	if !*verbose {
 		llama.LogSet(llama.LogSilent())
 	}
 
-	llama.Init()
-	defer llama.BackendFree()
+	// -------------------------------------------------------------------------
 
-	model = llama.ModelLoadFromFile(*modelFile, llama.ModelDefaultParams())
+	fmt.Println("\n- Loading Model", *modelFile)
+
+	model := llama.ModelLoadFromFile(*modelFile, llama.ModelDefaultParams())
 	defer llama.ModelFree(model)
-
-	vocab = llama.ModelGetVocab(model)
 
 	ctxParams := llama.ContextDefaultParams()
 	ctxParams.NCtx = uint32(*contextSize)
 	ctxParams.NBatch = uint32(*batchSize)
 
-	lctx = llama.InitFromModel(model, ctxParams)
+	lctx := llama.InitFromModel(model, ctxParams)
 	defer llama.Free(lctx)
 
-	sampler = llama.SamplerChainInit(llama.SamplerChainDefaultParams())
+	vocab := llama.ModelGetVocab(model)
+
+	sampler := llama.SamplerChainInit(llama.SamplerChainDefaultParams())
+
 	if *topK != 0 {
 		llama.SamplerChainAdd(sampler, llama.SamplerInitTopK(int32(*topK)))
 	}
+
 	if *topP < 1.0 {
 		llama.SamplerChainAdd(sampler, llama.SamplerInitTopP(float32(*topP), 1))
 	}
+
 	if *minP > 0 {
 		llama.SamplerChainAdd(sampler, llama.SamplerInitMinP(float32(*minP), 1))
 	}
+
 	llama.SamplerChainAdd(sampler, llama.SamplerInitTempExt(float32(*temperature), 0, 1.0))
 	llama.SamplerChainAdd(sampler, llama.SamplerInitDist(llama.DefaultSeed))
+
+	// -------------------------------------------------------------------------
 
 	if *template == "" {
 		*template = llama.ModelChatTemplate(model, "")
 	}
+
 	if *template == "" {
 		*template = "chatml"
 	}
 
-	messages = make([]llama.ChatMessage, 0)
+	// -------------------------------------------------------------------------
+
+	var messages []llama.ChatMessage
 	if *systemPrompt != "" {
 		messages = append(messages, llama.NewChatMessage("system", *systemPrompt))
 	}
 
-	// single message
 	if len(*prompt) > 0 {
 		messages = append(messages, llama.NewChatMessage("user", *prompt))
-		chat(chatTemplate(true), true)
-
+		chat(lctx, model, vocab, sampler, chatTemplate(true, *template, messages), true)
 		return
 	}
 
-	// Chat session starts.
+	// -------------------------------------------------------------------------
+
+	fmt.Println()
+
 	first := true
 	for {
 		fmt.Print("USER> ")
+
 		reader := bufio.NewReader(os.Stdin)
+
 		pmpt, err := reader.ReadString('\n')
 		if err != nil {
 			fmt.Println("unable to read user input", err.Error())
@@ -105,16 +114,16 @@ func main() {
 		}
 
 		messages = append(messages, llama.NewChatMessage("user", pmpt))
-		chat(chatTemplate(true), first)
+
+		chat(lctx, model, vocab, sampler, chatTemplate(true, *template, messages), first)
+
 		first = false
 	}
 }
 
-func chat(text string, first bool) {
-	// Call once to get the size.
+func chat(lctx llama.Context, model llama.Model, vocab llama.Vocab, sampler llama.Sampler, text string, first bool) {
 	count := llama.Tokenize(vocab, text, nil, first, true)
 
-	// Now get the actual tokens.
 	tokens := make([]llama.Token, count)
 	llama.Tokenize(vocab, text, tokens, first, true)
 
@@ -134,6 +143,7 @@ func chat(text string, first bool) {
 	fmt.Println()
 
 	response := ""
+
 	for pos := int32(0); pos+batch.NTokens < int32(*predictSize); pos += batch.NTokens {
 		llama.Decode(lctx, batch)
 		token := llama.SamplerSample(sampler, lctx, -1)
@@ -156,9 +166,9 @@ func chat(text string, first bool) {
 	fmt.Println()
 }
 
-func chatTemplate(add bool) string {
+func chatTemplate(add bool, template string, messages []llama.ChatMessage) string {
 	buf := make([]byte, 1024)
-	len := llama.ChatApplyTemplate(*template, messages, add, buf)
-	result := string(buf[:len])
-	return result
+	len := llama.ChatApplyTemplate(template, messages, add, buf)
+
+	return string(buf[:len])
 }

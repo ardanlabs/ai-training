@@ -131,6 +131,7 @@ python-install:
 	uv lock
 	uv sync
 	uv pip install vllm
+	uv pip list > pydeps.txt
 
 yzma-models:
 	curl -L -o zarf/models/SmolLM-135M.Q2_K.gguf "https://huggingface.co/QuantFactory/SmolLM-135M-GGUF/resolve/main/SmolLM-135M.Q2_K.gguf?download=true"
@@ -355,12 +356,6 @@ pgcli:
 # You need to add this to your .env file
 # 	export VLLM_CPU_KVCACHE_SPACE=26
 
-vllm-install:
-	uv pip install vllm
-
-vllm-update:
-	uv lock --upgrade && uv sync
-
 vllm-run:
 	source .env && uv run vllm serve --host 0.0.0.0 --port 8000 --max_num_batched_tokens 131072 "NousResearch/Hermes-3-Llama-3.1-8B"
 
@@ -395,6 +390,8 @@ deps-python-sync:
 
 deps-python-upgrade:
 	uv lock --upgrade && uv sync
+	uv pip install vllm
+	uv pip list > pydeps.txt
 
 deps-python-outdated:
 	uv pip list --outdated

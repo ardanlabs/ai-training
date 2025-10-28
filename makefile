@@ -118,6 +118,7 @@ install:
 	brew install pkgconf
 	brew install whisper-cpp
 	brew install homebrew-ffmpeg/ffmpeg/ffmpeg --with-whisper-cpp --HEAD
+	go install github.com/janpfeifer/gonb@latest
 
 docker:
 	docker pull mongodb/mongodb-atlas-local:8.0
@@ -131,6 +132,7 @@ python-install:
 	uv lock
 	uv sync
 	uv pip install vllm
+	uv pip install jupyterlab
 	uv pip list > pydeps.txt
 
 yzma-models:
@@ -371,6 +373,12 @@ vllm-test:
 		}'
 
 # ==============================================================================
+# Jupyter Notebook using Go
+
+jupyter-run:
+	uv run jupyter lab
+
+# ==============================================================================
 # Go Modules support
 
 tidy:
@@ -391,6 +399,7 @@ deps-python-sync:
 deps-python-upgrade:
 	uv lock --upgrade && uv sync
 	uv pip install vllm
+	uv pip install jupyterlab
 	uv pip list > pydeps.txt
 
 deps-python-outdated:

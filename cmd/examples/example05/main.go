@@ -142,7 +142,7 @@ func createBookEmbeddings(ctx context.Context) error {
 		fmt.Print("\033[u\033[K")
 		fmt.Printf("Vectorizing Data: %d of %d", counter, len(chunks))
 
-		chunk := strings.Trim(chunk, "<CHUNK>")
+		chunk = strings.Trim(chunk, "<CHUNK>")
 		chunk = strings.Trim(chunk, "</CHUNK>")
 
 		// YOU WILL WANT TO KNOW HOW MANY TOKENS ARE CURRENTLY IN THE CHUNK

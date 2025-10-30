@@ -11,8 +11,6 @@ import (
 	"github.com/hybridgroup/yzma/pkg/llama"
 )
 
-// modelFile := "zarf/models/bge-m3-q8_0.gguf"
-
 type EmbeddingModel struct {
 	model llama.Model
 	lctx  llama.Context
@@ -31,6 +29,8 @@ func NewEmbeddingModel(modelFile string) (*EmbeddingModel, error) {
 	model := llama.ModelLoadFromFile(modelFile, llama.ModelDefaultParams())
 
 	ctxParams := llama.ContextDefaultParams()
+	ctxParams.NBatch = 8192
+	ctxParams.NUbatch = 8192
 	ctxParams.Embeddings = 1
 
 	em := EmbeddingModel{
@@ -55,7 +55,6 @@ func (em *EmbeddingModel) Embed(text string) ([]float32, error) {
 
 	batch := llama.BatchGetOne(tokens)
 	llama.Decode(em.lctx, batch)
-
 	nEmbd := llama.ModelNEmbd(em.model)
 	vec := llama.GetEmbeddingsSeq(em.lctx, 0, nEmbd)
 
@@ -93,7 +92,7 @@ func loadData(db *sql.DB, em *EmbeddingModel) error {
 
 	for counter, chunk := range chunks {
 		fmt.Print("\033[u\033[K")
-		fmt.Printf("Vectorizing Data: %d of %d", counter, len(chunks))
+		fmt.Printf("Vectorizing Data: %d of %d", counter+1, len(chunks))
 
 		chunk = strings.Trim(chunk, "<CHUNK>")
 		chunk = strings.Trim(chunk, "</CHUNK>")
@@ -106,11 +105,9 @@ func loadData(db *sql.DB, em *EmbeddingModel) error {
 		// TOKENS. THERE IS A TIKTOKEN PACKAGE IN FOUNDATION TO HELP YOU WITH
 		// THIS.
 
-		contextLimit := 1024
-
-		vec, err := em.Embed(chunk[:min(len(chunk), contextLimit)])
+		vec, err := em.Embed(chunk)
 		if err != nil {
-			return err
+			return fmt.Errorf("embed chunk: %w", err)
 		}
 
 		chunk = strings.ReplaceAll(chunk, "'", "''")
@@ -119,7 +116,7 @@ func loadData(db *sql.DB, em *EmbeddingModel) error {
 		sql := fmt.Sprintf("INSERT INTO items (id, name, embedding) VALUES(%d, '%s', %v);", counter, chunk, vecStr)
 
 		if _, err := db.Exec(sql); err != nil {
-			return err
+			return fmt.Errorf("insert chunk: %s %w", sql, err)
 		}
 	}
 

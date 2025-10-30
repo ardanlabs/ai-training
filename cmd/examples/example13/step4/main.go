@@ -10,10 +10,12 @@ import (
 	"github.com/marcboeker/go-duckdb/v2" // DuckDB driver
 )
 
+var modelFile = "zarf/models/bge-m3-q8_0.gguf"
+
 func main() {
 	log.Default().SetOutput(os.Stdout)
 
-	em, err := NewEmbeddingModel("zarf/models/bge-m3-q8_0.gguf")
+	em, err := NewEmbeddingModel(modelFile)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -52,7 +54,8 @@ func main() {
 	}
 
 	// -------------------------------------------------------------------------
-	fmt.Println("LOADING DATA...")
+
+	fmt.Print("LOADING DATA...")
 	t := time.Now()
 
 	if err := loadData(db, em); err != nil {
@@ -69,50 +72,11 @@ func main() {
 		WITH (metric = 'cosine');
 	`
 
-	// Create HNSW index for fast similarity search (using cosine distance)
 	if _, err = db.Exec(sql); err != nil {
 		log.Fatalf("Error creating HNSW index: %v", err)
 	}
 
 	// -------------------------------------------------------------------------
-	// Query all items from the db with their embeddings.
-
-	// fmt.Println("Items and their embeddings:")
-
-	// sql = `
-	// 	SELECT
-	// 		id,
-	// 		name,
-	// 		embedding
-	// 	FROM
-	// 		items;
-	// `
-
-	// rows, err := db.Query(sql)
-	// if err != nil {
-	// 	log.Fatalf("Error querying data: %v", err)
-	// }
-	// defer rows.Close()
-
-	// for rows.Next() {
-	// 	var id int
-	// 	var name string
-	// 	var embeddingRaw []any
-
-	// 	if err := rows.Scan(&id, &name, &embeddingRaw); err != nil {
-	// 		log.Fatalf("Error scanning row: %v", err)
-	// 	}
-
-	// 	embedding := make([]float32, len(embeddingRaw))
-	// 	for i, v := range embeddingRaw {
-	// 		embedding[i] = v.(float32)
-	// 	}
-
-	// 	fmt.Printf("ID: %d, Name: %s, Embedding: %v\n", id, name, embedding[:1])
-	// }
-
-	// -------------------------------------------------------------------------
-	// Perform similarity search using HNSW index.
 
 	question := "How do you declare a variable in Go"
 
@@ -120,36 +84,6 @@ func main() {
 	if err != nil {
 		log.Fatalf("Error embedding query: %v", err)
 	}
-
-	// Check query plan to verify index usage
-	explainSQL := `
-		EXPLAIN SELECT
-			id,
-			name,
-			array_cosine_similarity(embedding, ?::FLOAT[1024]) as similarity
-		FROM
-			items
-		ORDER BY
-			array_cosine_distance(embedding, ?::FLOAT[1024])
-		LIMIT 3;
-	`
-
-	fmt.Println("\nQuery Plan:")
-	rows, err := db.Query(explainSQL, queryVector, queryVector)
-	if err != nil {
-		log.Fatalf("Error explaining query: %v", err)
-	}
-	for rows.Next() {
-		var explainKey, explainValue string
-		if err := rows.Scan(&explainKey, &explainValue); err != nil {
-			log.Fatalf("Error scanning plan: %v", err)
-		}
-		fmt.Printf("%s: %s\n", explainKey, explainValue)
-	}
-	rows.Close()
-
-	// -------------------------------------------------------------------------
-	// Perform similarity search using HNSW index.
 
 	fmt.Printf("\nTop 3 similar items to %q:\n", question)
 
@@ -165,7 +99,7 @@ func main() {
 		LIMIT 3;
 	`
 
-	rows, err = db.Query(sql, queryVector, queryVector)
+	rows, err := db.Query(sql, queryVector, queryVector)
 	if err != nil {
 		log.Fatalf("Error querying similar items: %v", err)
 	}

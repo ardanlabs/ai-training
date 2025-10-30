@@ -1,16 +1,16 @@
 package main
 
 import (
-	"database/sql"
 	"fmt"
 	"log"
 	"os"
-	"time"
-
-	"github.com/marcboeker/go-duckdb/v2" // DuckDB driver
+	// DuckDB driver
 )
 
-var modelFile = "zarf/models/bge-m3-q8_0.gguf"
+var (
+	modelFile = "zarf/models/bge-m3-q8_0.gguf"
+	dbPath    = "zarf/data/duck.db"
+)
 
 func main() {
 	log.Default().SetOutput(os.Stdout)
@@ -21,60 +21,11 @@ func main() {
 	}
 	defer em.Unload()
 
-	connector, err := duckdb.NewConnector(":memory:", nil)
+	db, err := dbConnection(em)
 	if err != nil {
 		log.Fatal(err)
 	}
-
-	db := sql.OpenDB(connector)
 	defer db.Close()
-
-	// Install and load VSS extension for vector similarity search.
-	sql := `
-		INSTALL vss; LOAD vss;
-	`
-
-	_, err = db.Exec(sql)
-	if err != nil {
-		log.Fatalf("Error loading VSS extension: %v", err)
-	}
-
-	// -------------------------------------------------------------------------
-
-	sql = `
-		CREATE TABLE items (
-			id        INTEGER   PRIMARY KEY,
-			name      VARCHAR,
-			embedding FLOAT[1024]
-		);
-	`
-
-	if _, err = db.Exec(sql); err != nil {
-		log.Fatalf("Error creating table: %v", err)
-	}
-
-	// -------------------------------------------------------------------------
-
-	fmt.Print("LOADING DATA...")
-	t := time.Now()
-
-	if err := loadData(db, em); err != nil {
-		log.Fatalf("Error loading data: %v", err)
-	}
-
-	fmt.Printf("Loaded data in %v\n", time.Since(t))
-
-	// -------------------------------------------------------------------------
-
-	sql = `
-		CREATE INDEX idx_embedding ON items 
-		USING HNSW (embedding) 
-		WITH (metric = 'cosine');
-	`
-
-	if _, err = db.Exec(sql); err != nil {
-		log.Fatalf("Error creating HNSW index: %v", err)
-	}
 
 	// -------------------------------------------------------------------------
 
@@ -87,7 +38,7 @@ func main() {
 
 	fmt.Printf("\nTop 3 similar items to %q:\n", question)
 
-	sql = `
+	sql := `
 		SELECT
 			id,
 			name,

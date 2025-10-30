@@ -21,6 +21,7 @@ zarf/samples/videos/chunks/*
 zarf/samples/videos/frames/*
 zarf/data/book.embeddings
 zarf/data/example3.*
+zarf/data/duck.*
 zarf/docker/mongodb/
 zarf/docker/ollama/
 zarf/docker/openwebui/

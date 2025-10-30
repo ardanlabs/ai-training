@@ -255,6 +255,9 @@ example13-step3:
 	export YZMA_LIB=zarf/llamacpp && \
 	go run cmd/examples/example13/step3/*.go -model zarf/models/qwen2.5-0.5b-instruct-fp16.gguf 2>/dev/null
 
+example13-step4:
+	go run cmd/examples/example13/step4/*.go
+
 # ==============================================================================
 # Run Postgres, MongoDB, and Open WebUI
 

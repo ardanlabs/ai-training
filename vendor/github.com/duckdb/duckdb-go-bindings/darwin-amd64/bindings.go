@@ -490,6 +490,7 @@ func DestroyBigNum(i *BigNum) {
 
 // Column wraps duckdb_column.
 // NOTE: Same limitations as Result.
+// Deprecated: See C API documentation.
 type Column struct {
 	data C.duckdb_column
 }
@@ -890,6 +891,7 @@ func DestroyInstanceCache(cache *InstanceCache) {
 
 // Open wraps duckdb_open.
 // outDb must be closed with Close.
+// Deprecated: Use OpenExt.
 func Open(path string, outDb *Database) State {
 	cPath := C.CString(path)
 	defer Free(unsafe.Pointer(cPath))
@@ -1225,6 +1227,7 @@ func ResultErrorType(res *Result) ErrorType {
 
 // ResultGetChunk wraps duckdb_result_get_chunk.
 // The return value must be destroyed with DestroyDataChunk.
+// Deprecated: See C API documentation.
 func ResultGetChunk(res Result, index IdxT) DataChunk {
 	chunk := C.duckdb_result_get_chunk(res.data, index)
 	if debugMode {
@@ -1235,6 +1238,7 @@ func ResultGetChunk(res Result, index IdxT) DataChunk {
 	}
 }
 
+// Deprecated: See C API documentation.
 func ResultChunkCount(res Result) IdxT {
 	return C.duckdb_result_chunk_count(res.data)
 }
@@ -1247,6 +1251,7 @@ func ResultReturnType(res Result) ResultType {
 // Safe Fetch Functions (all deprecated)
 // ------------------------------------------------------------------ //
 
+// Deprecated: See C API documentation.
 func ValueInt64(res *Result, col IdxT, row IdxT) int64 {
 	v := C.duckdb_value_int64(&res.data, col, row)
 	return int64(v)
@@ -3412,6 +3417,7 @@ func ProfilingInfoGetChild(info ProfilingInfo, index IdxT) ProfilingInfo {
 
 // AppenderCreate wraps duckdb_appender_create.
 // outAppender must be destroyed with AppenderDestroy.
+// Deprecated: Use AppenderCreateExt or AppenderCreateQuery.
 func AppenderCreate(conn Connection, schema string, table string, outAppender *Appender) State {
 	cSchema := C.CString(schema)
 	defer Free(unsafe.Pointer(cSchema))
@@ -3764,7 +3770,20 @@ func ArrowScan(conn Connection, table string, stream ArrowStream) State {
 
 // TODO:
 // duckdb_stream_fetch_chunk (deprecation notice)
-// duckdb_fetch_chunk
+
+//===--------------------------------------------------------------------===//
+// Result Interface
+//===--------------------------------------------------------------------===//
+
+func FetchChunk(res Result) DataChunk {
+	chunk := C.duckdb_fetch_chunk(res.data)
+	if debugMode {
+		incrAllocCount("chunk")
+	}
+	return DataChunk{
+		Ptr: unsafe.Pointer(chunk),
+	}
+}
 
 //===--------------------------------------------------------------------===//
 // Cast Functions

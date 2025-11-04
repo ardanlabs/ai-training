@@ -64,6 +64,8 @@ func main() {
 	model := llama.ModelLoadFromFile(modelFile, llama.ModelDefaultParams())
 	defer llama.ModelFree(model)
 
+	modelInfo(model)
+
 	lctx := llama.InitFromModel(model, llama.ContextDefaultParams())
 	defer llama.Free(lctx)
 
@@ -107,6 +109,48 @@ func main() {
 	}
 
 	// -------------------------------------------------------------------------
+
+	fmt.Println()
+}
+
+func modelInfo(model llama.Model) {
+	fmt.Println()
+
+	desc := llama.ModelDesc(model)
+	fmt.Printf("Model Description: %s\n", desc)
+
+	size := llama.ModelSize(model)
+	fmt.Printf("Model Size: %d tensors\n", size)
+
+	encoder := llama.ModelHasEncoder(model)
+	fmt.Printf("Model Has Encoder: %v\n", encoder)
+
+	decoder := llama.ModelHasDecoder(model)
+	fmt.Printf("Model Has Decoder: %v\n", decoder)
+
+	recurrent := llama.ModelIsRecurrent(model)
+	fmt.Printf("Model Is Recurrent: %v\n", recurrent)
+
+	hybrid := llama.ModelIsHybrid(model)
+	fmt.Printf("Model Is Hybrid: %v\n", hybrid)
+
+	count := llama.ModelMetaCount(model)
+	fmt.Printf("Model Metadata (%d entries):\n", count)
+	for i := range count {
+		key, ok := llama.ModelMetaKeyByIndex(model, i)
+		if !ok {
+			fmt.Printf("Error getting key for index %d\n", i)
+			continue
+		}
+
+		value, ok := llama.ModelMetaValStrByIndex(model, i)
+		if !ok {
+			fmt.Printf("Error getting value for index %d\n", i)
+			continue
+		}
+
+		fmt.Printf("  %s: %s\n", key, value)
+	}
 
 	fmt.Println()
 }

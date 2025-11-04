@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	// DuckDB driver
 )
 
 var (

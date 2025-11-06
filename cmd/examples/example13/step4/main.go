@@ -19,7 +19,7 @@ import (
 )
 
 var (
-	modelFile = "zarf/models/bge-m3-q8_0.gguf"
+	modelFile = "zarf/models/embeddinggemma-300m-qat-Q8_0.gguf"
 	dbPath    = "zarf/data/duck.db"
 )
 
@@ -40,11 +40,12 @@ func main() {
 
 	// -------------------------------------------------------------------------
 
-	question := "How do you declare a variable in Go"
+	question := "What do interfaces provide in Go"
 
 	queryVector, err := em.Embed(question)
 	if err != nil {
-		log.Fatalf("Error embedding query: %v", err)
+		fmt.Printf("Error embedding query: %v", err)
+		os.Exit(1)
 	}
 
 	fmt.Printf("\nTop 3 similar items to %q:\n\n", question)
@@ -53,17 +54,18 @@ func main() {
 		SELECT
 			id,
 			text,
-			array_cosine_similarity(embedding, ?::FLOAT[1024]) as similarity
+			array_cosine_similarity(embedding, ?::FLOAT[768]) as similarity
 		FROM
 			items
 		ORDER BY
 			similarity DESC
-		LIMIT 3;
+		LIMIT 6;
 	`
 
 	rows, err := db.Query(sql, queryVector)
 	if err != nil {
-		log.Fatalf("Error querying similar items: %v", err)
+		fmt.Printf("Error querying similar items: %v", err)
+		os.Exit(1)
 	}
 	defer rows.Close()
 
@@ -73,9 +75,10 @@ func main() {
 		var similarity float64
 
 		if err := rows.Scan(&id, &text, &similarity); err != nil {
-			log.Fatalf("Error scanning row: %v", err)
+			fmt.Printf("Error scanning row: %v", err)
+			os.Exit(1)
 		}
 
-		fmt.Printf("ID: %d\nText: %s...\nSimilarity: %.4f\n\n", id, text[1:100], similarity)
+		fmt.Printf("---\nID: %d\nText: %s...\nSimilarity: %.4f\n\n", id, text[1:min(len(text), 200)], similarity)
 	}
 }

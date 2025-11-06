@@ -29,8 +29,8 @@ func NewEmbeddingModel(modelFile string) (*EmbeddingModel, error) {
 	model := llama.ModelLoadFromFile(modelFile, llama.ModelDefaultParams())
 
 	ctxParams := llama.ContextDefaultParams()
-	ctxParams.NBatch = 8192
-	ctxParams.NUbatch = 8192
+	ctxParams.NBatch = 8196
+	ctxParams.NUbatch = 8196
 	ctxParams.Embeddings = 1
 
 	em := EmbeddingModel{

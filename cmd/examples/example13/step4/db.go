@@ -67,7 +67,7 @@ func dbConnection(em *EmbeddingModel) (*sql.DB, error) {
 		CREATE TABLE items (
 			id        INTEGER   PRIMARY KEY,
 			text      VARCHAR,
-			embedding FLOAT[1024]
+			embedding FLOAT[768]
 		);
 	`
 

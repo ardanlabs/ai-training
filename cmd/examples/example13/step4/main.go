@@ -47,21 +47,21 @@ func main() {
 		log.Fatalf("Error embedding query: %v", err)
 	}
 
-	fmt.Printf("\nTop 3 similar items to %q:\n", question)
+	fmt.Printf("\nTop 3 similar items to %q:\n\n", question)
 
 	sql := `
 		SELECT
 			id,
-			name,
+			text,
 			array_cosine_similarity(embedding, ?::FLOAT[1024]) as similarity
 		FROM
 			items
 		ORDER BY
-			array_cosine_distance(embedding, ?::FLOAT[1024])
+			similarity DESC
 		LIMIT 3;
 	`
 
-	rows, err := db.Query(sql, queryVector, queryVector)
+	rows, err := db.Query(sql, queryVector)
 	if err != nil {
 		log.Fatalf("Error querying similar items: %v", err)
 	}
@@ -69,13 +69,13 @@ func main() {
 
 	for rows.Next() {
 		var id int
-		var name string
+		var text string
 		var similarity float64
 
-		if err := rows.Scan(&id, &name, &similarity); err != nil {
+		if err := rows.Scan(&id, &text, &similarity); err != nil {
 			log.Fatalf("Error scanning row: %v", err)
 		}
 
-		fmt.Printf("ID: %d, Name: %s, Similarity: %.4f\n", id, name[:100], similarity)
+		fmt.Printf("ID: %d\nText: %s...\nSimilarity: %.4f\n\n", id, text[1:100], similarity)
 	}
 }

@@ -62,6 +62,7 @@ func (em *EmbeddingModel) Embed(text string) ([]float32, error) {
 	for _, v := range vec {
 		sum += float64(v * v)
 	}
+
 	sum = math.Sqrt(sum)
 	norm := float32(1.0 / sum)
 
@@ -105,7 +106,7 @@ func loadData(db *sql.DB, em *EmbeddingModel) error {
 		chunk = strings.ReplaceAll(chunk, "'", "''")
 		vecStr := strings.ReplaceAll(fmt.Sprintf("%v", vec), " ", ",")
 
-		sql := fmt.Sprintf("INSERT INTO items (id, name, embedding) VALUES(%d, '%s', %v);", counter, chunk, vecStr)
+		sql := fmt.Sprintf("INSERT INTO items (id, text, embedding) VALUES(%d, '%s', %v);", counter, chunk, vecStr)
 
 		if _, err := db.Exec(sql); err != nil {
 			return fmt.Errorf("insert chunk: %s %w", sql, err)

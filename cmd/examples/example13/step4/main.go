@@ -1,3 +1,15 @@
+// This example shows you how to use duckDB as an embedding DB and an
+// inference model to generate embeddings for a set of items all contained
+// in a single Go binary.
+//
+// # Running the example:
+//
+//	$ make example13-step4
+//
+// # This requires running the following command:
+//
+//	$ make yzma-models // This downloads the needed models
+
 package main
 
 import (

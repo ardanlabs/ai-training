@@ -1,3 +1,14 @@
+// This example shows you how to create a simple chat application against an
+// inference model using llamacpp directly via a native Go application.
+//
+// # Running the example:
+//
+//	$ make example13-step3
+//
+// # This requires running the following command:
+//
+//	$ make yzma-models // This downloads the needed models
+
 package main
 
 import (

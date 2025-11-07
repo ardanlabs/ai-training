@@ -18,27 +18,9 @@ import (
 	"github.com/hybridgroup/yzma/pkg/llama"
 )
 
-/*
-	This link will provide access to the llamacpp libraries. Thanks to ymza,
-	we have an installer process that is called when the program starts. The
-	right libraries for your OS and ARCH are loaded into the zarf/llamacpp folder.
-	https://github.com/ggml-org/llama.cpp/releases
-
-	This is the model to use for this example. Once downloaded, move the
-	model to the `zarf/models/` folder.
-	https://huggingface.co/QuantFactory/SmolLM-135M-GGUF/resolve/main/SmolLM-135M.Q2_K.gguf?download=true
-
-	You can use `make yzma-models` to download all the models for these examples.
-
-	I had to tell the MacOS Gatekeeper to allow these libraries to be loaded. I
-	am not sure how to automate this process.
-*/
-
 var (
-	modelFile      = "zarf/models/SmolLM-135M.Q2_K.gguf"
-	prompt         = "Are you ready to go?"
-	libPath        = os.Getenv("YZMA_LIB")
-	responseLength = int32(52)
+	modelFile = "zarf/models/qwen2.5-0.5b-instruct-fp16.gguf"
+	libPath   = os.Getenv("YZMA_LIB")
 )
 
 func main() {
@@ -47,10 +29,13 @@ func main() {
 		os.Exit(0)
 	}
 
+	// -------------------------------------------------------------------------
+
 	if err := llama.Load(libPath); err != nil {
 		fmt.Println("unable to load library", err.Error())
 		os.Exit(1)
 	}
+
 	llama.Init()
 	defer llama.BackendFree()
 
@@ -61,34 +46,72 @@ func main() {
 	model := llama.ModelLoadFromFile(modelFile, llama.ModelDefaultParams())
 	defer llama.ModelFree(model)
 
-	modelInfo(model)
+	showModelInfo(model)
 
 	lctx := llama.InitFromModel(model, llama.ContextDefaultParams())
 	defer llama.Free(lctx)
 
-	vocab := llama.ModelGetVocab(model)
-
-	// -------------------------------------------------------------------------
-
-	// Call once to get the size of the tokens from the prompt.
-	count := llama.Tokenize(vocab, prompt, nil, true, false)
-
-	// Now get the actual tokens.
-	tokens := make([]llama.Token, count)
-	llama.Tokenize(vocab, prompt, tokens, true, false)
-
 	// -------------------------------------------------------------------------
 
 	sampler := llama.SamplerChainInit(llama.SamplerChainDefaultParams())
-	llama.SamplerChainAdd(sampler, llama.SamplerInitGreedy())
+	llama.SamplerChainAdd(sampler, llama.SamplerInitTopK(int32(1.0)))
+	llama.SamplerChainAdd(sampler, llama.SamplerInitTempExt(float32(1.0), 0, 1.0))
+	llama.SamplerChainAdd(sampler, llama.SamplerInitDist(llama.DefaultSeed))
 
 	// -------------------------------------------------------------------------
 
-	fmt.Println("- Extract Response")
+	template := llama.ModelChatTemplate(model, "")
+	if template == "" {
+		v, _ := llama.ModelMetaValStr(model, "tokenizer.chat_template")
+		template = v
+	}
+
+	if template == "" {
+		template = "chatml"
+	}
+
+	// -------------------------------------------------------------------------
+
+	question := "Write a hello world program in Go?"
+
+	messages := []llama.ChatMessage{
+		llama.NewChatMessage("user", question),
+	}
+
+	// -------------------------------------------------------------------------
+
+	vocab := llama.ModelGetVocab(model)
+
+	buf := make([]byte, 8196)
+	len := llama.ChatApplyTemplate(template, messages, true, buf)
+
+	text := string(buf[:len])
+
+	count := llama.Tokenize(vocab, text, nil, true, true)
+
+	tokens := make([]llama.Token, count)
+	llama.Tokenize(vocab, text, tokens, true, true)
+
+	// -------------------------------------------------------------------------
 
 	batch := llama.BatchGetOne(tokens)
 
-	for pos := int32(0); pos+batch.NTokens < count+responseLength; pos += batch.NTokens {
+	if llama.ModelHasEncoder(model) {
+		llama.Encode(lctx, batch)
+
+		start := llama.ModelDecoderStartToken(model)
+		if start == llama.TokenNull {
+			start = llama.VocabBOS(vocab)
+		}
+
+		batch = llama.BatchGetOne([]llama.Token{start})
+	}
+
+	// -------------------------------------------------------------------------
+
+	fmt.Printf("Question: %s\n\n", question)
+
+	for range llama.MaxToken {
 		llama.Decode(lctx, batch)
 		token := llama.SamplerSample(sampler, lctx, -1)
 
@@ -97,20 +120,17 @@ func main() {
 			break
 		}
 
-		buf := make([]byte, 128)
-		len := llama.TokenToPiece(vocab, token, buf, 0, true)
-
-		fmt.Print(string(buf[:len]))
+		buf := make([]byte, 256)
+		l := llama.TokenToPiece(vocab, token, buf, 0, false)
+		next := string(buf[:l])
 
 		batch = llama.BatchGetOne([]llama.Token{token})
+
+		fmt.Print(next)
 	}
-
-	// -------------------------------------------------------------------------
-
-	fmt.Println()
 }
 
-func modelInfo(model llama.Model) {
+func showModelInfo(model llama.Model) {
 	fmt.Println()
 
 	desc := llama.ModelDesc(model)

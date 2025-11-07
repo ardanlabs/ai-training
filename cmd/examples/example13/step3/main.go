@@ -92,6 +92,11 @@ func main() {
 	}
 
 	if *template == "" {
+		v, _ := llama.ModelMetaValStr(model, "tokenizer.chat_template")
+		*template = v
+	}
+
+	if *template == "" {
 		*template = "chatml"
 	}
 
@@ -113,6 +118,7 @@ func main() {
 	fmt.Println()
 
 	first := true
+
 	for {
 		fmt.Print("USER> ")
 
@@ -153,9 +159,7 @@ func chat(lctx llama.Context, model llama.Model, vocab llama.Vocab, sampler llam
 
 	fmt.Println()
 
-	response := ""
-
-	for pos := int32(0); pos+batch.NTokens < int32(*predictSize); pos += batch.NTokens {
+	for range llama.MaxToken {
 		llama.Decode(lctx, batch)
 		token := llama.SamplerSample(sampler, lctx, -1)
 
@@ -171,7 +175,6 @@ func chat(lctx llama.Context, model llama.Model, vocab llama.Vocab, sampler llam
 		batch = llama.BatchGetOne([]llama.Token{token})
 
 		fmt.Print(next)
-		response += next
 	}
 
 	fmt.Println()

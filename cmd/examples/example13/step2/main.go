@@ -20,14 +20,12 @@ import (
 	"github.com/hybridgroup/yzma/pkg/mtmd"
 )
 
-/*
-	This is the model and projection file to use for this example. Once downloaded,
-	move the model files to the `zarf/models/` folder.
-	https://huggingface.co/ggml-org/Qwen2.5-VL-3B-Instruct-GGUF/resolve/main/Qwen2.5-VL-3B-Instruct-Q8_0.gguf?download=true
-	https://huggingface.co/ggml-org/Qwen2.5-VL-3B-Instruct-GGUF/resolve/main/mmproj-Qwen2.5-VL-3B-Instruct-Q8_0.gguf?download=true
-
-	You can use `make yzma-models` to download all the models for these examples.
-*/
+var (
+	modelURL  = "https://huggingface.co/ggml-org/Qwen2.5-VL-3B-Instruct-GGUF/resolve/main/Qwen2.5-VL-3B-Instruct-Q8_0.gguf?download=true"
+	projURL   = "https://huggingface.co/ggml-org/Qwen2.5-VL-3B-Instruct-GGUF/resolve/main/mmproj-Qwen2.5-VL-3B-Instruct-Q8_0.gguf?download=true"
+	imageFile = "zarf/samples/gallery/giraffe.jpg"
+	libPath   = os.Getenv("YZMA_LIB")
+)
 
 func main() {
 	if err := handleFlags(); err != nil {
@@ -40,9 +38,21 @@ func main() {
 		os.Exit(0)
 	}
 
+	modelFile, err := installModel(modelURL)
+	if err != nil {
+		fmt.Println("unable to install model", err)
+		os.Exit(0)
+	}
+
+	projFile, err := installModel(projURL)
+	if err != nil {
+		fmt.Println("unable to install model", err)
+		os.Exit(0)
+	}
+
 	// -------------------------------------------------------------------------
 
-	if err := llama.Load(*libPath); err != nil {
+	if err := llama.Load(libPath); err != nil {
 		fmt.Println("unable to load library", err.Error())
 		os.Exit(1)
 	}
@@ -56,14 +66,13 @@ func main() {
 
 	// -------------------------------------------------------------------------
 
-	fmt.Println("\n- Loading Model", *modelFile)
+	fmt.Println("\n- Loading Model", modelFile)
 
-	model := llama.ModelLoadFromFile(*modelFile, llama.ModelDefaultParams())
+	model := llama.ModelLoadFromFile(modelFile, llama.ModelDefaultParams())
 	defer llama.ModelFree(model)
 
 	ctxParams := llama.ContextDefaultParams()
 	ctxParams.NCtx = uint32(*contextSize)
-	ctxParams.NBatch = uint32(*batchSize)
 
 	lctx := llama.InitFromModel(model, ctxParams)
 	defer llama.Free(lctx)
@@ -91,7 +100,7 @@ func main() {
 
 	fmt.Println("- Init mtmd")
 
-	if err := mtmd.Load(*libPath); err != nil {
+	if err := mtmd.Load(libPath); err != nil {
 		fmt.Println("unable to load library", err.Error())
 		os.Exit(1)
 	}
@@ -102,27 +111,35 @@ func main() {
 		mctxParams.Verbosity = llama.LogLevelContinue
 	}
 
-	mtmdCtx := mtmd.InitFromFile(*projFile, model, mctxParams)
+	mtmdCtx := mtmd.InitFromFile(projFile, model, mctxParams)
 	defer mtmd.Free(mtmdCtx)
 
 	// -------------------------------------------------------------------------
 
 	fmt.Println("- Tokenize")
 
-	if *template == "" {
-		*template = llama.ModelChatTemplate(model, "")
+	text := "What is in this picture?\n\n"
+
+	template := llama.ModelChatTemplate(model, "")
+	if template == "" {
+		v, _ := llama.ModelMetaValStr(model, "tokenizer.chat_template")
+		template = v
+	}
+
+	if template == "" {
+		template = "chatml"
 	}
 
 	var messages []llama.ChatMessage
 	if *systemPrompt != "" {
 		messages = append(messages, llama.NewChatMessage("system", *systemPrompt))
 	}
-	messages = append(messages, llama.NewChatMessage("user", *prompt+mtmd.DefaultMarker()))
+	messages = append(messages, llama.NewChatMessage("user", text+mtmd.DefaultMarker()))
 
 	output := mtmd.InputChunksInit()
-	input := mtmd.NewInputText(chatTemplate(true, *template, messages), true, true)
+	input := mtmd.NewInputText(chatTemplate(true, template, messages), true, true)
 
-	bitmap := mtmd.BitmapInitFromFile(mtmdCtx, *imageFile)
+	bitmap := mtmd.BitmapInitFromFile(mtmdCtx, imageFile)
 	defer mtmd.BitmapFree(bitmap)
 
 	mtmd.Tokenize(mtmdCtx, output, input, []mtmd.Bitmap{bitmap})

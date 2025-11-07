@@ -19,13 +19,10 @@ import (
 	"github.com/hybridgroup/yzma/pkg/llama"
 )
 
-/*
-	This is the model to use for this example. Once downloaded, move the
-	model to the `zarf/models/` folder.
-	https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-fp16.gguf?download=true
-
-	You can use `make yzma-models` to download all the models for these examples.
-*/
+var (
+	modelURL = "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-fp16.gguf?download=true"
+	libPath  = os.Getenv("YZMA_LIB")
+)
 
 func main() {
 	if err := handleFlags(); err != nil {
@@ -38,9 +35,15 @@ func main() {
 		os.Exit(0)
 	}
 
+	modelFile, err := installModel(modelURL)
+	if err != nil {
+		fmt.Println("unable to install model", err)
+		os.Exit(0)
+	}
+
 	// -------------------------------------------------------------------------
 
-	if err := llama.Load(*libPath); err != nil {
+	if err := llama.Load(libPath); err != nil {
 		fmt.Println("unable to load library", err.Error())
 		os.Exit(1)
 	}
@@ -54,14 +57,13 @@ func main() {
 
 	// -------------------------------------------------------------------------
 
-	fmt.Println("\n- Loading Model", *modelFile)
+	fmt.Println("\n- Loading Model", modelFile)
 
-	model := llama.ModelLoadFromFile(*modelFile, llama.ModelDefaultParams())
+	model := llama.ModelLoadFromFile(modelFile, llama.ModelDefaultParams())
 	defer llama.ModelFree(model)
 
 	ctxParams := llama.ContextDefaultParams()
 	ctxParams.NCtx = uint32(*contextSize)
-	ctxParams.NBatch = uint32(*batchSize)
 
 	lctx := llama.InitFromModel(model, ctxParams)
 	defer llama.Free(lctx)
@@ -87,17 +89,14 @@ func main() {
 
 	// -------------------------------------------------------------------------
 
-	if *template == "" {
-		*template = llama.ModelChatTemplate(model, "")
-	}
-
-	if *template == "" {
+	template := llama.ModelChatTemplate(model, "")
+	if template == "" {
 		v, _ := llama.ModelMetaValStr(model, "tokenizer.chat_template")
-		*template = v
+		template = v
 	}
 
-	if *template == "" {
-		*template = "chatml"
+	if template == "" {
+		template = "chatml"
 	}
 
 	// -------------------------------------------------------------------------
@@ -105,12 +104,6 @@ func main() {
 	var messages []llama.ChatMessage
 	if *systemPrompt != "" {
 		messages = append(messages, llama.NewChatMessage("system", *systemPrompt))
-	}
-
-	if len(*prompt) > 0 {
-		messages = append(messages, llama.NewChatMessage("user", *prompt))
-		chat(lctx, model, vocab, sampler, chatTemplate(true, *template, messages), true)
-		return
 	}
 
 	// -------------------------------------------------------------------------
@@ -132,7 +125,7 @@ func main() {
 
 		messages = append(messages, llama.NewChatMessage("user", pmpt))
 
-		chat(lctx, model, vocab, sampler, chatTemplate(true, *template, messages), first)
+		chat(lctx, model, vocab, sampler, chatTemplate(true, template, messages), first)
 
 		first = false
 	}

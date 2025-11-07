@@ -136,7 +136,6 @@ python-install:
 	uv pip list > pydeps.txt
 
 yzma-models:
-	curl -L -o zarf/models/SmolLM-135M.Q2_K.gguf "https://huggingface.co/QuantFactory/SmolLM-135M-GGUF/resolve/main/SmolLM-135M.Q2_K.gguf?download=true"
 	curl -L -o zarf/models/Qwen2.5-VL-3B-Instruct-Q8_0.gguf "https://huggingface.co/ggml-org/Qwen2.5-VL-3B-Instruct-GGUF/resolve/main/Qwen2.5-VL-3B-Instruct-Q8_0.gguf?download=true"
 	curl -L -o zarf/models/mmproj-Qwen2.5-VL-3B-Instruct-Q8_0.gguf "https://huggingface.co/ggml-org/Qwen2.5-VL-3B-Instruct-GGUF/resolve/main/mmproj-Qwen2.5-VL-3B-Instruct-Q8_0.gguf?download=true"
 	curl -L -o zarf/models/qwen2.5-0.5b-instruct-fp16.gguf "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-fp16.gguf?download=true"
@@ -251,12 +250,12 @@ example13-step1:
 example13-step2:
 	export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:zarf/llamacpp && \
 	export YZMA_LIB=zarf/llamacpp && \
-	go run cmd/examples/example13/step2/*.go -model zarf/models/Qwen2.5-VL-3B-Instruct-Q8_0.gguf -mmproj zarf/models/mmproj-Qwen2.5-VL-3B-Instruct-Q8_0.gguf -image zarf/samples/gallery/domestic_llama.jpg -p "What is in this picture?"
+	go run cmd/examples/example13/step2/*.go 2>/dev/null
 
 example13-step3:
 	export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:zarf/llamacpp && \
 	export YZMA_LIB=zarf/llamacpp && \
-	go run cmd/examples/example13/step3/*.go -model zarf/models/qwen2.5-0.5b-instruct-fp16.gguf 2>/dev/null
+	go run cmd/examples/example13/step3/*.go 2>/dev/null
 
 example13-step4:
 	export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:zarf/llamacpp && \

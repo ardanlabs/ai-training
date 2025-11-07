@@ -19,13 +19,19 @@ import (
 )
 
 var (
-	modelFile = "zarf/models/qwen2.5-0.5b-instruct-fp16.gguf"
-	libPath   = os.Getenv("YZMA_LIB")
+	modelURL = "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-fp16.gguf?download=true"
+	libPath  = os.Getenv("YZMA_LIB")
 )
 
 func main() {
 	if err := installLlamaCPP(); err != nil {
 		fmt.Println("unable to install llamacpp", err)
+		os.Exit(0)
+	}
+
+	modelFile, err := installModel(modelURL)
+	if err != nil {
+		fmt.Println("unable to install model", err)
 		os.Exit(0)
 	}
 

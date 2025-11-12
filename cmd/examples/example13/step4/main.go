@@ -19,19 +19,27 @@ import (
 )
 
 var (
-	modelFile  = "zarf/models/embeddinggemma-300m-qat-Q8_0.gguf"
+	modelURL   = "https://huggingface.co/ggml-org/embeddinggemma-300m-qat-q8_0-GGUF/resolve/main/embeddinggemma-300m-qat-Q8_0.gguf?download=true"
 	dbPath     = "zarf/data/duck.db" // ":memory:"
 	dimentions = 768
 )
 
 func main() {
+	log.Default().SetOutput(os.Stdout)
+
 	if err := run(); err != nil {
 		log.Fatal(err)
 	}
 }
 
 func run() error {
-	log.Default().SetOutput(os.Stdout)
+	modelFile, err := installModel(modelURL)
+	if err != nil {
+		fmt.Println("unable to install model", err)
+		os.Exit(0)
+	}
+
+	// -------------------------------------------------------------------------
 
 	em, err := NewEmbeddingModel(modelFile)
 	if err != nil {

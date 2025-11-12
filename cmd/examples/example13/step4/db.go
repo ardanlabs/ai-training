@@ -50,7 +50,7 @@ func dbConnection(em *EmbeddingModel, dimentions int) (*sql.DB, error) {
 			return nil, fmt.Errorf("error checking row count: %w", err)
 		}
 
-		fmt.Printf("Table exists with %d rows\n", rowCount)
+		fmt.Printf("- table exists with %d rows\n", rowCount)
 		return db, nil
 	}
 

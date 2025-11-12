@@ -20,7 +20,7 @@ import (
 
 var (
 	modelFile  = "zarf/models/embeddinggemma-300m-qat-Q8_0.gguf"
-	dbPath     = "zarf/data/duck.db"
+	dbPath     = "zarf/data/duck.db" // ":memory:"
 	dimentions = 768
 )
 

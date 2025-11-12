@@ -19,22 +19,29 @@ import (
 )
 
 var (
-	modelFile = "zarf/models/embeddinggemma-300m-qat-Q8_0.gguf"
-	dbPath    = "zarf/data/duck.db"
+	modelFile  = "zarf/models/embeddinggemma-300m-qat-Q8_0.gguf"
+	dbPath     = "zarf/data/duck.db"
+	dimentions = 768
 )
 
 func main() {
+	if err := run(); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func run() error {
 	log.Default().SetOutput(os.Stdout)
 
 	em, err := NewEmbeddingModel(modelFile)
 	if err != nil {
-		log.Fatal(err)
+		return fmt.Errorf("error loading embedding model: %w", err)
 	}
 	defer em.Unload()
 
-	db, err := dbConnection(em)
+	db, err := dbConnection(em, dimentions)
 	if err != nil {
-		log.Fatal(err)
+		return fmt.Errorf("error connecting to database: %w", err)
 	}
 	defer db.Close()
 
@@ -44,41 +51,14 @@ func main() {
 
 	queryVector, err := em.Embed(question)
 	if err != nil {
-		fmt.Printf("Error embedding query: %v", err)
-		os.Exit(1)
+		return fmt.Errorf("error embedding query: %w", err)
 	}
 
 	fmt.Printf("\nTop 3 similar items to %q:\n\n", question)
 
-	sql := `
-		SELECT
-			id,
-			text,
-			array_cosine_similarity(embedding, ?::FLOAT[768]) as similarity
-		FROM
-			items
-		ORDER BY
-			similarity DESC
-		LIMIT 6;
-	`
-
-	rows, err := db.Query(sql, queryVector)
-	if err != nil {
-		fmt.Printf("Error querying similar items: %v", err)
-		os.Exit(1)
+	if err := dbSearch(db, queryVector); err != nil {
+		return fmt.Errorf("error searching database: %w", err)
 	}
-	defer rows.Close()
 
-	for rows.Next() {
-		var id int
-		var text string
-		var similarity float64
-
-		if err := rows.Scan(&id, &text, &similarity); err != nil {
-			fmt.Printf("Error scanning row: %v", err)
-			os.Exit(1)
-		}
-
-		fmt.Printf("---\nID: %d\nText: %s...\nSimilarity: %.4f\n\n", id, text[1:min(len(text), 200)], similarity)
-	}
+	return nil
 }

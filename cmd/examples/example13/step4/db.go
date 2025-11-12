@@ -8,7 +8,7 @@ import (
 	"github.com/marcboeker/go-duckdb/v2"
 )
 
-func dbConnection(em *EmbeddingModel) (*sql.DB, error) {
+func dbConnection(em *EmbeddingModel, dimentions int) (*sql.DB, error) {
 	connector, err := duckdb.NewConnector(dbPath, nil)
 	if err != nil {
 		return nil, fmt.Errorf("error creating connector: %w", err)
@@ -67,9 +67,11 @@ func dbConnection(em *EmbeddingModel) (*sql.DB, error) {
 		CREATE TABLE items (
 			id        INTEGER   PRIMARY KEY,
 			text      VARCHAR,
-			embedding FLOAT[768]
+			embedding FLOAT[%d]
 		);
 	`
+
+	sql = fmt.Sprintf(sql, dimentions)
 
 	if _, err = db.Exec(sql); err != nil {
 		return nil, fmt.Errorf("error creating table: %w", err)
@@ -99,4 +101,40 @@ func dbConnection(em *EmbeddingModel) (*sql.DB, error) {
 	}
 
 	return db, nil
+}
+
+func dbSearch(db *sql.DB, queryVector []float32) error {
+	sql := `
+		SELECT
+			id,
+			text,
+			array_cosine_similarity(embedding, ?::FLOAT[%d]) as similarity
+		FROM
+			items
+		ORDER BY
+			similarity DESC
+		LIMIT 6;
+	`
+
+	sql = fmt.Sprintf(sql, len(queryVector))
+
+	rows, err := db.Query(sql, queryVector)
+	if err != nil {
+		return fmt.Errorf("error querying similar items: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var id int
+		var text string
+		var similarity float64
+
+		if err := rows.Scan(&id, &text, &similarity); err != nil {
+			return fmt.Errorf("error scanning row: %w", err)
+		}
+
+		fmt.Printf("---\nID: %d\nText: %s...\nSimilarity: %.4f\n\n", id, text[1:min(len(text), 200)], similarity)
+	}
+
+	return nil
 }

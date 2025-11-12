@@ -25,11 +25,6 @@ var (
 )
 
 func main() {
-	if err := handleFlags(); err != nil {
-		showUsage()
-		os.Exit(0)
-	}
-
 	if err := installLlamaCPP(); err != nil {
 		fmt.Println("unable to install llamacpp", err)
 		os.Exit(0)
@@ -51,9 +46,7 @@ func main() {
 	llama.Init()
 	defer llama.BackendFree()
 
-	if !*verbose {
-		llama.LogSet(llama.LogSilent())
-	}
+	llama.LogSet(llama.LogSilent())
 
 	// -------------------------------------------------------------------------
 
@@ -63,7 +56,7 @@ func main() {
 	defer llama.ModelFree(model)
 
 	ctxParams := llama.ContextDefaultParams()
-	ctxParams.NCtx = uint32(*contextSize)
+	ctxParams.NCtx = uint32(4096)
 
 	lctx := llama.InitFromModel(model, ctxParams)
 	defer llama.Free(lctx)
@@ -71,20 +64,8 @@ func main() {
 	vocab := llama.ModelGetVocab(model)
 
 	sampler := llama.SamplerChainInit(llama.SamplerChainDefaultParams())
-
-	if *topK != 0 {
-		llama.SamplerChainAdd(sampler, llama.SamplerInitTopK(int32(*topK)))
-	}
-
-	if *topP < 1.0 {
-		llama.SamplerChainAdd(sampler, llama.SamplerInitTopP(float32(*topP), 1))
-	}
-
-	if *minP > 0 {
-		llama.SamplerChainAdd(sampler, llama.SamplerInitMinP(float32(*minP), 1))
-	}
-
-	llama.SamplerChainAdd(sampler, llama.SamplerInitTempExt(float32(*temperature), 0, 1.0))
+	llama.SamplerChainAdd(sampler, llama.SamplerInitTopK(int32(1.0)))
+	llama.SamplerChainAdd(sampler, llama.SamplerInitTempExt(float32(1.0), 0, 1.0))
 	llama.SamplerChainAdd(sampler, llama.SamplerInitDist(llama.DefaultSeed))
 
 	// -------------------------------------------------------------------------
@@ -101,15 +82,9 @@ func main() {
 
 	// -------------------------------------------------------------------------
 
-	var messages []llama.ChatMessage
-	if *systemPrompt != "" {
-		messages = append(messages, llama.NewChatMessage("system", *systemPrompt))
-	}
-
-	// -------------------------------------------------------------------------
-
 	fmt.Println()
 
+	var messages []llama.ChatMessage
 	first := true
 
 	for {

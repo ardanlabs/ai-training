@@ -13,7 +13,7 @@ import (
 	"github.com/hybridgroup/yzma/pkg/download"
 )
 
-func installLlamaCPP() error {
+func InstallLlamaCPP() error {
 	libPath := os.Getenv("YZMA_LIB")
 
 	if _, err := os.Stat(filepath.Join(libPath, download.LibraryName(runtime.GOOS))); !os.IsNotExist(err) {
@@ -32,7 +32,7 @@ func installLlamaCPP() error {
 	return nil
 }
 
-func installModel(modelURL string) (string, error) {
+func InstallModel(modelURL string) (string, error) {
 	u, _ := url.Parse(modelURL)
 	localPath := fmt.Sprintf("zarf/models/%s", path.Base(u.Path))
 

@@ -167,7 +167,10 @@ func (llm *Llama) ChatCompletions(messages []ChatMessage, params Params) <-chan 
 			close(ch)
 			return
 		}
-		defer llama.Free(lctx)
+		defer func() {
+			llama.Synchronize(lctx)
+			llama.Free(lctx)
+		}()
 
 		// ---------------------------------------------------------------------
 
@@ -229,7 +232,10 @@ func (llm *Llama) ChatVision(message ChatMessage, imageFile string, params Param
 			close(ch)
 			return
 		}
-		defer llama.Free(lctx)
+		defer func() {
+			llama.Synchronize(lctx)
+			llama.Free(lctx)
+		}()
 
 		// ---------------------------------------------------------------------
 
@@ -311,7 +317,10 @@ func (llm *Llama) Embed(text string) ([]float32, error) {
 	if err != nil {
 		return nil, fmt.Errorf("unable to init from model: %v", err)
 	}
-	defer llama.Free(lctx)
+	defer func() {
+		llama.Synchronize(lctx)
+		llama.Free(lctx)
+	}()
 
 	// -------------------------------------------------------------------------
 

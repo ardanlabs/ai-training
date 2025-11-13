@@ -4,10 +4,6 @@
 // # Running the example:
 //
 //	$ make example13-step3
-//
-// # This requires running the following command:
-//
-//	$ make yzma-models // This downloads the needed models
 
 package main
 

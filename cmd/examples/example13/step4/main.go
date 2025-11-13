@@ -1,18 +1,15 @@
-// This example shows you how to use duckDB as an embedding DB and an
-// inference model to generate embeddings for a set of items all contained
-// in a single Go binary.
+// This example shows you a complete RAG application used duckDB as an embedding
+// DB and an embedding model to generate embeddings, and a chat model for
+// answering a question using llamacpp directly via a native Go application.
 //
 // # Running the example:
 //
 //	$ make example13-step4
-//
-// # This requires running the following command:
-//
-//	$ make yzma-models // This downloads the needed models
 
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"log"
 	"os"
@@ -82,53 +79,58 @@ func run() error {
 
 	// -------------------------------------------------------------------------
 
-	question := "Can you provide some examples of how to use interfaces in Go?"
+	for {
+		fmt.Print("\nQuestion> ")
 
-	// -------------------------------------------------------------------------
+		reader := bufio.NewReader(os.Stdin)
 
-	fmt.Print("\n-- Similarity ---\n\n")
+		question, err := reader.ReadString('\n')
+		if err != nil {
+			fmt.Println("unable to read user input", err.Error())
+			os.Exit(1)
+		}
 
-	queryVector, err := llmEmbed.Embed(question)
-	if err != nil {
-		return fmt.Errorf("error embedding query: %w", err)
-	}
+		// ---------------------------------------------------------------------
 
-	docs, err := dbSearch(db, queryVector, 5)
-	if err != nil {
-		return fmt.Errorf("error searching database: %w", err)
-	}
+		fmt.Print("\n-- Similarity ---\n\n")
 
-	for _, doc := range docs {
-		fmt.Printf("Doc: %f: %s\n", doc.Similarity, strings.ReplaceAll(doc.Text, "\n", " ")[:100])
-	}
+		queryVector, err := llmEmbed.Embed(question)
+		if err != nil {
+			return fmt.Errorf("error embedding query: %w", err)
+		}
 
-	// -------------------------------------------------------------------------
+		docs, err := dbSearch(db, queryVector, 5)
+		if err != nil {
+			return fmt.Errorf("error searching database: %w", err)
+		}
 
-	fmt.Print("\n-- Rerank ---\n\n")
+		for _, doc := range docs {
+			fmt.Printf("Doc: %f: %s\n", doc.Similarity, strings.ReplaceAll(doc.Text, "\n", " ")[:100])
+		}
 
-	documents := make([]llamacpp.RankingDocument, len(docs))
-	for i, doc := range docs {
-		documents[i] = llamacpp.RankingDocument{Document: doc.Text, Embedding: doc.Embedding}
-	}
+		// ---------------------------------------------------------------------
 
-	rankings, err := llmEmbed.Rerank(documents)
-	if err != nil {
-		return fmt.Errorf("error reranking documents: %w", err)
-	}
+		fmt.Print("\n-- Rerank ---\n\n")
 
-	for _, ranking := range rankings {
-		fmt.Printf("Doc: %f: %s\n", ranking.Score, strings.ReplaceAll(ranking.Document, "\n", " ")[:100])
-	}
+		documents := make([]llamacpp.RankingDocument, len(docs))
+		for i, doc := range docs {
+			documents[i] = llamacpp.RankingDocument{Document: doc.Text, Embedding: doc.Embedding}
+		}
 
-	// -------------------------------------------------------------------------
+		rankings, err := llmEmbed.Rerank(documents)
+		if err != nil {
+			return fmt.Errorf("error reranking documents: %w", err)
+		}
 
-	fmt.Print("\n-- Question ---\n\n")
+		for _, ranking := range rankings {
+			fmt.Printf("Doc: %f: %s\n", ranking.Score, strings.ReplaceAll(ranking.Document, "\n", " ")[:100])
+		}
 
-	fmt.Println(question)
+		// ---------------------------------------------------------------------
 
-	fmt.Print("\n-- Response ---\n\n")
+		fmt.Print("\n-- Response ---\n\n")
 
-	const prompt = `
+		const prompt = `
 		- Use the following Context to answer the user's question.
 		- If you don't know the answer, say that you don't know.
 		- Responses should be properly formatted to be easily read.
@@ -140,33 +142,32 @@ func run() error {
 		%s
 
 		Question: %s
-	`
+		`
 
-	var context string
-	for _, ranking := range rankings[:2] {
-		context = fmt.Sprintf("%s\n%s\n", context, ranking.Document)
-	}
-
-	finalPrompt := fmt.Sprintf(prompt, context, question)
-
-	msgs := []llamacpp.ChatMessage{
-		{Role: "user", Content: finalPrompt},
-	}
-
-	ch := llmChat.ChatCompletions(msgs, llamacpp.Params{
-		TopK: 1.0,
-		TopP: 0.9,
-		Temp: 0.7,
-	})
-
-	for msg := range ch {
-		if msg.Err != nil {
-			return fmt.Errorf("error from model: %w", msg.Err)
+		var context string
+		for _, ranking := range rankings[:2] {
+			context = fmt.Sprintf("%s\n%s\n", context, ranking.Document)
 		}
-		fmt.Print(msg.Response)
+
+		finalPrompt := fmt.Sprintf(prompt, context, question)
+
+		msgs := []llamacpp.ChatMessage{
+			{Role: "user", Content: finalPrompt},
+		}
+
+		ch := llmChat.ChatCompletions(msgs, llamacpp.Params{
+			TopK: 1.0,
+			TopP: 0.9,
+			Temp: 0.7,
+		})
+
+		for msg := range ch {
+			if msg.Err != nil {
+				return fmt.Errorf("error from model: %w", msg.Err)
+			}
+			fmt.Print(msg.Response)
+		}
+
+		fmt.Println()
 	}
-
-	fmt.Println()
-
-	return nil
 }

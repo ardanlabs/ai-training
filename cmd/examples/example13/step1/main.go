@@ -5,10 +5,6 @@
 //
 //	$ make example13-step1
 
-// # This requires running the following command:
-//
-//	$ make yzma-models // This downloads the needed models
-
 package main
 
 import (

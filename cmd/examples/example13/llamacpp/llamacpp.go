@@ -201,6 +201,11 @@ func (llm *Llama) ChatCompletions(messages []ChatMessage, params Params) <-chan 
 			l := llama.TokenToPiece(llm.vocab, token, buf, 0, false)
 
 			resp := string(buf[:l])
+			if resp == "" {
+				close(ch)
+				break
+			}
+
 			ch <- ChatResponse{Response: resp}
 
 			batch = llama.BatchGetOne([]llama.Token{token})
@@ -284,8 +289,14 @@ func (llm *Llama) ChatVision(message ChatMessage, imageFile string, params Param
 			buf := make([]byte, 1024*32)
 			l := llama.TokenToPiece(llm.vocab, token, buf, 0, false)
 
+			resp := string(buf[:l])
+			if resp == "" {
+				close(ch)
+				break
+			}
+
 			ch <- ChatResponse{
-				Response: string(buf[:l]),
+				Response: resp,
 			}
 
 			batch = llama.BatchGetOne([]llama.Token{token})

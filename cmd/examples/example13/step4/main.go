@@ -21,11 +21,12 @@ import (
 )
 
 var (
-	modelURL   = "https://huggingface.co/ggml-org/embeddinggemma-300m-qat-q8_0-GGUF/resolve/main/embeddinggemma-300m-qat-Q8_0.gguf?download=true"
-	libPath    = os.Getenv("YZMA_LIB")
-	modelPath  = "zarf/models"
-	dbPath     = "zarf/data/duck.db" // ":memory:"
-	dimentions = 768
+	modelURL       = "https://huggingface.co/ggml-org/embeddinggemma-300m-qat-q8_0-GGUF/resolve/main/embeddinggemma-300m-qat-Q8_0.gguf?download=true"
+	rankerModelURL = "https://huggingface.co/ggml-org/Qwen3-Reranker-0.6B-Q8_0-GGUF/resolve/main/qwen3-reranker-0.6b-q8_0.gguf?download=true"
+	libPath        = os.Getenv("YZMA_LIB")
+	modelPath      = "zarf/models"
+	dbPath         = "zarf/data/duck.db" // ":memory:"
+	dimentions     = 768
 )
 
 func main() {
@@ -56,6 +57,16 @@ func run() error {
 	}
 	defer llm.Unload()
 
+	fmt.Println("- loading Ranker Model", rankerModelURL)
+	llmRanker, err := llamacpp.New(libPath, rankerModelURL, llamacpp.Config{
+		ContextWindow: 1024 * 32,
+		Embeddings:    true,
+	})
+	if err != nil {
+		return fmt.Errorf("unable to create inference model: %w", err)
+	}
+	defer llmRanker.Unload()
+
 	// -------------------------------------------------------------------------
 
 	db, err := dbConnection(llm, dimentions)
@@ -75,9 +86,30 @@ func run() error {
 
 	fmt.Printf("\nTop 3 similar items to %q:\n\n", question)
 
-	if err := dbSearch(db, queryVector); err != nil {
+	docs, err := dbSearch(db, queryVector, 3)
+	if err != nil {
 		return fmt.Errorf("error searching database: %w", err)
 	}
+
+	for _, doc := range docs {
+		fmt.Printf("Doc: %f: %s\n", doc.similarity, doc.Text[1:20])
+	}
+
+	// fmt.Println("-- Rerank ---")
+
+	// documents := make([]string, len(docs))
+	// for i, doc := range docs {
+	// 	documents[i] = doc.Text
+	// }
+
+	// rankings, err := llmRanker.Rerank(question, documents)
+	// if err != nil {
+	// 	return fmt.Errorf("error reranking documents: %w", err)
+	// }
+
+	// for _, ranking := range rankings {
+	// 	fmt.Printf("Doc: %f: %s\n", ranking.Score, ranking.Document[1:20])
+	// }
 
 	return nil
 }

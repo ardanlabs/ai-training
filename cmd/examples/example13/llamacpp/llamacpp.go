@@ -4,6 +4,8 @@ package llamacpp
 import (
 	"fmt"
 	"math"
+	"sort"
+	"strings"
 	"unsafe"
 
 	"github.com/hybridgroup/yzma/pkg/llama"
@@ -59,6 +61,11 @@ func (cfg Config) ctxParams() llama.ContextParams {
 
 // =============================================================================
 
+type Ranking struct {
+	Document string
+	Score    float64
+}
+
 type ChatMessage struct {
 	Role    string
 	Content string
@@ -104,8 +111,7 @@ func New(libPath string, modelFile string, cfg Config, options ...func(llm *Llam
 
 	template := llama.ModelChatTemplate(model, "")
 	if template == "" {
-		v, _ := llama.ModelMetaValStr(model, "tokenizer.chat_template")
-		template = v
+		template, _ = llama.ModelMetaValStr(model, "tokenizer.chat_template")
 	}
 
 	if template == "" {
@@ -285,6 +291,74 @@ func (llm *Llama) Embed(text string) ([]float32, error) {
 	}
 
 	return vec, nil
+}
+
+func (llm *Llama) Rerank(query string, documents []string) ([]Ranking, error) {
+	lctx := llama.InitFromModel(llm.model, llm.ctxParams)
+	defer llama.Free(lctx)
+
+	// -------------------------------------------------------------------------
+
+	rerankedDocs := make([]Ranking, len(documents))
+
+	template := `
+<|im_start|>system Judge whether the <Document> is relevant to the <Query>. Response with a single "yes" or "no" and do not explain your answer.<|im_end|>
+<|im_start|>user <Query>: {query}<|im_end|>
+<|im_start|>user <Document>: {document}<|im_end|>
+<|im_start|>assistant<think></think>
+`
+
+	for i, document := range documents {
+		rerankPrompt := strings.ReplaceAll(template, "{query}", query)
+		rerankPrompt = strings.ReplaceAll(rerankPrompt, "{document}", document)
+
+		fmt.Println("\n-----------------")
+		fmt.Println(rerankPrompt)
+		fmt.Println("-----------------")
+
+		// ---------------------------------------------------------------------
+
+		params := Params{
+			TopK: 1.0,
+			TopP: 0.9,
+			Temp: 0.7,
+		}
+
+		tokens := llama.Tokenize(llm.vocab, rerankPrompt, true, true)
+		batch := llama.BatchGetOne(tokens)
+		sampler := params.sampler()
+
+		// ---------------------------------------------------------------------
+
+		for range llama.MaxToken {
+			llama.Decode(lctx, batch)
+			token := llama.SamplerSample(sampler, lctx, -1)
+
+			if llama.VocabIsEOG(llm.vocab, token) {
+				break
+			}
+
+			buf := make([]byte, 1024*32)
+			l := llama.TokenToPiece(llm.vocab, token, buf, 0, false)
+
+			resp := string(buf[:l])
+			fmt.Print(resp)
+
+			batch = llama.BatchGetOne([]llama.Token{token})
+		}
+
+		fmt.Println()
+
+		// ---------------------------------------------------------------------
+
+		rerankedDocs[i] = Ranking{Document: document, Score: 1.0}
+	}
+
+	sort.Slice(rerankedDocs, func(i, j int) bool {
+		return rerankedDocs[i].Score > rerankedDocs[j].Score
+	})
+
+	return rerankedDocs, nil
 }
 
 func (llm *Llama) ShowModelInfo() {

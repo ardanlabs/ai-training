@@ -152,7 +152,13 @@ func dbLoadChunks(db *sql.DB, llm *llamacpp.Llama) error {
 	return nil
 }
 
-func dbSearch(db *sql.DB, queryVector []float32) error {
+type document struct {
+	ID         int
+	Text       string
+	similarity float64
+}
+
+func dbSearch(db *sql.DB, queryVector []float32, limit int) ([]document, error) {
 	sql := `
 		SELECT
 			id,
@@ -162,16 +168,18 @@ func dbSearch(db *sql.DB, queryVector []float32) error {
 			items
 		ORDER BY
 			similarity DESC
-		LIMIT 6;
+		LIMIT %d;
 	`
 
-	sql = fmt.Sprintf(sql, len(queryVector))
+	sql = fmt.Sprintf(sql, len(queryVector), limit)
 
 	rows, err := db.Query(sql, queryVector)
 	if err != nil {
-		return fmt.Errorf("error querying similar items: %w", err)
+		return nil, fmt.Errorf("error querying similar items: %w", err)
 	}
 	defer rows.Close()
+
+	var docs []document
 
 	for rows.Next() {
 		var id int
@@ -179,11 +187,15 @@ func dbSearch(db *sql.DB, queryVector []float32) error {
 		var similarity float64
 
 		if err := rows.Scan(&id, &text, &similarity); err != nil {
-			return fmt.Errorf("error scanning row: %w", err)
+			return nil, fmt.Errorf("error scanning row: %w", err)
 		}
 
-		fmt.Printf("---\nID: %d\nText: %s...\nSimilarity: %.4f\n\n", id, text[1:min(len(text), 200)], similarity)
+		docs = append(docs, document{
+			ID:         id,
+			Text:       text,
+			similarity: similarity,
+		})
 	}
 
-	return nil
+	return docs, nil
 }

@@ -109,7 +109,7 @@ github.com/hashicorp/go-safetemp
 # github.com/hashicorp/go-version v1.7.0
 ## explicit
 github.com/hashicorp/go-version
-# github.com/hybridgroup/yzma v0.9.0
+# github.com/hybridgroup/yzma v0.9.1-0.20251113154638-8a816bf8e66e
 ## explicit; go 1.24.0
 github.com/hybridgroup/yzma/pkg/download
 github.com/hybridgroup/yzma/pkg/llama

@@ -14,6 +14,10 @@ var (
 		&ffi.TypeSint32, &ffi.TypeSint32,
 		&ffi.TypePointer, &ffi.TypePointer, &ffi.TypePointer, &ffi.TypePointer,
 		&ffi.TypeUint8, &ffi.TypeUint8, &ffi.TypeUint8, &ffi.TypeUint8, &ffi.TypeUint8)
+
+	FFITypeModelQuantizeParams = ffi.NewType(&ffi.TypeSint32, &ffi.TypeSint32,
+		&ffi.TypeSint32, &ffi.TypeSint32, &ffi.TypeUint8, &ffi.TypeUint8, &ffi.TypeUint8, &ffi.TypeUint8, &ffi.TypeUint8,
+		&ffi.TypePointer, &ffi.TypePointer, &ffi.TypePointer, &ffi.TypePointer)
 )
 
 var (
@@ -50,6 +54,9 @@ var (
 
 	// LLAMA_API int32_t llama_model_n_embd     (const struct llama_model * model);
 	modelNEmbdFunc ffi.Fun
+
+	// LLAMA_API int32_t llama_model_n_embd_inp (const struct llama_model * model);
+	modelNEmbdInpFunc ffi.Fun
 
 	// LLAMA_API int32_t llama_model_n_layer    (const struct llama_model * model);
 	modelNLayerFunc ffi.Fun
@@ -105,6 +112,15 @@ var (
 	// Get metadata value as a string by index
 	// LLAMA_API int32_t llama_model_meta_val_str_by_index(const struct llama_model * model, int32_t i, char * buf, size_t buf_size);
 	modelMetaValStrByIndexFunc ffi.Fun
+
+	// LLAMA_API struct llama_model_quantize_params llama_model_quantize_default_params(void);
+	modelQuantizeDefaultParamsFunc ffi.Fun
+
+	//     LLAMA_API uint32_t llama_model_quantize(
+	//        const char * fname_inp,
+	//        const char * fname_out,
+	//        const llama_model_quantize_params * params);
+	modelQuantizeFunc ffi.Fun
 )
 
 func loadModelFuncs(lib ffi.Lib) error {
@@ -150,8 +166,12 @@ func loadModelFuncs(lib ffi.Lib) error {
 		return loadError("llama_model_n_embd", err)
 	}
 
+	if modelNEmbdInpFunc, err = lib.Prep("llama_model_n_embd_inp", &ffi.TypeSint32, &ffi.TypePointer); err != nil {
+		return loadError("llama_model_n_embd_inp", err)
+	}
+
 	if modelNLayerFunc, err = lib.Prep("llama_model_n_layer", &ffi.TypeSint32, &ffi.TypePointer); err != nil {
-		return loadError("llama_model_n_embd", err)
+		return loadError("llama_model_n_layer", err)
 	}
 
 	if modelNHeadFunc, err = lib.Prep("llama_model_n_head", &ffi.TypeSint32, &ffi.TypePointer); err != nil {
@@ -218,8 +238,21 @@ func loadModelFuncs(lib ffi.Lib) error {
 		return loadError("llama_model_meta_val_str_by_index", err)
 	}
 
+	if modelQuantizeDefaultParamsFunc, err = lib.Prep("llama_model_quantize_default_params", &FFITypeModelQuantizeParams); err != nil {
+		return loadError("llama_model_quantize_default_params", err)
+	}
+
+	if modelQuantizeFunc, err = lib.Prep("llama_model_quantize", &ffi.TypeUint32, &ffi.TypePointer, &ffi.TypePointer, &ffi.TypePointer); err != nil {
+		return loadError("llama_model_quantize", err)
+	}
+
 	return nil
 }
+
+var (
+	errInvalidModel          = fmt.Errorf("invalid model")
+	errInvalidContextOrModel = fmt.Errorf("invalid context or model")
+)
 
 // ModelDefaultParams returns default parameters for loading a Model.
 func ModelDefaultParams() ModelParams {
@@ -229,35 +262,36 @@ func ModelDefaultParams() ModelParams {
 }
 
 // ModelLoadFromFile loads a Model from a GGUF file.
-func ModelLoadFromFile(pathModel string, params ModelParams) Model {
+func ModelLoadFromFile(pathModel string, params ModelParams) (Model, error) {
 	var model Model
 	if _, err := os.Stat(pathModel); os.IsNotExist(err) {
 		// no such file
-		return model
+		return model, err
 	}
 
 	file := &[]byte(pathModel + "\x00")[0]
 	modelLoadFromFileFunc.Call(unsafe.Pointer(&model), unsafe.Pointer(&file), unsafe.Pointer(&params))
-	return model
+	return model, nil
 }
 
 // ModelFree frees a previously opened model.
-func ModelFree(model Model) {
+func ModelFree(model Model) error {
 	if model == 0 {
-		return
+		return errInvalidModel
 	}
 	modelFreeFunc.Call(nil, unsafe.Pointer(&model))
+	return nil
 }
 
 // InitFromModel initializes a previously loaded Model, and then returns a new Context.
-func InitFromModel(model Model, params ContextParams) Context {
+func InitFromModel(model Model, params ContextParams) (Context, error) {
 	var ctx Context
 	if model == 0 {
-		return ctx
+		return ctx, errInvalidModel
 	}
 	initFromModelFunc.Call(unsafe.Pointer(&ctx), unsafe.Pointer(&model), unsafe.Pointer(&params))
 
-	return ctx
+	return ctx, nil
 }
 
 // ModelChatTemplate returns a named chat template for the Model.
@@ -326,6 +360,17 @@ func ModelNEmbd(model Model) int32 {
 	}
 	var result ffi.Arg
 	modelNEmbdFunc.Call(unsafe.Pointer(&result), unsafe.Pointer(&model))
+
+	return int32(result)
+}
+
+// ModelNEmbdInp returns the input embedding size of the Model.
+func ModelNEmbdInp(model Model) int32 {
+	if model == 0 {
+		return 0
+	}
+	var result ffi.Arg
+	modelNEmbdInpFunc.Call(unsafe.Pointer(&result), unsafe.Pointer(&model))
 
 	return int32(result)
 }
@@ -480,9 +525,9 @@ func ModelRopeType(model Model) RopeScalingType {
 }
 
 // Warmup is to warm-up a model.
-func Warmup(lctx Context, model Model) {
+func Warmup(lctx Context, model Model) error {
 	if lctx == 0 || model == 0 {
-		return
+		return errInvalidContextOrModel
 	}
 
 	vocab := ModelGetVocab(model)
@@ -519,13 +564,18 @@ func Warmup(lctx Context, model Model) {
 		Decode(lctx, batch)
 	}
 
-	mem := GetMemory(lctx)
-	MemoryClear(mem, true)
+	mem, err := GetMemory(lctx)
+	if err != nil {
+		return err
+	}
+	if err := MemoryClear(mem, true); err != nil {
+		return err
+	}
 
 	Synchronize(lctx)
-
-	// llama_perf_context_reset(lctx);
 	SetWarmup(lctx, false)
+
+	return nil
 }
 
 // ModelMetaValStr gets metadata value as a string by key name.
@@ -667,4 +717,28 @@ func (p *ModelParams) SetProgressCallback(cb ProgressCallback) {
 	}
 
 	p.ProgressCallback = uintptr(callback)
+}
+
+// ModelQuantizeDefaultParams returns default parameters for model quantization.
+func ModelQuantizeDefaultParams() ModelQuantizeParams {
+	var p ModelQuantizeParams
+	modelQuantizeDefaultParamsFunc.Call(unsafe.Pointer(&p))
+	return p
+}
+
+// ModelQuantize quantizes a model from an input file to an output file using the specified parameters.
+func ModelQuantize(fnameInp, fnameOut string, params *ModelQuantizeParams) uint32 {
+	fileInp, err := utils.BytePtrFromString(fnameInp)
+	if err != nil {
+		return 0
+	}
+
+	fileOut, err := utils.BytePtrFromString(fnameOut)
+	if err != nil {
+		return 0
+	}
+
+	var result ffi.Arg
+	modelQuantizeFunc.Call(unsafe.Pointer(&result), unsafe.Pointer(&fileInp), unsafe.Pointer(&fileOut), unsafe.Pointer(&params))
+	return uint32(result)
 }

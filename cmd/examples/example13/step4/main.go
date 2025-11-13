@@ -22,12 +22,11 @@ import (
 )
 
 var (
-	modelURL       = "https://huggingface.co/ggml-org/embeddinggemma-300m-qat-q8_0-GGUF/resolve/main/embeddinggemma-300m-qat-Q8_0.gguf?download=true"
-	rankerModelURL = "https://huggingface.co/ggml-org/Qwen3-Reranker-0.6B-Q8_0-GGUF/resolve/main/qwen3-reranker-0.6b-q8_0.gguf?download=true"
-	libPath        = os.Getenv("YZMA_LIB")
-	modelPath      = "zarf/models"
-	dbPath         = "zarf/data/duck.db" // ":memory:"
-	dimentions     = 768
+	modelURL   = "https://huggingface.co/ggml-org/embeddinggemma-300m-qat-q8_0-GGUF/resolve/main/embeddinggemma-300m-qat-Q8_0.gguf?download=true"
+	libPath    = os.Getenv("YZMA_LIB")
+	modelPath  = "zarf/models"
+	dbPath     = "zarf/data/duck.db" // ":memory:"
+	dimentions = 768
 )
 
 func main() {
@@ -57,16 +56,6 @@ func run() error {
 		return fmt.Errorf("unable to create inference model: %w", err)
 	}
 	defer llm.Unload()
-
-	fmt.Println("- loading Ranker Model", rankerModelURL)
-	llmRanker, err := llamacpp.New(libPath, rankerModelURL, llamacpp.Config{
-		ContextWindow: 1024 * 32,
-		Embeddings:    true,
-	})
-	if err != nil {
-		return fmt.Errorf("unable to create inference model: %w", err)
-	}
-	defer llmRanker.Unload()
 
 	// -------------------------------------------------------------------------
 
@@ -106,7 +95,7 @@ func run() error {
 		documents[i] = llamacpp.RankingDocument{Document: doc.Text, Embedding: doc.Embedding}
 	}
 
-	rankings, err := llmRanker.Rerank(documents)
+	rankings, err := llm.Rerank(documents)
 	if err != nil {
 		return fmt.Errorf("error reranking documents: %w", err)
 	}

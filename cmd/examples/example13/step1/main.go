@@ -71,7 +71,10 @@ func run() error {
 	})
 
 	for msg := range ch {
-		fmt.Print(msg)
+		if msg.Err != nil {
+			return fmt.Errorf("error from model: %w", msg.Err)
+		}
+		fmt.Print(msg.Response)
 	}
 
 	fmt.Println()

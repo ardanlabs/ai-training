@@ -75,6 +75,13 @@ type ChatMessage struct {
 	Content string
 }
 
+type ChatResponse struct {
+	Response string
+	Err      error
+}
+
+// =============================================================================
+
 type Llama struct {
 	libPath   string
 	model     llama.Model
@@ -108,7 +115,11 @@ func New(libPath string, modelFile string, cfg Config, options ...func(llm *Llam
 
 	// -------------------------------------------------------------------------
 
-	model := llama.ModelLoadFromFile(modelFile, llama.ModelDefaultParams())
+	model, err := llama.ModelLoadFromFile(modelFile, llama.ModelDefaultParams())
+	if err != nil {
+		return nil, fmt.Errorf("unable to load model: %w", err)
+	}
+
 	vocab := llama.ModelGetVocab(model)
 
 	// -------------------------------------------------------------------------
@@ -146,11 +157,16 @@ func (llm *Llama) Unload() {
 	llama.BackendFree()
 }
 
-func (llm *Llama) ChatCompletions(messages []ChatMessage, params Params) <-chan string {
-	ch := make(chan string)
+func (llm *Llama) ChatCompletions(messages []ChatMessage, params Params) <-chan ChatResponse {
+	ch := make(chan ChatResponse)
 
 	go func() {
-		lctx := llama.InitFromModel(llm.model, llm.ctxParams)
+		lctx, err := llama.InitFromModel(llm.model, llm.ctxParams)
+		if err != nil {
+			ch <- ChatResponse{Err: fmt.Errorf("unable to init from model: %w", err)}
+			close(ch)
+			return
+		}
 		defer llama.Free(lctx)
 
 		// ---------------------------------------------------------------------
@@ -185,7 +201,7 @@ func (llm *Llama) ChatCompletions(messages []ChatMessage, params Params) <-chan 
 			l := llama.TokenToPiece(llm.vocab, token, buf, 0, false)
 
 			resp := string(buf[:l])
-			ch <- resp
+			ch <- ChatResponse{Response: resp}
 
 			batch = llama.BatchGetOne([]llama.Token{token})
 		}
@@ -194,15 +210,20 @@ func (llm *Llama) ChatCompletions(messages []ChatMessage, params Params) <-chan 
 	return ch
 }
 
-func (llm *Llama) ChatVision(message ChatMessage, imageFile string, params Params) (<-chan string, error) {
+func (llm *Llama) ChatVision(message ChatMessage, imageFile string, params Params) (<-chan ChatResponse, error) {
 	if llm.projFile == "" {
 		return nil, fmt.Errorf("projection file not set")
 	}
 
-	ch := make(chan string)
+	ch := make(chan ChatResponse)
 
 	go func() {
-		lctx := llama.InitFromModel(llm.model, llm.ctxParams)
+		lctx, err := llama.InitFromModel(llm.model, llm.ctxParams)
+		if err != nil {
+			ch <- ChatResponse{Err: fmt.Errorf("unable to init from model: %v", err)}
+			close(ch)
+			return
+		}
 		defer llama.Free(lctx)
 
 		// ---------------------------------------------------------------------
@@ -222,7 +243,12 @@ func (llm *Llama) ChatVision(message ChatMessage, imageFile string, params Param
 		input := mtmd.NewInputText(template, true, true)
 
 		mctxParams := mtmd.ContextParamsDefault()
-		mtmdCtx := mtmd.InitFromFile(llm.projFile, llm.model, mctxParams)
+		mtmdCtx, err := mtmd.InitFromFile(llm.projFile, llm.model, mctxParams)
+		if err != nil {
+			ch <- ChatResponse{Err: fmt.Errorf("unable to init from model: %v", err)}
+			close(ch)
+			return
+		}
 		defer mtmd.Free(mtmdCtx)
 
 		bitmap := mtmd.BitmapInitFromFile(mtmdCtx, imageFile)
@@ -258,8 +284,9 @@ func (llm *Llama) ChatVision(message ChatMessage, imageFile string, params Param
 			buf := make([]byte, 1024*32)
 			l := llama.TokenToPiece(llm.vocab, token, buf, 0, false)
 
-			resp := string(buf[:l])
-			ch <- resp
+			ch <- ChatResponse{
+				Response: string(buf[:l]),
+			}
 
 			batch = llama.BatchGetOne([]llama.Token{token})
 		}
@@ -269,7 +296,10 @@ func (llm *Llama) ChatVision(message ChatMessage, imageFile string, params Param
 }
 
 func (llm *Llama) Embed(text string) ([]float32, error) {
-	lctx := llama.InitFromModel(llm.model, llm.ctxParams)
+	lctx, err := llama.InitFromModel(llm.model, llm.ctxParams)
+	if err != nil {
+		return nil, fmt.Errorf("unable to init from model: %v", err)
+	}
 	defer llama.Free(lctx)
 
 	// -------------------------------------------------------------------------
@@ -278,7 +308,10 @@ func (llm *Llama) Embed(text string) ([]float32, error) {
 	batch := llama.BatchGetOne(tokens)
 	llama.Decode(lctx, batch)
 	nEmbd := llama.ModelNEmbd(llm.model)
-	vec := llama.GetEmbeddingsSeq(lctx, 0, nEmbd)
+	vec, err := llama.GetEmbeddingsSeq(lctx, 0, nEmbd)
+	if err != nil {
+		return nil, fmt.Errorf("unable to get embeddings: %v", err)
+	}
 
 	// -------------------------------------------------------------------------
 

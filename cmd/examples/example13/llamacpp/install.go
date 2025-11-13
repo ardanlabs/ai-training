@@ -1,4 +1,4 @@
-package main
+package llamacpp
 
 import (
 	"fmt"
@@ -9,13 +9,12 @@ import (
 	"path"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	"github.com/hybridgroup/yzma/pkg/download"
 )
 
-func InstallLlamaCPP() error {
-	libPath := os.Getenv("YZMA_LIB")
-
+func InstallLibraries(libPath string) error {
 	if _, err := os.Stat(filepath.Join(libPath, download.LibraryName(runtime.GOOS))); !os.IsNotExist(err) {
 		fmt.Println("- llama.cpp already installed at", libPath)
 		return nil
@@ -32,9 +31,14 @@ func InstallLlamaCPP() error {
 	return nil
 }
 
-func InstallModel(modelURL string) (string, error) {
-	u, _ := url.Parse(modelURL)
-	localPath := fmt.Sprintf("zarf/models/%s", path.Base(u.Path))
+func InstallModel(modelURL string, modelPath string) (string, error) {
+	u, err := url.Parse(modelURL)
+	if err != nil {
+		return "", fmt.Errorf("unable to parse modelURL: %w", err)
+	}
+
+	modelPath = strings.TrimSuffix(modelPath, "/")
+	localPath := fmt.Sprintf("%s/%s", modelPath, path.Base(u.Path))
 
 	if _, err := os.Stat(localPath); !os.IsNotExist(err) {
 		fmt.Println("- model file already installed at", localPath)

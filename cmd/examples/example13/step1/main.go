@@ -15,12 +15,13 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/hybridgroup/yzma/pkg/llama"
+	"github.com/ardanlabs/ai-training/cmd/examples/example13/llamacpp"
 )
 
 var (
-	modelURL = "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-fp16.gguf?download=true"
-	libPath  = os.Getenv("YZMA_LIB")
+	modelURL  = "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-fp16.gguf?download=true"
+	libPath   = os.Getenv("YZMA_LIB")
+	modelPath = "zarf/models"
 )
 
 func main() {
@@ -31,36 +32,39 @@ func main() {
 }
 
 func run() error {
-	if err := InstallLlamaCPP(); err != nil {
+	if err := llamacpp.InstallLibraries(libPath); err != nil {
 		return fmt.Errorf("unable to install llamacpp: %w", err)
 	}
 
-	modelFile, err := InstallModel(modelURL)
+	modelFile, err := llamacpp.InstallModel(modelURL, modelPath)
 	if err != nil {
 		return fmt.Errorf("unable to install model: %w", err)
 	}
 
 	fmt.Println("- loading Model", modelFile)
-	im, err := NewInferenceModel(libPath, modelFile, Config{
+	llm, err := llamacpp.New(libPath, modelFile, llamacpp.Config{
 		ContextWindow: 8196,
 	})
 	if err != nil {
 		return fmt.Errorf("unable to create inference model: %w", err)
 	}
-	defer im.Unload()
+	defer llm.Unload()
 
-	im.ShowModelInfo(im.model)
+	llm.ShowModelInfo()
 
 	// -------------------------------------------------------------------------
 
 	question := "Write a hello world program in Go?"
 	fmt.Printf("Question: %s\n\n", question)
 
-	messages := []llama.ChatMessage{
-		llama.NewChatMessage("user", question),
+	messages := []llamacpp.ChatMessage{
+		{
+			Role:    "user",
+			Content: question,
+		},
 	}
 
-	ch := im.ChatCompletions(messages, Params{
+	ch := llm.ChatCompletions(messages, llamacpp.Params{
 		TopK: 1.0,
 		TopP: 0.9,
 		Temp: 0.7,

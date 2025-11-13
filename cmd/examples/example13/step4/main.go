@@ -16,10 +16,14 @@ import (
 	"fmt"
 	"log"
 	"os"
+
+	"github.com/ardanlabs/ai-training/cmd/examples/example13/llamacpp"
 )
 
 var (
 	modelURL   = "https://huggingface.co/ggml-org/embeddinggemma-300m-qat-q8_0-GGUF/resolve/main/embeddinggemma-300m-qat-Q8_0.gguf?download=true"
+	libPath    = os.Getenv("YZMA_LIB")
+	modelPath  = "zarf/models"
 	dbPath     = "zarf/data/duck.db" // ":memory:"
 	dimentions = 768
 )
@@ -33,21 +37,28 @@ func main() {
 }
 
 func run() error {
-	modelFile, err := installModel(modelURL)
-	if err != nil {
-		fmt.Println("unable to install model", err)
-		os.Exit(0)
+	if err := llamacpp.InstallLibraries(libPath); err != nil {
+		return fmt.Errorf("unable to install llamacpp: %w", err)
 	}
+
+	modelFile, err := llamacpp.InstallModel(modelURL, modelPath)
+	if err != nil {
+		return fmt.Errorf("unable to install model: %w", err)
+	}
+
+	fmt.Println("- loading Model", modelFile)
+	llm, err := llamacpp.New(libPath, modelFile, llamacpp.Config{
+		ContextWindow: 1024 * 32,
+		Embeddings:    true,
+	})
+	if err != nil {
+		return fmt.Errorf("unable to create inference model: %w", err)
+	}
+	defer llm.Unload()
 
 	// -------------------------------------------------------------------------
 
-	em, err := NewEmbeddingModel(modelFile)
-	if err != nil {
-		return fmt.Errorf("error loading embedding model: %w", err)
-	}
-	defer em.Unload()
-
-	db, err := dbConnection(em, dimentions)
+	db, err := dbConnection(llm, dimentions)
 	if err != nil {
 		return fmt.Errorf("error connecting to database: %w", err)
 	}
@@ -57,7 +68,7 @@ func run() error {
 
 	question := "What do interfaces provide in Go"
 
-	queryVector, err := em.Embed(question)
+	queryVector, err := llm.Embed(question)
 	if err != nil {
 		return fmt.Errorf("error embedding query: %w", err)
 	}

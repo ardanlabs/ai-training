@@ -3,12 +3,16 @@ package main
 import (
 	"database/sql"
 	"fmt"
+	"os"
+	"regexp"
+	"strings"
 	"time"
 
+	"github.com/ardanlabs/ai-training/cmd/examples/example13/llamacpp"
 	"github.com/marcboeker/go-duckdb/v2"
 )
 
-func dbConnection(em *EmbeddingModel, dimentions int) (*sql.DB, error) {
+func dbConnection(llm *llamacpp.Llama, dimentions int) (*sql.DB, error) {
 	connector, err := duckdb.NewConnector(dbPath, nil)
 	if err != nil {
 		return nil, fmt.Errorf("error creating connector: %w", err)
@@ -82,7 +86,7 @@ func dbConnection(em *EmbeddingModel, dimentions int) (*sql.DB, error) {
 	fmt.Print("LOADING DATA...")
 	t := time.Now()
 
-	if err := loadData(db, em); err != nil {
+	if err := dbLoadChunks(db, llm); err != nil {
 		return nil, fmt.Errorf("error loading data: %w", err)
 	}
 
@@ -101,6 +105,51 @@ func dbConnection(em *EmbeddingModel, dimentions int) (*sql.DB, error) {
 	}
 
 	return db, nil
+}
+
+func dbLoadChunks(db *sql.DB, llm *llamacpp.Llama) error {
+	type document struct {
+		ID        int       `bson:"id"`
+		Text      string    `bson:"text"`
+		Embedding []float64 `bson:"embedding"`
+	}
+
+	data, err := os.ReadFile("zarf/data/book.chunks")
+	if err != nil {
+		return fmt.Errorf("read file: %w", err)
+	}
+
+	fmt.Print("\n")
+	fmt.Print("\033[s")
+
+	r := regexp.MustCompile(`<CHUNK>[\w\W]*?<\/CHUNK>`)
+	chunks := r.FindAllString(string(data), -1)
+
+	for counter, chunk := range chunks {
+		fmt.Print("\033[u\033[K")
+		fmt.Printf("Vectorizing Data: %d of %d", counter+1, len(chunks))
+
+		chunk = strings.Trim(chunk, "<CHUNK>")
+		chunk = strings.Trim(chunk, "</CHUNK>")
+
+		vec, err := llm.Embed(chunk)
+		if err != nil {
+			return fmt.Errorf("embed chunk: %w", err)
+		}
+
+		chunk = strings.ReplaceAll(chunk, "'", "''")
+		vecStr := strings.ReplaceAll(fmt.Sprintf("%v", vec), " ", ",")
+
+		sql := fmt.Sprintf("INSERT INTO items (id, text, embedding) VALUES(%d, '%s', %v);", counter, chunk, vecStr)
+
+		if _, err := db.Exec(sql); err != nil {
+			return fmt.Errorf("insert chunk: %s %w", sql, err)
+		}
+	}
+
+	fmt.Print("\n")
+
+	return nil
 }
 
 func dbSearch(db *sql.DB, queryVector []float32) error {

@@ -16,141 +16,75 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/hybridgroup/yzma/pkg/llama"
+	"github.com/ardanlabs/ai-training/cmd/examples/example13/llamacpp"
 )
 
 var (
-	modelURL = "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-fp16.gguf?download=true"
-	libPath  = os.Getenv("YZMA_LIB")
+	modelURL  = "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-fp16.gguf?download=true"
+	libPath   = os.Getenv("YZMA_LIB")
+	modelPath = "zarf/models"
 )
 
 func main() {
-	if err := installLlamaCPP(); err != nil {
-		fmt.Println("unable to install llamacpp", err)
-		os.Exit(0)
-	}
-
-	modelFile, err := installModel(modelURL)
-	if err != nil {
-		fmt.Println("unable to install model", err)
-		os.Exit(0)
-	}
-
-	// -------------------------------------------------------------------------
-
-	if err := llama.Load(libPath); err != nil {
-		fmt.Println("unable to load library", err.Error())
+	if err := run(); err != nil {
+		fmt.Println("error running example:", err)
 		os.Exit(1)
 	}
+}
 
-	llama.Init()
-	defer llama.BackendFree()
-
-	llama.LogSet(llama.LogSilent())
-
-	// -------------------------------------------------------------------------
-
-	fmt.Println("\n- Loading Model", modelFile)
-
-	model := llama.ModelLoadFromFile(modelFile, llama.ModelDefaultParams())
-	defer llama.ModelFree(model)
-
-	ctxParams := llama.ContextDefaultParams()
-	ctxParams.NCtx = uint32(4096)
-
-	lctx := llama.InitFromModel(model, ctxParams)
-	defer llama.Free(lctx)
-
-	vocab := llama.ModelGetVocab(model)
-
-	sampler := llama.SamplerChainInit(llama.SamplerChainDefaultParams())
-	llama.SamplerChainAdd(sampler, llama.SamplerInitTopK(int32(1.0)))
-	llama.SamplerChainAdd(sampler, llama.SamplerInitTempExt(float32(1.0), 0, 1.0))
-	llama.SamplerChainAdd(sampler, llama.SamplerInitDist(llama.DefaultSeed))
-
-	// -------------------------------------------------------------------------
-
-	template := llama.ModelChatTemplate(model, "")
-	if template == "" {
-		v, _ := llama.ModelMetaValStr(model, "tokenizer.chat_template")
-		template = v
+func run() error {
+	if err := llamacpp.InstallLibraries(libPath); err != nil {
+		return fmt.Errorf("unable to install llamacpp: %w", err)
 	}
 
-	if template == "" {
-		template = "chatml"
+	modelFile, err := llamacpp.InstallModel(modelURL, modelPath)
+	if err != nil {
+		return fmt.Errorf("unable to install model: %w", err)
 	}
+
+	fmt.Println("- loading Model", modelFile)
+	llm, err := llamacpp.New(libPath, modelFile, llamacpp.Config{
+		ContextWindow: 1024 * 32,
+	})
+	if err != nil {
+		return fmt.Errorf("unable to create inference model: %w", err)
+	}
+	defer llm.Unload()
 
 	// -------------------------------------------------------------------------
 
 	fmt.Println()
 
-	var messages []llama.ChatMessage
-	first := true
+	var messages []llamacpp.ChatMessage
 
 	for {
-		fmt.Print("USER> ")
+		fmt.Print("\nUSER> ")
 
 		reader := bufio.NewReader(os.Stdin)
 
-		pmpt, err := reader.ReadString('\n')
+		userInput, err := reader.ReadString('\n')
 		if err != nil {
 			fmt.Println("unable to read user input", err.Error())
 			os.Exit(1)
 		}
 
-		messages = append(messages, llama.NewChatMessage("user", pmpt))
+		messages = append(messages, llamacpp.ChatMessage{
+			Role:    "user",
+			Content: userInput,
+		})
 
-		chat(lctx, model, vocab, sampler, chatTemplate(true, template, messages), first)
+		ch := llm.ChatCompletions(messages, llamacpp.Params{
+			TopK: 1.0,
+			TopP: 0.9,
+			Temp: 0.7,
+		})
 
-		first = false
-	}
-}
+		fmt.Print("\nMODEL> ")
 
-func chat(lctx llama.Context, model llama.Model, vocab llama.Vocab, sampler llama.Sampler, text string, first bool) {
-	count := llama.Tokenize(vocab, text, nil, first, true)
-
-	tokens := make([]llama.Token, count)
-	llama.Tokenize(vocab, text, tokens, first, true)
-
-	batch := llama.BatchGetOne(tokens)
-
-	if llama.ModelHasEncoder(model) {
-		llama.Encode(lctx, batch)
-
-		start := llama.ModelDecoderStartToken(model)
-		if start == llama.TokenNull {
-			start = llama.VocabBOS(vocab)
+		for msg := range ch {
+			fmt.Print(msg)
 		}
 
-		batch = llama.BatchGetOne([]llama.Token{start})
+		fmt.Println()
 	}
-
-	fmt.Println()
-
-	for range llama.MaxToken {
-		llama.Decode(lctx, batch)
-		token := llama.SamplerSample(sampler, lctx, -1)
-
-		if llama.VocabIsEOG(vocab, token) {
-			fmt.Println()
-			break
-		}
-
-		buf := make([]byte, 256)
-		l := llama.TokenToPiece(vocab, token, buf, 0, false)
-		next := string(buf[:l])
-
-		batch = llama.BatchGetOne([]llama.Token{token})
-
-		fmt.Print(next)
-	}
-
-	fmt.Println()
-}
-
-func chatTemplate(add bool, template string, messages []llama.ChatMessage) string {
-	buf := make([]byte, 1024)
-	len := llama.ChatApplyTemplate(template, messages, add, buf)
-
-	return string(buf[:len])
 }

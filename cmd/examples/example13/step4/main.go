@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 
 	"github.com/ardanlabs/ai-training/cmd/examples/example13/llamacpp"
 )
@@ -84,32 +85,35 @@ func run() error {
 		return fmt.Errorf("error embedding query: %w", err)
 	}
 
-	fmt.Printf("\nTop 3 similar items to %q:\n\n", question)
+	fmt.Println()
+	fmt.Println(question)
 
 	docs, err := dbSearch(db, queryVector, 3)
 	if err != nil {
 		return fmt.Errorf("error searching database: %w", err)
 	}
 
+	fmt.Println("\n-- Similarity ---")
+
 	for _, doc := range docs {
-		fmt.Printf("Doc: %f: %s\n", doc.similarity, doc.Text[1:20])
+		fmt.Printf("Doc: %f: %s\n", doc.Similarity, strings.ReplaceAll(doc.Text, "\n", " ")[:100])
 	}
 
-	// fmt.Println("-- Rerank ---")
+	fmt.Println("\n-- Rerank ---")
 
-	// documents := make([]string, len(docs))
-	// for i, doc := range docs {
-	// 	documents[i] = doc.Text
-	// }
+	documents := make([]llamacpp.RankingDocument, len(docs))
+	for i, doc := range docs {
+		documents[i] = llamacpp.RankingDocument{Document: doc.Text, Embedding: doc.Embedding}
+	}
 
-	// rankings, err := llmRanker.Rerank(question, documents)
-	// if err != nil {
-	// 	return fmt.Errorf("error reranking documents: %w", err)
-	// }
+	rankings, err := llmRanker.Rerank(documents)
+	if err != nil {
+		return fmt.Errorf("error reranking documents: %w", err)
+	}
 
-	// for _, ranking := range rankings {
-	// 	fmt.Printf("Doc: %f: %s\n", ranking.Score, ranking.Document[1:20])
-	// }
+	for _, ranking := range rankings {
+		fmt.Printf("Doc: %f: %s\n", ranking.Score, strings.ReplaceAll(ranking.Document, "\n", " ")[:100])
+	}
 
 	return nil
 }

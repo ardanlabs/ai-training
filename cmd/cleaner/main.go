@@ -7,14 +7,10 @@
 package main
 
 import (
-	"bytes"
 	"fmt"
-	"io"
 	"log"
 	"os"
 	"strings"
-
-	"code.sajari.com/docconv/v2"
 )
 
 func main() {
@@ -36,26 +32,32 @@ func run() error {
 }
 
 func convertPDFtoTxt() error {
-	input, err := os.Open("/Users/bill/Documents/book/FE-UGN-41.pdf")
-	if err != nil {
-		return fmt.Errorf("open file: %w", err)
-	}
-	defer input.Close()
+	// if _, err := os.Stat("zarf/data/book.txt"); !os.IsNotExist(err) {
+	// 	return nil
+	// }
 
-	doc, _, err := docconv.ConvertPDF(input)
-	if err != nil {
-		return fmt.Errorf("read file: %w", err)
-	}
+	// input, err := os.Open("/Users/bill/Documents/book/FE-UGN-41.pdf")
+	// if err != nil {
+	// 	return fmt.Errorf("open file: %w", err)
+	// }
+	// defer input.Close()
 
-	output, err := os.Create("zarf/data/book.txt")
-	if err != nil {
-		return fmt.Errorf("create file: %w", err)
-	}
+	// doc, _, err := docconv.ConvertPDF(input)
+	// if err != nil {
+	// 	return fmt.Errorf("read file: %w", err)
+	// }
 
-	r := bytes.NewReader([]byte(doc))
-	if _, err := io.Copy(output, r); err != nil {
-		return fmt.Errorf("write file: %w", err)
-	}
+	// output, err := os.Create("zarf/data/book.txt")
+	// if err != nil {
+	// 	return fmt.Errorf("create file: %w", err)
+	// }
+
+	// r := bytes.NewReader([]byte(doc))
+	// if _, err := io.Copy(output, r); err != nil {
+	// 	return fmt.Errorf("write file: %w", err)
+	// }
+
+	// return nil
 
 	return nil
 }
@@ -74,7 +76,7 @@ func findChunks() error {
 
 	var chunks []string
 
-	for i := 0; i < len(sections); i++ {
+	for i := range sections {
 		strSection := sections[i]
 		if strSection == "END" {
 			break
@@ -113,8 +115,12 @@ func findChunks() error {
 		// Figure out how many words we have.
 		words := strings.Fields(chunk)
 
-		// We have less than or exactly 500 words.
-		if len(words) <= 500 {
+		const min = 200
+		const max = 500
+
+		// We have less than or exactly max words.
+		if len(words) >= min && len(words) <= max {
+			fmt.Println(chunk)
 			output.WriteString("<CHUNK>\n")
 			output.WriteString(chunk)
 			output.WriteString("\n")
@@ -122,14 +128,12 @@ func findChunks() error {
 			continue
 		}
 
-		// The chunk is pretty large, so switch to 250 word chunks.
-		const boundary = 250
-
 		var idx int
 
 		for {
 			// We have the last section of words.
-			if len(words[idx:]) <= boundary {
+			if len(words[idx:]) <= max && len(words[idx:]) >= min {
+				fmt.Println(strings.Join(words[idx:], " "))
 				output.WriteString("<CHUNK>\n")
 				output.WriteString(strings.Join(words[idx:], " "))
 				output.WriteString("\n")
@@ -137,13 +141,19 @@ func findChunks() error {
 				break
 			}
 
-			// This is a 250 chunk of words.
+			// Throw this out since it's too small.
+			if len(words[idx:]) < min {
+				break
+			}
+
+			// This is a max chunk of words.
+			fmt.Println(strings.Join(words[idx:idx+max], " "))
 			output.WriteString("<CHUNK>\n")
-			output.WriteString(strings.Join(words[idx:idx+boundary], " "))
+			output.WriteString(strings.Join(words[idx:idx+max], " "))
 			output.WriteString("\n")
 			output.WriteString("</CHUNK>\n")
 
-			idx = idx + boundary
+			idx = idx + max
 		}
 	}
 

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"math"
 	"sort"
-	"strings"
 	"unsafe"
 
 	"github.com/hybridgroup/yzma/pkg/llama"
@@ -60,6 +59,11 @@ func (cfg Config) ctxParams() llama.ContextParams {
 }
 
 // =============================================================================
+
+type RankingDocument struct {
+	Document  string
+	Embedding []float64
+}
 
 type Ranking struct {
 	Document string
@@ -293,65 +297,29 @@ func (llm *Llama) Embed(text string) ([]float32, error) {
 	return vec, nil
 }
 
-func (llm *Llama) Rerank(query string, documents []string) ([]Ranking, error) {
-	lctx := llama.InitFromModel(llm.model, llm.ctxParams)
-	defer llama.Free(lctx)
+func (llm *Llama) Rerank(rankingDocs []RankingDocument) ([]Ranking, error) {
+	rerankedDocs := make([]Ranking, len(rankingDocs))
 
-	// -------------------------------------------------------------------------
-
-	rerankedDocs := make([]Ranking, len(documents))
-
-	template := `
-<|im_start|>system Judge whether the <Document> is relevant to the <Query>. Response with a single "yes" or "no" and do not explain your answer.<|im_end|>
-<|im_start|>user <Query>: {query}<|im_end|>
-<|im_start|>user <Document>: {document}<|im_end|>
-<|im_start|>assistant<think></think>
-`
-
-	for i, document := range documents {
-		rerankPrompt := strings.ReplaceAll(template, "{query}", query)
-		rerankPrompt = strings.ReplaceAll(rerankPrompt, "{document}", document)
-
-		fmt.Println("\n-----------------")
-		fmt.Println(rerankPrompt)
-		fmt.Println("-----------------")
-
-		// ---------------------------------------------------------------------
-
-		params := Params{
-			TopK: 1.0,
-			TopP: 0.9,
-			Temp: 0.7,
-		}
-
-		tokens := llama.Tokenize(llm.vocab, rerankPrompt, true, true)
-		batch := llama.BatchGetOne(tokens)
-		sampler := params.sampler()
-
-		// ---------------------------------------------------------------------
-
-		for range llama.MaxToken {
-			llama.Decode(lctx, batch)
-			token := llama.SamplerSample(sampler, lctx, -1)
-
-			if llama.VocabIsEOG(llm.vocab, token) {
-				break
+	// Simple scoring based on embedding magnitude and positive values.
+	for i, doc := range rankingDocs {
+		var sumPositive, sumTotal float64
+		for _, val := range doc.Embedding {
+			sumTotal += val * val
+			if val > 0 {
+				sumPositive += val
 			}
-
-			buf := make([]byte, 1024*32)
-			l := llama.TokenToPiece(llm.vocab, token, buf, 0, false)
-
-			resp := string(buf[:l])
-			fmt.Print(resp)
-
-			batch = llama.BatchGetOne([]llama.Token{token})
 		}
 
-		fmt.Println()
+		if sumTotal == 0 {
+			rerankedDocs[i] = Ranking{Document: doc.Document, Score: 0}
+		}
 
-		// ---------------------------------------------------------------------
+		// Normalize and combine magnitude with positive bias
+		magnitude := math.Sqrt(sumTotal) / float64(len(doc.Embedding))
+		positiveRatio := sumPositive / float64(len(doc.Embedding))
+		score := (magnitude + positiveRatio) / 2
 
-		rerankedDocs[i] = Ranking{Document: document, Score: 1.0}
+		rerankedDocs[i] = Ranking{Document: doc.Document, Score: score}
 	}
 
 	sort.Slice(rerankedDocs, func(i, j int) bool {

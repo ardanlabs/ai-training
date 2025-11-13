@@ -108,12 +108,6 @@ func dbConnection(llm *llamacpp.Llama, dimentions int) (*sql.DB, error) {
 }
 
 func dbLoadChunks(db *sql.DB, llm *llamacpp.Llama) error {
-	type document struct {
-		ID        int       `bson:"id"`
-		Text      string    `bson:"text"`
-		Embedding []float64 `bson:"embedding"`
-	}
-
 	data, err := os.ReadFile("zarf/data/book.chunks")
 	if err != nil {
 		return fmt.Errorf("read file: %w", err)
@@ -155,7 +149,8 @@ func dbLoadChunks(db *sql.DB, llm *llamacpp.Llama) error {
 type document struct {
 	ID         int
 	Text       string
-	similarity float64
+	Embedding  []float64
+	Similarity float64
 }
 
 func dbSearch(db *sql.DB, queryVector []float32, limit int) ([]document, error) {
@@ -163,6 +158,7 @@ func dbSearch(db *sql.DB, queryVector []float32, limit int) ([]document, error) 
 		SELECT
 			id,
 			text,
+			embedding,
 			array_cosine_similarity(embedding, ?::FLOAT[%d]) as similarity
 		FROM
 			items
@@ -182,19 +178,19 @@ func dbSearch(db *sql.DB, queryVector []float32, limit int) ([]document, error) 
 	var docs []document
 
 	for rows.Next() {
-		var id int
-		var text string
-		var similarity float64
+		var doc document
+		var embedding []any
 
-		if err := rows.Scan(&id, &text, &similarity); err != nil {
+		if err := rows.Scan(&doc.ID, &doc.Text, &embedding, &doc.Similarity); err != nil {
 			return nil, fmt.Errorf("error scanning row: %w", err)
 		}
 
-		docs = append(docs, document{
-			ID:         id,
-			Text:       text,
-			similarity: similarity,
-		})
+		doc.Embedding = make([]float64, len(embedding))
+		for i, v := range embedding {
+			doc.Embedding[i] = float64(v.(float32))
+		}
+
+		docs = append(docs, doc)
 	}
 
 	return docs, nil

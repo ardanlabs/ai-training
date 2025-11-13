@@ -77,12 +77,19 @@ func run() error {
 
 		fmt.Print("\nMODEL> ")
 
+		var finalResponse string
 		for msg := range ch {
 			if msg.Err != nil {
 				return fmt.Errorf("error from model: %w", msg.Err)
 			}
 			fmt.Print(msg.Response)
+			finalResponse = fmt.Sprintf("%s %s", finalResponse, msg.Response)
 		}
+
+		messages = append(messages, llamacpp.ChatMessage{
+			Role:    "assistant",
+			Content: finalResponse,
+		})
 
 		fmt.Println()
 	}

@@ -46,6 +46,9 @@ github.com/araddon/dateparse
 # github.com/bgentry/go-netrc v0.0.0-20140422174119-9fd32a8b3d3d
 ## explicit
 github.com/bgentry/go-netrc/netrc
+# github.com/clipperhouse/displaywidth v0.5.0
+## explicit; go 1.18
+github.com/clipperhouse/displaywidth
 # github.com/clipperhouse/stringish v0.1.1
 ## explicit; go 1.18
 github.com/clipperhouse/stringish
@@ -140,7 +143,7 @@ github.com/hashicorp/go-safetemp
 # github.com/hashicorp/go-version v1.7.0
 ## explicit
 github.com/hashicorp/go-version
-# github.com/hybridgroup/yzma v0.8.1
+# github.com/hybridgroup/yzma v0.9.0
 ## explicit; go 1.24.0
 github.com/hybridgroup/yzma/pkg/download
 github.com/hybridgroup/yzma/pkg/llama
@@ -243,7 +246,7 @@ github.com/olekukonko/errors
 github.com/olekukonko/ll
 github.com/olekukonko/ll/lh
 github.com/olekukonko/ll/lx
-# github.com/olekukonko/tablewriter v1.1.0
+# github.com/olekukonko/tablewriter v1.1.1
 ## explicit; go 1.21
 github.com/olekukonko/tablewriter
 github.com/olekukonko/tablewriter/pkg/twwarp
@@ -270,9 +273,6 @@ github.com/richardlehane/mscfb
 ## explicit
 github.com/richardlehane/msoleps
 github.com/richardlehane/msoleps/types
-# github.com/rivo/uniseg v0.4.7
-## explicit; go 1.18
-github.com/rivo/uniseg
 # github.com/ssor/bom v0.0.0-20170718123548-6386211fdfcf
 ## explicit
 github.com/ssor/bom
@@ -349,7 +349,7 @@ go.mongodb.org/mongo-driver/x/mongo/driver/operation
 go.mongodb.org/mongo-driver/x/mongo/driver/session
 go.mongodb.org/mongo-driver/x/mongo/driver/topology
 go.mongodb.org/mongo-driver/x/mongo/driver/wiremessage
-# golang.org/x/crypto v0.43.0
+# golang.org/x/crypto v0.44.0
 ## explicit; go 1.24.0
 golang.org/x/crypto/ocsp
 golang.org/x/crypto/pbkdf2
@@ -357,38 +357,38 @@ golang.org/x/crypto/scrypt
 # golang.org/x/exp v0.0.0-20251023183803-a4bb9ffd2546
 ## explicit; go 1.24.0
 golang.org/x/exp/constraints
-# golang.org/x/mod v0.29.0
+# golang.org/x/mod v0.30.0
 ## explicit; go 1.24.0
 golang.org/x/mod/internal/lazyregexp
 golang.org/x/mod/module
 golang.org/x/mod/semver
-# golang.org/x/net v0.46.0
+# golang.org/x/net v0.47.0
 ## explicit; go 1.24.0
 golang.org/x/net/html
 golang.org/x/net/html/atom
 golang.org/x/net/html/charset
 golang.org/x/net/publicsuffix
-# golang.org/x/oauth2 v0.32.0
+# golang.org/x/oauth2 v0.33.0
 ## explicit; go 1.24.0
 golang.org/x/oauth2
 golang.org/x/oauth2/internal
-# golang.org/x/sync v0.17.0
+# golang.org/x/sync v0.18.0
 ## explicit; go 1.24.0
 golang.org/x/sync/errgroup
 golang.org/x/sync/semaphore
 golang.org/x/sync/singleflight
-# golang.org/x/sys v0.37.0
+# golang.org/x/sys v0.38.0
 ## explicit; go 1.24.0
 golang.org/x/sys/cpu
 golang.org/x/sys/unix
 golang.org/x/sys/windows
-# golang.org/x/telemetry v0.0.0-20251104151223-ab4e49a9e6f4
+# golang.org/x/telemetry v0.0.0-20251112162317-03ef243c208a
 ## explicit; go 1.24.0
 golang.org/x/telemetry/counter
 golang.org/x/telemetry/internal/counter
 golang.org/x/telemetry/internal/mmap
 golang.org/x/telemetry/internal/telemetry
-# golang.org/x/text v0.30.0
+# golang.org/x/text v0.31.0
 ## explicit; go 1.24.0
 golang.org/x/text/cases
 golang.org/x/text/encoding

@@ -1,6 +1,7 @@
 package llama
 
 import (
+	"fmt"
 	"os"
 	"unsafe"
 
@@ -307,6 +308,7 @@ func ModelDecoderStartToken(model Model) Token {
 	return Token(result)
 }
 
+// ModelNCtxTrain returns the number of context tokens used during training.
 func ModelNCtxTrain(model Model) int32 {
 	if model == 0 {
 		return 0
@@ -317,6 +319,7 @@ func ModelNCtxTrain(model Model) int32 {
 	return int32(result)
 }
 
+// ModelNEmbd returns the embedding size of the Model.
 func ModelNEmbd(model Model) int32 {
 	if model == 0 {
 		return 0
@@ -327,6 +330,7 @@ func ModelNEmbd(model Model) int32 {
 	return int32(result)
 }
 
+// ModelNLayer returns the number of layers in the Model.
 func ModelNLayer(model Model) int32 {
 	if model == 0 {
 		return 0
@@ -337,6 +341,7 @@ func ModelNLayer(model Model) int32 {
 	return int32(result)
 }
 
+// ModelNHead returns the number of attention heads in the Model.
 func ModelNHead(model Model) int32 {
 	if model == 0 {
 		return 0
@@ -347,6 +352,7 @@ func ModelNHead(model Model) int32 {
 	return int32(result)
 }
 
+// ModelNHeadKV returns the number of key/value attention heads in the Model.
 func ModelNHeadKV(model Model) int32 {
 	if model == 0 {
 		return 0
@@ -357,6 +363,7 @@ func ModelNHeadKV(model Model) int32 {
 	return int32(result)
 }
 
+// ModelNSWA returns the number of SWA layers in the Model.
 func ModelNSWA(model Model) int32 {
 	if model == 0 {
 		return 0
@@ -615,4 +622,49 @@ func ModelMetaValStrByIndex(model Model, i int32) (string, bool) {
 	copy(value, buf[:int32(result)])
 
 	return string(value), true
+}
+
+// SetTensorBufOverrides sets tensor buffer overrides for Mixture of Experts (MoE) execution.
+func (p *ModelParams) SetTensorBufOverrides(overrides []TensorBuftOverride) {
+	if len(overrides) == 0 {
+		p.TensorBuftOverrides = uintptr(0)
+		return
+	}
+
+	p.TensorBuftOverrides = uintptr(unsafe.Pointer(&overrides[0]))
+}
+
+// SetProgressCallback sets a progress callback for model loading.
+func (p *ModelParams) SetProgressCallback(cb ProgressCallback) {
+	if cb == nil {
+		p.ProgressCallback = uintptr(0)
+		return
+	}
+
+	var callback unsafe.Pointer
+	closure := ffi.ClosureAlloc(unsafe.Sizeof(ffi.Closure{}), &callback)
+
+	fn := ffi.NewCallback(func(cif *ffi.Cif, ret unsafe.Pointer, args *unsafe.Pointer, userData unsafe.Pointer) uintptr {
+		arg := unsafe.Slice(args, cif.NArgs)
+		progress := *(*float32)(arg[0])
+		userDataPtr := *(*uintptr)(arg[1])
+		result := cb(progress, userDataPtr)
+		*(*uint8)(ret) = result
+		return 0
+	})
+
+	var cifCallback ffi.Cif
+	if status := ffi.PrepCif(&cifCallback, ffi.DefaultAbi, 2, &ffi.TypeUint8, &ffi.TypeFloat, &ffi.TypePointer); status != ffi.OK {
+		fmt.Println(status)
+		return
+	}
+
+	if closure != nil {
+		if status := ffi.PrepClosureLoc(closure, &cifCallback, fn, nil, callback); status != ffi.OK {
+			fmt.Println(status)
+			return
+		}
+	}
+
+	p.ProgressCallback = uintptr(callback)
 }

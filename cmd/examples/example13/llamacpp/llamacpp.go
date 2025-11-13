@@ -156,12 +156,7 @@ func (llm *Llama) ChatCompletions(messages []ChatMessage, params Params) <-chan 
 
 		// ---------------------------------------------------------------------
 
-		count := llama.Tokenize(llm.vocab, text, nil, true, true)
-		tokens := make([]llama.Token, count)
-		llama.Tokenize(llm.vocab, text, tokens, true, true)
-
-		// ---------------------------------------------------------------------
-
+		tokens := llama.Tokenize(llm.vocab, text, true, true)
 		batch := llama.BatchGetOne(tokens)
 		sampler := params.sampler()
 
@@ -270,12 +265,7 @@ func (llm *Llama) Embed(text string) ([]float32, error) {
 
 	// -------------------------------------------------------------------------
 
-	count := llama.Tokenize(llm.vocab, text, nil, true, true)
-	tokens := make([]llama.Token, count)
-	llama.Tokenize(llm.vocab, text, tokens, true, true)
-
-	// -------------------------------------------------------------------------
-
+	tokens := llama.Tokenize(llm.vocab, text, true, true)
 	batch := llama.BatchGetOne(tokens)
 	llama.Decode(lctx, batch)
 	nEmbd := llama.ModelNEmbd(llm.model)

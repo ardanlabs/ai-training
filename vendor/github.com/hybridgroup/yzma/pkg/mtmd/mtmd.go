@@ -26,26 +26,23 @@ type ImageTokens uintptr
 type InputChunk uintptr
 type InputChunks uintptr
 
-//	struct mtmd_context_params {
-//	    bool use_gpu;
-//	    bool print_timings;
-//	    int n_threads;
-//	    enum ggml_log_level verbosity;
-//	    const char * image_marker; // deprecated, use media_marker instead
-//	    const char * media_marker;
-//	};
+// Context parameters for the MTMD initialization.
 type ContextParamsType struct {
-	UseGPU       bool
-	PrintTimings bool
-	Threads      int32
-	Verbosity    llama.LogLevel
-	ImageMarker  *byte
-	MediaMarker  *byte
+	UseGPU             bool
+	PrintTimings       bool
+	Threads            int32
+	Verbosity          llama.LogLevel
+	ImageMarker        *byte
+	MediaMarker        *byte
+	FlashAttentionType llama.FlashAttentionType
+	ImageMinTokens     int32
+	ImageMaxTokens     int32
 }
 
 var (
-	FFITypeContextParams = ffi.NewType(&ffi.TypeUint8, &ffi.TypeUint8, &ffi.TypeSint32, &ffi.TypeSint32, &ffi.TypePointer, &ffi.TypePointer)
-	FFITypeInputText     = ffi.NewType(&ffi.TypePointer, &ffi.TypeUint8, &ffi.TypeUint8)
+	FFITypeContextParams = ffi.NewType(&ffi.TypeUint8, &ffi.TypeUint8, &ffi.TypeSint32, &ffi.TypeSint32, &ffi.TypePointer, &ffi.TypePointer,
+		&ffi.TypeUint8, &ffi.TypeSint32, &ffi.TypeSint32)
+	FFITypeInputText = ffi.NewType(&ffi.TypePointer, &ffi.TypeUint8, &ffi.TypeUint8)
 )
 
 var (
@@ -150,12 +147,14 @@ func loadFuncs(lib ffi.Lib) error {
 	return nil
 }
 
+// DefaultMarker returns the default media marker used in prompts.
 func DefaultMarker() string {
 	var marker *byte
 	defaultMarkerFunc.Call(unsafe.Pointer(&marker))
 	return utils.BytePtrToString(marker)
 }
 
+// ContextParamsDefault returns the default context parameters for mtmd.
 func ContextParamsDefault() ContextParamsType {
 	var ctx ContextParamsType
 	contextParamsDefaultFunc.Call(unsafe.Pointer(&ctx))

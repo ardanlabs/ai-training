@@ -7,6 +7,7 @@ import (
 	"github.com/hybridgroup/yzma/pkg/loader"
 )
 
+// Load loads the shared llama.cpp libraries from the specified path.
 func Load(path string) error {
 	lib, err := loader.LoadLibrary(path, "ggml")
 	if err != nil {
@@ -14,6 +15,15 @@ func Load(path string) error {
 	}
 
 	if err := loadGGML(lib); err != nil {
+		return err
+	}
+
+	lib, err = loader.LoadLibrary(path, "ggml-base")
+	if err != nil {
+		return err
+	}
+
+	if err := loadGGMLBase(lib); err != nil {
 		return err
 	}
 

@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/ardanlabs/ai-training/cmd/examples/example13/llamacpp"
-	"github.com/marcboeker/go-duckdb/v2"
+	"github.com/duckdb/duckdb-go/v2"
 )
 
 func dbConnection(llm *llamacpp.Llama, dimentions int) (*sql.DB, error) {

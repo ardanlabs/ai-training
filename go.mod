@@ -4,10 +4,10 @@ go 1.25.0
 
 require (
 	github.com/dlclark/regexp2 v1.11.5
+	github.com/duckdb/duckdb-go/v2 v2.5.1
 	github.com/hybridgroup/yzma v0.9.0
 	github.com/jackc/pgx/v5 v5.7.6
 	github.com/jmoiron/sqlx v1.4.0
-	github.com/marcboeker/go-duckdb/v2 v2.4.3
 	github.com/modelcontextprotocol/go-sdk v1.1.0
 	go.mongodb.org/mongo-driver v1.17.6
 	golang.org/x/sync v0.18.0
@@ -22,6 +22,8 @@ require (
 	github.com/duckdb/duckdb-go-bindings/linux-amd64 v0.1.22 // indirect
 	github.com/duckdb/duckdb-go-bindings/linux-arm64 v0.1.22 // indirect
 	github.com/duckdb/duckdb-go-bindings/windows-amd64 v0.1.22 // indirect
+	github.com/duckdb/duckdb-go/arrowmapping v0.0.24 // indirect
+	github.com/duckdb/duckdb-go/mapping v0.0.24 // indirect
 	github.com/ebitengine/purego v0.9.1 // indirect
 	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
 	github.com/goccy/go-json v0.10.5 // indirect
@@ -41,8 +43,6 @@ require (
 	github.com/jupiterrider/ffi v0.5.1 // indirect
 	github.com/klauspost/compress v1.18.1 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
-	github.com/marcboeker/go-duckdb/arrowmapping v0.0.21 // indirect
-	github.com/marcboeker/go-duckdb/mapping v0.0.21 // indirect
 	github.com/mitchellh/go-homedir v1.1.0 // indirect
 	github.com/mitchellh/go-testing-interface v1.14.1 // indirect
 	github.com/montanaflynn/stats v0.7.1 // indirect
@@ -61,6 +61,6 @@ require (
 	golang.org/x/sys v0.38.0 // indirect
 	golang.org/x/telemetry v0.0.0-20251112162317-03ef243c208a // indirect
 	golang.org/x/text v0.31.0 // indirect
-	golang.org/x/tools v0.38.0 // indirect
+	golang.org/x/tools v0.39.0 // indirect
 	golang.org/x/xerrors v0.0.0-20240903120638-7835f813f4da // indirect
 )

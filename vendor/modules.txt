@@ -48,6 +48,15 @@ github.com/duckdb/duckdb-go-bindings/linux-arm64
 # github.com/duckdb/duckdb-go-bindings/windows-amd64 v0.1.22
 ## explicit; go 1.24
 github.com/duckdb/duckdb-go-bindings/windows-amd64
+# github.com/duckdb/duckdb-go/arrowmapping v0.0.24
+## explicit; go 1.24
+github.com/duckdb/duckdb-go/arrowmapping
+# github.com/duckdb/duckdb-go/mapping v0.0.24
+## explicit; go 1.24
+github.com/duckdb/duckdb-go/mapping
+# github.com/duckdb/duckdb-go/v2 v2.5.1
+## explicit; go 1.24
+github.com/duckdb/duckdb-go/v2
 # github.com/ebitengine/purego v0.9.1
 ## explicit; go 1.18
 github.com/ebitengine/purego
@@ -151,15 +160,6 @@ github.com/klauspost/compress/zstd/internal/xxhash
 # github.com/klauspost/cpuid/v2 v2.3.0
 ## explicit; go 1.22
 github.com/klauspost/cpuid/v2
-# github.com/marcboeker/go-duckdb/arrowmapping v0.0.21
-## explicit; go 1.24
-github.com/marcboeker/go-duckdb/arrowmapping
-# github.com/marcboeker/go-duckdb/mapping v0.0.21
-## explicit; go 1.24
-github.com/marcboeker/go-duckdb/mapping
-# github.com/marcboeker/go-duckdb/v2 v2.4.3
-## explicit; go 1.24
-github.com/marcboeker/go-duckdb/v2
 # github.com/mitchellh/go-homedir v1.1.0
 ## explicit
 github.com/mitchellh/go-homedir
@@ -305,7 +305,7 @@ golang.org/x/text/transform
 golang.org/x/text/unicode/bidi
 golang.org/x/text/unicode/norm
 golang.org/x/text/width
-# golang.org/x/tools v0.38.0
+# golang.org/x/tools v0.39.0
 ## explicit; go 1.24.0
 golang.org/x/tools/cmd/goimports
 golang.org/x/tools/cmd/stringer

@@ -211,8 +211,6 @@ func (llm *Llama) ChatVision(message ChatMessage, imageFile string, params Param
 		output := mtmd.InputChunksInit()
 		input := mtmd.NewInputText(template, true, true)
 
-		// ---------------------------------------------------------------------
-
 		mctxParams := mtmd.ContextParamsDefault()
 		mtmdCtx := mtmd.InitFromFile(llm.projFile, llm.model, mctxParams)
 		defer mtmd.Free(mtmdCtx)
@@ -225,7 +223,7 @@ func (llm *Llama) ChatVision(message ChatMessage, imageFile string, params Param
 		var n llama.Pos
 		mtmd.HelperEvalChunks(mtmdCtx, lctx, output, 0, 0, int32(llm.ctxParams.NBatch), true, &n)
 
-		// -------------------------------------------------------------------------
+		// ---------------------------------------------------------------------
 
 		var sz int32 = 1
 		batch := llama.BatchInit(1, 0, 1)

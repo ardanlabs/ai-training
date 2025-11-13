@@ -1,6 +1,7 @@
 package llamacpp
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -14,19 +15,80 @@ import (
 	"github.com/hybridgroup/yzma/pkg/download"
 )
 
+var llamaCppVersionDocURL = "https://api.github.com/repos/ggml-org/llama.cpp/releases/latest"
+
 func InstallLibraries(libPath string) error {
-	if _, err := os.Stat(filepath.Join(libPath, download.LibraryName(runtime.GOOS))); !os.IsNotExist(err) {
-		fmt.Println("- llama.cpp already installed at", libPath)
-		return nil
+	var tag struct {
+		TagName string `json:"tag_name"`
 	}
 
-	version, err := download.LlamaLatestVersion()
+	os.MkdirAll(libPath, 0755)
+	versionInfoPath := filepath.Join(libPath, "version.json")
+
+	// -------------------------------------------------------------------------
+
+	switch _, err := os.Stat(versionInfoPath); os.IsNotExist(err) {
+	case false:
+		d, err := os.ReadFile(versionInfoPath)
+		if err != nil {
+			return fmt.Errorf("error reading version info file: %w", err)
+		}
+
+		if err := json.Unmarshal(d, &tag); err != nil {
+			return fmt.Errorf("error unmarshalling version info: %w", err)
+		}
+
+		version, err := download.LlamaLatestVersion()
+		if err != nil {
+			return fmt.Errorf("error install: %w", err)
+		}
+
+		if version == tag.TagName {
+			fmt.Printf("- llama.cpp version %q already installed\n", version)
+			return nil
+		}
+
+		tag.TagName = version
+
+	case true:
+		r, err := http.DefaultClient.Get(llamaCppVersionDocURL)
+		if err != nil {
+			return fmt.Errorf("error getting llama.cpp version document: %w", err)
+		}
+		defer r.Body.Close()
+
+		if err := json.NewDecoder(r.Body).Decode(&tag); err != nil {
+			return fmt.Errorf("error decoding llama.cpp version document: %w", err)
+		}
+	}
+
+	// -------------------------------------------------------------------------
+
+	if _, err := os.Stat(libPath); !os.IsNotExist(err) {
+		os.RemoveAll(libPath)
+	}
+
+	fmt.Printf("- installing llama.cpp version %s to %s\n", tag.TagName, libPath)
+	if err := download.Get(runtime.GOOS, "cpu", tag.TagName, libPath); err != nil {
+		return fmt.Errorf("error downloading llama.cpp: %w", err)
+	}
+
+	// -------------------------------------------------------------------------
+
+	f, err := os.Create(versionInfoPath)
 	if err != nil {
-		return fmt.Errorf("error install: %w", err)
+		return fmt.Errorf("error creating version info file: %w", err)
+	}
+	defer f.Close()
+
+	d, err := json.Marshal(tag)
+	if err != nil {
+		return fmt.Errorf("error marshalling version info: %w", err)
 	}
 
-	fmt.Println("installing llama.cpp version", version, "to", libPath)
-	download.Get(runtime.GOOS, "cpu", version, libPath)
+	if _, err := f.Write(d); err != nil {
+		return fmt.Errorf("error writing version info: %w", err)
+	}
 
 	return nil
 }

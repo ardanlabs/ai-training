@@ -197,9 +197,10 @@ func (llm *Llama) ChatVision(message ChatMessage, imageFile string, params Param
 
 		// ---------------------------------------------------------------------
 
-		msgs := make([]llama.ChatMessage, 2)
-		msgs[0] = llama.NewChatMessage(message.Role, message.Content)
-		msgs[1] = llama.NewChatMessage("user", mtmd.DefaultMarker())
+		msgs := []llama.ChatMessage{
+			llama.NewChatMessage(message.Role, message.Content),
+			llama.NewChatMessage("user", mtmd.DefaultMarker()),
+		}
 
 		buf := make([]byte, 1024*32)
 		len := llama.ChatApplyTemplate(llm.template, msgs, true, buf)

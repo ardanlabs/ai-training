@@ -30,7 +30,7 @@ func main() {
 }
 
 func run() error {
-	if err := llamacpp.InstallLibraries(libPath); err != nil {
+	if err := llamacpp.InstallLibraries(libPath, true); err != nil {
 		return fmt.Errorf("unable to install llamacpp: %w", err)
 	}
 	fmt.Println("- llamacpp installed")
@@ -55,12 +55,10 @@ func run() error {
 	}
 	defer llm.Unload()
 
-	llm.ShowModelInfo()
-
 	// -------------------------------------------------------------------------
 
 	question := "What is in this picture?"
-	fmt.Printf("Question: %s\n\n", question)
+	fmt.Printf("\nQuestion: %s\n\n", question)
 
 	message := llamacpp.ChatMessage{
 		Role:    "user",

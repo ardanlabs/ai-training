@@ -254,6 +254,8 @@ func (llm *Llama) ChatVision(message ChatMessage, imageFile string, params Param
 		input := mtmd.NewInputText(template, true, true)
 
 		mctxParams := mtmd.ContextParamsDefault()
+		mctxParams.Verbosity = llama.LogLevelContinue
+
 		mtmdCtx, err := mtmd.InitFromFile(llm.projFile, llm.model, mctxParams)
 		if err != nil {
 			ch <- ChatResponse{Err: fmt.Errorf("unable to init from model: %v", err)}

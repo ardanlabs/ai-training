@@ -36,7 +36,7 @@ func main() {
 }
 
 func run() error {
-	if err := llamacpp.InstallLibraries(libPath, true); err != nil {
+	if err := llamacpp.InstallLibraries(libPath, llamacpp.CPU, true); err != nil {
 		return fmt.Errorf("unable to install llamacpp: %w", err)
 	}
 	fmt.Println("- llamacpp installed")

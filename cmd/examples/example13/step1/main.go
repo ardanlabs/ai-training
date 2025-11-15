@@ -29,27 +29,28 @@ func main() {
 }
 
 func run() error {
+	fmt.Println("- check llamacpp installation")
 	if err := download.InstallLibraries(libPath, download.CPU, true); err != nil {
 		return fmt.Errorf("unable to install llamacpp: %w", err)
 	}
 	fmt.Println("- llamacpp installed")
 
+	fmt.Println("- check model installation")
 	modelFile, err := llamacpp.InstallModel(modelURL, modelPath)
 	if err != nil {
 		return fmt.Errorf("unable to install model: %w", err)
 	}
 	fmt.Printf("- model %q installed\n", modelFile)
 
+	fmt.Println("- load model")
 	llm, err := llamacpp.New(libPath, modelFile, llamacpp.Config{
 		ContextWindow: 8196,
 	})
 	if err != nil {
-		return fmt.Errorf("unable to create inference model: %w", err)
+		return fmt.Errorf("unable to load model: %w", err)
 	}
 	defer llm.Unload()
 	fmt.Printf("- model %q loaded\n", modelFile)
-
-	llm.ShowModelInfo()
 
 	// -------------------------------------------------------------------------
 

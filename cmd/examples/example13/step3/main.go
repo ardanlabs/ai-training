@@ -13,6 +13,7 @@ import (
 	"os"
 
 	"github.com/ardanlabs/ai-training/cmd/examples/example13/llamacpp"
+	"github.com/hybridgroup/yzma/pkg/download"
 )
 
 var (
@@ -29,7 +30,7 @@ func main() {
 }
 
 func run() error {
-	if err := llamacpp.InstallLibraries(libPath, llamacpp.CPU, true); err != nil {
+	if err := download.InstallLibraries(libPath, download.CPU, true); err != nil {
 		return fmt.Errorf("unable to install llamacpp: %w", err)
 	}
 	fmt.Println("- llamacpp installed")

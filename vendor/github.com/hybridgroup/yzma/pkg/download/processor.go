@@ -1,13 +1,13 @@
-package llamacpp
+package download
 
 import "fmt"
 
 // The set of processors that can be used.
 var (
-	CPU    = newProcessor("CPU")
-	CUDA   = newProcessor("CUDA")
-	Metal  = newProcessor("METAL")
-	Vulkan = newProcessor("VULKAN")
+	CPU    = newProcessor("cpu")
+	CUDA   = newProcessor("cuda")
+	Metal  = newProcessor("metal")
+	Vulkan = newProcessor("vulkan")
 )
 
 // =============================================================================
@@ -43,8 +43,8 @@ func (p Processor) MarshalText() ([]byte, error) {
 
 // =============================================================================
 
-// Parse parses the string value and returns a processor if one exists.
-func Parse(value string) (Processor, error) {
+// ParseProcessor parses the string value and returns a processor if one exists.
+func ParseProcessor(value string) (Processor, error) {
 	processor, exists := processors[value]
 	if !exists {
 		return Processor{}, fmt.Errorf("invalid processor %q", value)
@@ -53,10 +53,10 @@ func Parse(value string) (Processor, error) {
 	return processor, nil
 }
 
-// MustParse parses the string value and returns a processor if one exists. If
+// MustParseProcessor parses the string value and returns a processor if one exists. If
 // an error occurs the function panics.
-func MustParse(value string) Processor {
-	processor, err := Parse(value)
+func MustParseProcessor(value string) Processor {
+	processor, err := ParseProcessor(value)
 	if err != nil {
 		panic(err)
 	}

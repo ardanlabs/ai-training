@@ -45,6 +45,7 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("unable to install embedding model: %w", err)
 	}
+	fmt.Printf("- embedding model %q installed\n", modelEmbedFile)
 
 	fmt.Println("- loading Embedding Model", modelEmbedFile)
 	llmEmbed, err := llamacpp.New(libPath, modelEmbedFile, llamacpp.Config{
@@ -55,13 +56,14 @@ func run() error {
 		return fmt.Errorf("unable to create embedding model: %w", err)
 	}
 	defer llmEmbed.Unload()
+	fmt.Printf("- embedding model %q loaded\n", modelEmbedFile)
 
 	modelChatFile, err := llamacpp.InstallModel(modelChatURL, modelPath)
 	if err != nil {
 		return fmt.Errorf("unable to install chat model: %w", err)
 	}
+	fmt.Printf("- chat model %q installed\n", modelChatFile)
 
-	fmt.Println("- loading Chat Model", modelChatFile)
 	llmChat, err := llamacpp.New(libPath, modelChatFile, llamacpp.Config{
 		ContextWindow: 1024 * 32,
 	})
@@ -69,6 +71,7 @@ func run() error {
 		return fmt.Errorf("unable to create chat model: %w", err)
 	}
 	defer llmChat.Unload()
+	fmt.Printf("- chat model %q loaded\n", modelChatFile)
 
 	// -------------------------------------------------------------------------
 

@@ -10,7 +10,6 @@ import (
 	"path"
 	"path/filepath"
 	"runtime"
-	"strings"
 
 	"github.com/hybridgroup/yzma/pkg/download"
 )
@@ -161,11 +160,9 @@ func InstallModel(modelURL string, modelPath string) (string, error) {
 		return "", fmt.Errorf("unable to parse modelURL: %w", err)
 	}
 
-	modelPath = strings.TrimSuffix(modelPath, "/")
-	localPath := fmt.Sprintf("%s/%s", modelPath, path.Base(u.Path))
+	localPath := filepath.Join(modelPath, path.Base(u.Path))
 
 	if _, err := os.Stat(localPath); !os.IsNotExist(err) {
-		fmt.Println("- model file already installed at", localPath)
 		return localPath, nil
 	}
 

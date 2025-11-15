@@ -39,11 +39,13 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("unable to install model: %w", err)
 	}
+	fmt.Printf("- model %q installed\n", modelFile)
 
 	projFile, err := llamacpp.InstallModel(projURL, modelPath)
 	if err != nil {
 		return fmt.Errorf("unable to install model: %w", err)
 	}
+	fmt.Printf("- projection %q installed\n", projFile)
 
 	cfg := llamacpp.Config{
 		ContextWindow: 4096,
@@ -54,6 +56,7 @@ func run() error {
 		return fmt.Errorf("unable to create inference model: %w", err)
 	}
 	defer llm.Unload()
+	fmt.Printf("- model %q loaded\n", modelFile)
 
 	// -------------------------------------------------------------------------
 

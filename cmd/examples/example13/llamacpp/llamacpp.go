@@ -11,77 +11,6 @@ import (
 	"github.com/hybridgroup/yzma/pkg/mtmd"
 )
 
-type Params struct {
-	TopK float32
-	TopP float32
-	Temp float32
-}
-
-func (p Params) sampler() llama.Sampler {
-	sampler := llama.SamplerChainInit(llama.SamplerChainDefaultParams())
-
-	if p.TopK > 0 {
-		llama.SamplerChainAdd(sampler, llama.SamplerInitTopK(int32(p.TopK)))
-	}
-	if p.TopP > 0 {
-		llama.SamplerChainAdd(sampler, llama.SamplerInitTopP(p.TopP, 0))
-	}
-	if p.Temp > 0 {
-		llama.SamplerChainAdd(sampler, llama.SamplerInitTempExt(p.Temp, 0, 1.0))
-	}
-
-	llama.SamplerChainAdd(sampler, llama.SamplerInitDist(llama.DefaultSeed))
-
-	return sampler
-}
-
-// =============================================================================
-
-type Config struct {
-	ContextWindow uint32
-	Embeddings    bool
-}
-
-func (cfg Config) ctxParams() llama.ContextParams {
-	ctxParams := llama.ContextDefaultParams()
-
-	if cfg.Embeddings {
-		ctxParams.Embeddings = 1
-	}
-
-	if cfg.ContextWindow > 0 {
-		ctxParams.NBatch = cfg.ContextWindow
-		ctxParams.NUbatch = cfg.ContextWindow
-		ctxParams.NCtx = cfg.ContextWindow
-	}
-
-	return ctxParams
-}
-
-// =============================================================================
-
-type RankingDocument struct {
-	Document  string
-	Embedding []float64
-}
-
-type Ranking struct {
-	Document string
-	Score    float64
-}
-
-type ChatMessage struct {
-	Role    string
-	Content string
-}
-
-type ChatResponse struct {
-	Response string
-	Err      error
-}
-
-// =============================================================================
-
 type Llama struct {
 	libPath   string
 	model     llama.Model
@@ -89,18 +18,6 @@ type Llama struct {
 	ctxParams llama.ContextParams
 	template  string
 	projFile  string
-}
-
-func WithProjection(projFile string) func(llm *Llama) error {
-	return func(llm *Llama) error {
-		if err := mtmd.Load(llm.libPath); err != nil {
-			return fmt.Errorf("unable to load mtmd library: %w", err)
-		}
-
-		llm.projFile = projFile
-
-		return nil
-	}
 }
 
 func New(libPath string, modelFile string, cfg Config, options ...func(llm *Llama) error) (*Llama, error) {
@@ -150,6 +67,18 @@ func New(libPath string, modelFile string, cfg Config, options ...func(llm *Llam
 	}
 
 	return &llm, nil
+}
+
+func WithProjection(projFile string) func(llm *Llama) error {
+	return func(llm *Llama) error {
+		if err := mtmd.Load(llm.libPath); err != nil {
+			return fmt.Errorf("unable to load mtmd library: %w", err)
+		}
+
+		llm.projFile = projFile
+
+		return nil
+	}
 }
 
 func (llm *Llama) Unload() {

@@ -30,16 +30,16 @@ func main() {
 }
 
 func run() error {
-	if err := download.InstallLibraries(libPath, download.CPU, true); err != nil {
+	if err := llamacpp.InstallLibraries(libPath, download.CPU, true); err != nil {
 		return fmt.Errorf("unable to install llamacpp: %w", err)
 	}
-	fmt.Println("- llamacpp installed")
 
 	modelFile, err := llamacpp.InstallModel(modelURL, modelPath)
 	if err != nil {
 		return fmt.Errorf("unable to install model: %w", err)
 	}
-	fmt.Printf("- model %q installed\n", modelFile)
+
+	// -------------------------------------------------------------------------
 
 	llm, err := llamacpp.New(libPath, modelFile, llamacpp.Config{
 		ContextWindow: 1024 * 32,
@@ -48,11 +48,8 @@ func run() error {
 		return fmt.Errorf("unable to create inference model: %w", err)
 	}
 	defer llm.Unload()
-	fmt.Printf("- model %q loaded\n", modelFile)
 
 	// -------------------------------------------------------------------------
-
-	fmt.Println()
 
 	var messages []llamacpp.ChatMessage
 

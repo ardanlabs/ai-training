@@ -15,6 +15,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/ardanlabs/ai-training/cmd/examples/example13/install"
 	"github.com/ardanlabs/ai-training/cmd/examples/example13/llamacpp"
 	"github.com/hybridgroup/yzma/pkg/download"
 )
@@ -37,16 +38,16 @@ func main() {
 }
 
 func run() error {
-	if err := llamacpp.InstallLibraries(libPath, download.CPU, true); err != nil {
+	if err := install.LlamaCPP(libPath, download.CPU, true); err != nil {
 		return fmt.Errorf("unable to install llamacpp: %w", err)
 	}
 
-	modelEmbedFile, err := llamacpp.InstallModel(modelEmbedURL, modelPath)
+	modelEmbedFile, err := install.Model(modelEmbedURL, modelPath)
 	if err != nil {
 		return fmt.Errorf("unable to install embedding model: %w", err)
 	}
 
-	modelChatFile, err := llamacpp.InstallModel(modelChatURL, modelPath)
+	modelChatFile, err := install.Model(modelChatURL, modelPath)
 	if err != nil {
 		return fmt.Errorf("unable to install chat model: %w", err)
 	}

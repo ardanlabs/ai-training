@@ -1,4 +1,6 @@
-package llamacpp
+// Package install provides helper functions to install llamacpp libraries
+// and models.
+package install
 
 import (
 	"fmt"
@@ -9,7 +11,7 @@ import (
 	"github.com/hybridgroup/yzma/pkg/download"
 )
 
-func InstallLibraries(libPath string, processor download.Processor, allowUpgrade bool) error {
+func LlamaCPP(libPath string, processor download.Processor, allowUpgrade bool) error {
 	fmt.Print("- check llamacpp installation: ")
 
 	if err := download.InstallLibraries(libPath, processor, allowUpgrade); err != nil {
@@ -22,7 +24,7 @@ func InstallLibraries(libPath string, processor download.Processor, allowUpgrade
 	return nil
 }
 
-func InstallModel(modelURL string, modelPath string) (string, error) {
+func Model(modelURL string, modelPath string) (string, error) {
 	u, err := url.Parse(modelURL)
 	if err != nil {
 		return "", fmt.Errorf("unable to parse modelURL: %w", err)

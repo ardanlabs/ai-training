@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ardanlabs/ai-training/cmd/examples/example13/duck"
 	"github.com/ardanlabs/ai-training/cmd/examples/example13/install"
 	"github.com/ardanlabs/ai-training/cmd/examples/example13/llamacpp"
 	"github.com/hybridgroup/yzma/pkg/download"
@@ -27,7 +28,8 @@ var (
 	modelEmbedURL = "https://huggingface.co/ggml-org/embeddinggemma-300m-qat-q8_0-GGUF/resolve/main/embeddinggemma-300m-qat-Q8_0.gguf?download=true"
 	libPath       = "zarf/llamacpp"
 	modelPath     = "zarf/models"
-	dbPath        = "zarf/data/duck.db" // ":memory:"
+	dbPath        = "zarf/data/duck-ex13-step3.db" // ":memory:"
+	chunksFile    = "zarf/data/book.chunks"
 	dimentions    = 768
 )
 
@@ -77,7 +79,7 @@ func run() error {
 
 	// -------------------------------------------------------------------------
 
-	db, err := dbConnection(llmEmbed, dimentions)
+	db, err := duck.LoadData(dbPath, llmEmbed, dimentions, chunksFile)
 	if err != nil {
 		return fmt.Errorf("error connecting to database: %w", err)
 	}
@@ -115,7 +117,7 @@ func run() error {
 			return err
 		}
 
-		docs, err := dbSearch(db, queryVector, 5)
+		docs, err := duck.Search(db, queryVector, 5)
 		if err != nil {
 			return fmt.Errorf("error searching database: %w", err)
 		}

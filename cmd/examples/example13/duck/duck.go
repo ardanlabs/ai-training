@@ -1,4 +1,5 @@
-package main
+// Package duck provides basic duckdb support for the
+package duck
 
 import (
 	"context"
@@ -13,7 +14,9 @@ import (
 	"github.com/duckdb/duckdb-go/v2"
 )
 
-func dbConnection(llm *llamacpp.Llama, dimentions int) (*sql.DB, error) {
+// LoadData loads the specified chunks file into a duckdb database that is
+// configured to use the VSS extension for vector similarity search.
+func LoadData(dbPath string, llm *llamacpp.Llama, dimentions int, chunksFile string) (*sql.DB, error) {
 	connector, err := duckdb.NewConnector(dbPath, nil)
 	if err != nil {
 		return nil, fmt.Errorf("error creating connector: %w", err)
@@ -87,7 +90,7 @@ func dbConnection(llm *llamacpp.Llama, dimentions int) (*sql.DB, error) {
 	fmt.Print("LOADING DATA...")
 	t := time.Now()
 
-	if err := dbLoadChunks(db, llm); err != nil {
+	if err := loadChunks(db, llm, chunksFile); err != nil {
 		return nil, fmt.Errorf("error loading data: %w", err)
 	}
 
@@ -108,8 +111,8 @@ func dbConnection(llm *llamacpp.Llama, dimentions int) (*sql.DB, error) {
 	return db, nil
 }
 
-func dbLoadChunks(db *sql.DB, llm *llamacpp.Llama) error {
-	data, err := os.ReadFile("zarf/data/book.chunks")
+func loadChunks(db *sql.DB, llm *llamacpp.Llama, chunksFile string) error {
+	data, err := os.ReadFile(chunksFile)
 	if err != nil {
 		return fmt.Errorf("read file: %w", err)
 	}
@@ -157,14 +160,16 @@ func dbLoadChunks(db *sql.DB, llm *llamacpp.Llama) error {
 	return nil
 }
 
-type document struct {
+// =============================================================================
+
+type Document struct {
 	ID         int
 	Text       string
 	Embedding  []float64
 	Similarity float64
 }
 
-func dbSearch(db *sql.DB, queryVector []float32, limit int) ([]document, error) {
+func Search(db *sql.DB, queryVector []float32, limit int) ([]Document, error) {
 	sql := `
 		SELECT
 			id,
@@ -186,10 +191,10 @@ func dbSearch(db *sql.DB, queryVector []float32, limit int) ([]document, error) 
 	}
 	defer rows.Close()
 
-	var docs []document
+	var docs []Document
 
 	for rows.Next() {
-		var doc document
+		var doc Document
 		var embedding []any
 
 		if err := rows.Scan(&doc.ID, &doc.Text, &embedding, &doc.Similarity); err != nil {

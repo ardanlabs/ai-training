@@ -3,6 +3,7 @@ package llamacpp
 import (
 	"fmt"
 	"math"
+	"sync"
 	"unsafe"
 
 	"github.com/hybridgroup/yzma/pkg/llama"
@@ -16,6 +17,7 @@ type model struct {
 	ctxParams llama.ContextParams
 	template  string
 	projFile  string
+	muHEC     sync.Mutex
 }
 
 func newModel(libPath string, modelFile string, cfg Config, options ...func(
@@ -222,7 +224,13 @@ func (m *model) chatVision(message ChatMessage, imageFile string, params Params)
 		mtmd.Tokenize(mtmdCtx, output, input, []mtmd.Bitmap{bitmap})
 
 		var n llama.Pos
-		mtmd.HelperEvalChunks(mtmdCtx, lctx, output, 0, 0, int32(m.ctxParams.NBatch), true, &n)
+
+		func() {
+			// Docs indicate this function is NOT thread-safe.
+			m.muHEC.Lock()
+			defer m.muHEC.Unlock()
+			mtmd.HelperEvalChunks(mtmdCtx, lctx, output, 0, 0, int32(m.ctxParams.NBatch), true, &n)
+		}()
 
 		// ---------------------------------------------------------------------
 

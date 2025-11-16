@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -21,10 +22,9 @@ var (
 )
 
 var (
-	libPath    = "../../../../zarf/llamacpp"
-	modelPath  = "../../../../zarf/models"
-	imageFile  = "../../../../zarf/samples/gallery/giraffe.jpg"
-	dimentions = 768
+	libPath   = "../../../../zarf/llamacpp"
+	modelPath = "../../../../zarf/models"
+	imageFile = "../../../../zarf/samples/gallery/giraffe.jpg"
 )
 
 func TestMain(m *testing.M) {
@@ -54,8 +54,6 @@ func TestChatCompletions(t *testing.T) {
 	defer llm.Unload()
 
 	// -------------------------------------------------------------------------
-
-	fmt.Println()
 
 	question := "Echo back the word: Gorilla"
 
@@ -94,6 +92,78 @@ func TestChatCompletions(t *testing.T) {
 	}
 }
 
+func TestChatConcurrency(t *testing.T) {
+	modelFile, err := install.Model(modelChatCompletionsURL, modelPath)
+	if err != nil {
+		t.Fatalf("unable to install model: %v", err)
+	}
+
+	// -------------------------------------------------------------------------
+
+	const concurrency = 3
+
+	llm, err := llamacpp.New(concurrency, libPath, modelFile, llamacpp.Config{
+		ContextWindow: 8196,
+	})
+	if err != nil {
+		t.Fatalf("unable to load model: %v", err)
+	}
+	defer llm.Unload()
+
+	// -------------------------------------------------------------------------
+
+	f := func() {
+		fmt.Println("STARTED")
+		defer fmt.Println("ENDED")
+
+		question := "Echo back the word: Gorilla"
+
+		messages := []llamacpp.ChatMessage{
+			{
+				Role:    "user",
+				Content: question,
+			},
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		params := llamacpp.Params{
+			TopK: 1.0,
+			TopP: 0.9,
+			Temp: 0.7,
+		}
+
+		ch, err := llm.ChatCompletions(ctx, messages, params)
+		if err != nil {
+			t.Fatalf("chat completions: %v", err)
+		}
+
+		var finalResponse strings.Builder
+		for msg := range ch {
+			if msg.Err != nil {
+				t.Fatalf("error from model: %v", msg.Err)
+			}
+			finalResponse.WriteString(msg.Response)
+		}
+
+		find := "Gorilla"
+		if !strings.Contains(finalResponse.String(), find) {
+			t.Fatalf("expected %q, got %q", find, finalResponse.String())
+		}
+	}
+
+	g := concurrency * 5
+
+	var wg sync.WaitGroup
+
+	for range g {
+		wg.Go(f)
+	}
+
+	wg.Wait()
+}
+
 func TestChatVision(t *testing.T) {
 	modelFile, err := install.Model(modelChatVisionURL, modelPath)
 	if err != nil {
@@ -120,8 +190,6 @@ func TestChatVision(t *testing.T) {
 	defer llm.Unload()
 
 	// -------------------------------------------------------------------------
-
-	fmt.Println()
 
 	question := "What is in this picture?"
 

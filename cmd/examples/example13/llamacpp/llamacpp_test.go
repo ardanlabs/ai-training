@@ -1,0 +1,200 @@
+package llamacpp_test
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/ardanlabs/ai-training/cmd/examples/example13/install"
+	"github.com/ardanlabs/ai-training/cmd/examples/example13/llamacpp"
+	"github.com/hybridgroup/yzma/pkg/download"
+)
+
+var (
+	modelChatCompletionsURL = "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-fp16.gguf?download=true"
+	modelChatVisionURL      = "https://huggingface.co/ggml-org/Qwen2.5-VL-3B-Instruct-GGUF/resolve/main/Qwen2.5-VL-3B-Instruct-Q8_0.gguf?download=true"
+	projChatVisionURL       = "https://huggingface.co/ggml-org/Qwen2.5-VL-3B-Instruct-GGUF/resolve/main/mmproj-Qwen2.5-VL-3B-Instruct-Q8_0.gguf?download=true"
+	modelEmbedURL           = "https://huggingface.co/ggml-org/embeddinggemma-300m-qat-q8_0-GGUF/resolve/main/embeddinggemma-300m-qat-Q8_0.gguf?download=true"
+)
+
+var (
+	libPath    = "../../../../zarf/llamacpp"
+	modelPath  = "../../../../zarf/models"
+	imageFile  = "../../../../zarf/samples/gallery/giraffe.jpg"
+	dimentions = 768
+)
+
+func TestMain(m *testing.M) {
+	if err := install.LlamaCPP(libPath, download.CPU, true); err != nil {
+		fmt.Printf("unable to install llamacpp: %v", err)
+		os.Exit(1)
+	}
+	os.Exit(m.Run())
+}
+
+func TestChatCompletions(t *testing.T) {
+	modelFile, err := install.Model(modelChatCompletionsURL, modelPath)
+	if err != nil {
+		t.Fatalf("unable to install model: %v", err)
+	}
+
+	// -------------------------------------------------------------------------
+
+	const concurrency = 1
+
+	llm, err := llamacpp.New(concurrency, libPath, modelFile, llamacpp.Config{
+		ContextWindow: 8196,
+	})
+	if err != nil {
+		t.Fatalf("unable to load model: %v", err)
+	}
+	defer llm.Unload()
+
+	// -------------------------------------------------------------------------
+
+	fmt.Println()
+
+	question := "Echo back the word: Gorilla"
+
+	messages := []llamacpp.ChatMessage{
+		{
+			Role:    "user",
+			Content: question,
+		},
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	params := llamacpp.Params{
+		TopK: 1.0,
+		TopP: 0.9,
+		Temp: 0.7,
+	}
+
+	ch, err := llm.ChatCompletions(ctx, messages, params)
+	if err != nil {
+		t.Fatalf("chat completions: %v", err)
+	}
+
+	var finalResponse strings.Builder
+	for msg := range ch {
+		if msg.Err != nil {
+			t.Fatalf("error from model: %v", msg.Err)
+		}
+		finalResponse.WriteString(msg.Response)
+	}
+
+	find := "Gorilla"
+	if !strings.Contains(finalResponse.String(), find) {
+		t.Fatalf("expected %q, got %q", find, finalResponse.String())
+	}
+}
+
+func TestChatVision(t *testing.T) {
+	modelFile, err := install.Model(modelChatVisionURL, modelPath)
+	if err != nil {
+		t.Fatalf("unable to install model: %v", err)
+	}
+
+	projFile, err := install.Model(projChatVisionURL, modelPath)
+	if err != nil {
+		t.Fatalf("unable to install model: %v", err)
+	}
+
+	// -------------------------------------------------------------------------
+
+	const concurrency = 1
+
+	cfg := llamacpp.Config{
+		ContextWindow: 4096,
+	}
+
+	llm, err := llamacpp.New(concurrency, libPath, modelFile, cfg, llamacpp.WithProjection(projFile))
+	if err != nil {
+		t.Fatalf("unable to create inference model: %v", err)
+	}
+	defer llm.Unload()
+
+	// -------------------------------------------------------------------------
+
+	fmt.Println()
+
+	question := "What is in this picture?"
+
+	message := llamacpp.ChatMessage{
+		Role:    "user",
+		Content: question,
+	}
+
+	params := llamacpp.Params{
+		TopK: 1.0,
+		TopP: 0.9,
+		Temp: 0.7,
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	ch, err := llm.ChatVision(ctx, message, imageFile, params)
+	if err != nil {
+		t.Fatalf("chat vision: %v", err)
+	}
+
+	var finalResponse strings.Builder
+	for msg := range ch {
+		if msg.Err != nil {
+			t.Fatalf("error from model: %v", msg.Err)
+		}
+		finalResponse.WriteString(msg.Response)
+	}
+
+	find := "giraffes"
+	if !strings.Contains(finalResponse.String(), find) {
+		t.Fatalf("expected %q, got %q", find, finalResponse.String())
+	}
+}
+
+func TestEmbedding(t *testing.T) {
+	modelFile, err := install.Model(modelEmbedURL, modelPath)
+	if err != nil {
+		t.Fatalf("unable to install embedding model: %v", err)
+	}
+
+	// -------------------------------------------------------------------------
+
+	const concurrency = 1
+
+	cfg := llamacpp.Config{
+		ContextWindow: 4096,
+		Embeddings:    true,
+	}
+
+	llm, err := llamacpp.New(concurrency, libPath, modelFile, cfg)
+	if err != nil {
+		t.Fatalf("unable to create inference model: %v", err)
+	}
+	defer llm.Unload()
+
+	// -------------------------------------------------------------------------
+
+	text := "Embed this sentence"
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	queryVector, err := llm.Embed(ctx, text)
+	if err != nil {
+		t.Fatalf("embed: %v", err)
+	}
+
+	first := float32(0.067838)
+	last := float32(0.02118274)
+
+	if queryVector[0] != first || queryVector[len(queryVector)-1] != last {
+		t.Fatalf("expected first %v, last %v, got first %v, last %v", first, last, queryVector[0], queryVector[len(queryVector)-1])
+	}
+}

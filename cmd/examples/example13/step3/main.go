@@ -12,6 +12,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/ardanlabs/ai-training/cmd/examples/example13/install"
@@ -90,19 +91,19 @@ func run() error {
 
 		fmt.Print("\nMODEL> ")
 
-		var finalResponse string
+		var finalResponse strings.Builder
 		for msg := range ch {
 			if msg.Err != nil {
 				return fmt.Errorf("error from model: %w", msg.Err)
 			}
 
 			fmt.Print(msg.Response)
-			finalResponse = fmt.Sprintf("%s %s", finalResponse, msg.Response)
+			finalResponse.WriteString(msg.Response)
 		}
 
 		messages = append(messages, llamacpp.ChatMessage{
 			Role:    "assistant",
-			Content: finalResponse,
+			Content: finalResponse.String(),
 		})
 
 		fmt.Println()

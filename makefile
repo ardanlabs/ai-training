@@ -240,6 +240,10 @@ example12-step1:
 	export OLLAMA_CONTEXT_LENGTH=$(OLLAMA_CONTEXT_LENGTH) && \
 	go run cmd/examples/example12/step1/*.go
 
+example13-test:
+	export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:zarf/llamacpp && \
+	go test -count=1 ./cmd/examples/example13/llamacpp
+
 example13-step1:
 	export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:zarf/llamacpp && \
 	go run cmd/examples/example13/step1/*.go 2>/dev/null

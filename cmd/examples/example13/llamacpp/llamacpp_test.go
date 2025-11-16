@@ -43,7 +43,7 @@ func TestChatCompletions(t *testing.T) {
 
 	// -------------------------------------------------------------------------
 
-	const concurrency = 1
+	const concurrency = 3
 
 	llm, err := llamacpp.New(concurrency, libPath, modelFile, llamacpp.Config{
 		ContextWindow: 8196,
@@ -64,75 +64,15 @@ func TestChatCompletions(t *testing.T) {
 		},
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
-
 	params := llamacpp.Params{
 		TopK: 1.0,
 		TopP: 0.9,
 		Temp: 0.7,
 	}
 
-	ch, err := llm.ChatCompletions(ctx, messages, params)
-	if err != nil {
-		t.Fatalf("chat completions: %v", err)
-	}
-
-	var finalResponse strings.Builder
-	for msg := range ch {
-		if msg.Err != nil {
-			t.Fatalf("error from model: %v", msg.Err)
-		}
-		finalResponse.WriteString(msg.Response)
-	}
-
-	find := "Gorilla"
-	if !strings.Contains(finalResponse.String(), find) {
-		t.Fatalf("expected %q, got %q", find, finalResponse.String())
-	}
-}
-
-func TestChatConcurrency(t *testing.T) {
-	modelFile, err := install.Model(modelChatCompletionsURL, modelPath)
-	if err != nil {
-		t.Fatalf("unable to install model: %v", err)
-	}
-
-	// -------------------------------------------------------------------------
-
-	const concurrency = 3
-
-	llm, err := llamacpp.New(concurrency, libPath, modelFile, llamacpp.Config{
-		ContextWindow: 8196,
-	})
-	if err != nil {
-		t.Fatalf("unable to load model: %v", err)
-	}
-	defer llm.Unload()
-
-	// -------------------------------------------------------------------------
-
 	f := func() {
-		fmt.Println("STARTED")
-		defer fmt.Println("ENDED")
-
-		question := "Echo back the word: Gorilla"
-
-		messages := []llamacpp.ChatMessage{
-			{
-				Role:    "user",
-				Content: question,
-			},
-		}
-
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-
-		params := llamacpp.Params{
-			TopK: 1.0,
-			TopP: 0.9,
-			Temp: 0.7,
-		}
 
 		ch, err := llm.ChatCompletions(ctx, messages, params)
 		if err != nil {
@@ -154,9 +94,7 @@ func TestChatConcurrency(t *testing.T) {
 	}
 
 	g := concurrency * 5
-
 	var wg sync.WaitGroup
-
 	for range g {
 		wg.Go(f)
 	}
@@ -177,7 +115,7 @@ func TestChatVision(t *testing.T) {
 
 	// -------------------------------------------------------------------------
 
-	const concurrency = 1
+	const concurrency = 3
 
 	cfg := llamacpp.Config{
 		ContextWindow: 4096,
@@ -204,26 +142,36 @@ func TestChatVision(t *testing.T) {
 		Temp: 0.7,
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
+	f := func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
 
-	ch, err := llm.ChatVision(ctx, message, imageFile, params)
-	if err != nil {
-		t.Fatalf("chat vision: %v", err)
-	}
-
-	var finalResponse strings.Builder
-	for msg := range ch {
-		if msg.Err != nil {
-			t.Fatalf("error from model: %v", msg.Err)
+		ch, err := llm.ChatVision(ctx, message, imageFile, params)
+		if err != nil {
+			t.Fatalf("chat vision: %v", err)
 		}
-		finalResponse.WriteString(msg.Response)
+
+		var finalResponse strings.Builder
+		for msg := range ch {
+			if msg.Err != nil {
+				t.Fatalf("error from model: %v", msg.Err)
+			}
+			finalResponse.WriteString(msg.Response)
+		}
+
+		find := "giraffes"
+		if !strings.Contains(finalResponse.String(), find) {
+			t.Fatalf("expected %q, got %q", find, finalResponse.String())
+		}
 	}
 
-	find := "giraffes"
-	if !strings.Contains(finalResponse.String(), find) {
-		t.Fatalf("expected %q, got %q", find, finalResponse.String())
+	g := concurrency * 2
+	var wg sync.WaitGroup
+	for range g {
+		wg.Go(f)
 	}
+
+	wg.Wait()
 }
 
 func TestEmbedding(t *testing.T) {
@@ -234,7 +182,7 @@ func TestEmbedding(t *testing.T) {
 
 	// -------------------------------------------------------------------------
 
-	const concurrency = 1
+	const concurrency = 3
 
 	cfg := llamacpp.Config{
 		ContextWindow: 4096,
@@ -251,18 +199,28 @@ func TestEmbedding(t *testing.T) {
 
 	text := "Embed this sentence"
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
+	f := func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
 
-	queryVector, err := llm.Embed(ctx, text)
-	if err != nil {
-		t.Fatalf("embed: %v", err)
+		queryVector, err := llm.Embed(ctx, text)
+		if err != nil {
+			t.Fatalf("embed: %v", err)
+		}
+
+		first := float32(0.067838)
+		last := float32(0.02118274)
+
+		if queryVector[0] != first || queryVector[len(queryVector)-1] != last {
+			t.Fatalf("expected first %v, last %v, got first %v, last %v", first, last, queryVector[0], queryVector[len(queryVector)-1])
+		}
 	}
 
-	first := float32(0.067838)
-	last := float32(0.02118274)
-
-	if queryVector[0] != first || queryVector[len(queryVector)-1] != last {
-		t.Fatalf("expected first %v, last %v, got first %v, last %v", first, last, queryVector[0], queryVector[len(queryVector)-1])
+	g := concurrency * 2
+	var wg sync.WaitGroup
+	for range g {
+		wg.Go(f)
 	}
+
+	wg.Wait()
 }

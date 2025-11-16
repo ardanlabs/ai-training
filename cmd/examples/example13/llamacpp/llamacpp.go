@@ -147,14 +147,16 @@ func (llm *Llama) ChatCompletions(messages []ChatMessage, params Params) <-chan 
 	return ch
 }
 
-func (llm *Llama) ChatVision(message ChatMessage, imageFile string, params Params) (<-chan ChatResponse, error) {
-	if llm.projFile == "" {
-		return nil, fmt.Errorf("projection file not set")
-	}
-
+func (llm *Llama) ChatVision(message ChatMessage, imageFile string, params Params) <-chan ChatResponse {
 	ch := make(chan ChatResponse)
 
 	go func() {
+		if llm.projFile == "" {
+			ch <- ChatResponse{Err: fmt.Errorf("projection file not set")}
+			close(ch)
+			return
+		}
+
 		lctx, err := llama.InitFromModel(llm.model, llm.ctxParams)
 		if err != nil {
 			ch <- ChatResponse{Err: fmt.Errorf("unable to init from model: %v", err)}
@@ -239,7 +241,7 @@ func (llm *Llama) ChatVision(message ChatMessage, imageFile string, params Param
 		}
 	}()
 
-	return ch, nil
+	return ch
 }
 
 func (llm *Llama) Embed(text string) ([]float32, error) {

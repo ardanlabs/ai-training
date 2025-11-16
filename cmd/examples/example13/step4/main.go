@@ -10,10 +10,12 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"log"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/ardanlabs/ai-training/cmd/examples/example13/install"
 	"github.com/ardanlabs/ai-training/cmd/examples/example13/llamacpp"
@@ -54,7 +56,9 @@ func run() error {
 
 	// -------------------------------------------------------------------------
 
-	llmEmbed, err := llamacpp.New(libPath, modelEmbedFile, llamacpp.Config{
+	const concurrency = 1
+
+	llmEmbed, err := llamacpp.NewGroup(concurrency, libPath, modelEmbedFile, llamacpp.Config{
 		ContextWindow: 1024 * 32,
 		Embeddings:    true,
 	})
@@ -63,7 +67,7 @@ func run() error {
 	}
 	defer llmEmbed.Unload()
 
-	llmChat, err := llamacpp.New(libPath, modelChatFile, llamacpp.Config{
+	llmChat, err := llamacpp.NewGroup(concurrency, libPath, modelChatFile, llamacpp.Config{
 		ContextWindow: 1024 * 32,
 	})
 	if err != nil {
@@ -96,9 +100,19 @@ func run() error {
 
 		fmt.Print("\n-- Similarity ---\n\n")
 
-		queryVector, err := llmEmbed.Embed(question)
+		queryVector, err := func() ([]float32, error) {
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+			defer cancel()
+
+			queryVector, err := llmEmbed.Embed(ctx, question)
+			if err != nil {
+				return nil, fmt.Errorf("embed: %w", err)
+			}
+
+			return queryVector, nil
+		}()
 		if err != nil {
-			return fmt.Errorf("error embedding query: %w", err)
+			return err
 		}
 
 		docs, err := dbSearch(db, queryVector, 5)
@@ -119,9 +133,19 @@ func run() error {
 			documents[i] = llamacpp.RankingDocument{Document: doc.Text, Embedding: doc.Embedding}
 		}
 
-		rankings, err := llmEmbed.Rerank(documents)
+		rankings, err := func() ([]llamacpp.Ranking, error) {
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+			defer cancel()
+
+			rankings, err := llmEmbed.Rerank(ctx, documents)
+			if err != nil {
+				return nil, fmt.Errorf("rerank: %w", err)
+			}
+
+			return rankings, nil
+		}()
 		if err != nil {
-			return fmt.Errorf("error reranking documents: %w", err)
+			return err
 		}
 
 		for _, ranking := range rankings {
@@ -146,28 +170,40 @@ func run() error {
 		Question: %s
 		`
 
-		var context string
+		var content string
 		for _, ranking := range rankings[:2] {
-			context = fmt.Sprintf("%s\n%s\n", context, ranking.Document)
+			content = fmt.Sprintf("%s\n%s\n", content, ranking.Document)
 		}
 
-		finalPrompt := fmt.Sprintf(prompt, context, question)
+		finalPrompt := fmt.Sprintf(prompt, content, question)
 
 		msgs := []llamacpp.ChatMessage{
 			{Role: "user", Content: finalPrompt},
 		}
 
-		ch := llmChat.ChatCompletions(msgs, llamacpp.Params{
-			TopK: 1.0,
-			TopP: 0.9,
-			Temp: 0.7,
-		})
+		err = func() error {
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+			defer cancel()
 
-		for msg := range ch {
-			if msg.Err != nil {
-				return fmt.Errorf("error from model: %w", msg.Err)
+			ch, err := llmChat.ChatCompletions(ctx, msgs, llamacpp.Params{
+				TopK: 1.0,
+				TopP: 0.9,
+				Temp: 0.7,
+			})
+			if err != nil {
+				return fmt.Errorf("chat completions: %w", err)
 			}
-			fmt.Print(msg.Response)
+
+			for msg := range ch {
+				if msg.Err != nil {
+					return fmt.Errorf("error from model: %w", msg.Err)
+				}
+				fmt.Print(msg.Response)
+			}
+			return nil
+		}()
+		if err != nil {
+			return err
 		}
 
 		fmt.Println()

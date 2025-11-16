@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"os"
@@ -12,7 +13,7 @@ import (
 	"github.com/duckdb/duckdb-go/v2"
 )
 
-func dbConnection(llm *llamacpp.Llama, dimentions int) (*sql.DB, error) {
+func dbConnection(llm *llamacpp.Group, dimentions int) (*sql.DB, error) {
 	connector, err := duckdb.NewConnector(dbPath, nil)
 	if err != nil {
 		return nil, fmt.Errorf("error creating connector: %w", err)
@@ -107,7 +108,7 @@ func dbConnection(llm *llamacpp.Llama, dimentions int) (*sql.DB, error) {
 	return db, nil
 }
 
-func dbLoadChunks(db *sql.DB, llm *llamacpp.Llama) error {
+func dbLoadChunks(db *sql.DB, llm *llamacpp.Group) error {
 	data, err := os.ReadFile("zarf/data/book.chunks")
 	if err != nil {
 		return fmt.Errorf("read file: %w", err)
@@ -126,9 +127,19 @@ func dbLoadChunks(db *sql.DB, llm *llamacpp.Llama) error {
 		chunk = strings.Trim(chunk, "<CHUNK>")
 		chunk = strings.Trim(chunk, "</CHUNK>")
 
-		vec, err := llm.Embed(chunk)
+		vec, err := func() ([]float32, error) {
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+			defer cancel()
+
+			vec, err := llm.Embed(ctx, chunk)
+			if err != nil {
+				return nil, fmt.Errorf("embed: %w", err)
+			}
+
+			return vec, nil
+		}()
 		if err != nil {
-			return fmt.Errorf("embed chunk: %w", err)
+			return err
 		}
 
 		chunk = strings.ReplaceAll(chunk, "'", "''")

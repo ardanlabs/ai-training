@@ -8,8 +8,10 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/ardanlabs/ai-training/cmd/examples/example13/install"
 	"github.com/ardanlabs/ai-training/cmd/examples/example13/llamacpp"
@@ -41,7 +43,9 @@ func run() error {
 
 	// -------------------------------------------------------------------------
 
-	llm, err := llamacpp.New(libPath, modelFile, llamacpp.Config{
+	const concurrency = 1
+
+	llm, err := llamacpp.NewGroup(concurrency, libPath, modelFile, llamacpp.Config{
 		ContextWindow: 8196,
 	})
 	if err != nil {
@@ -63,11 +67,19 @@ func run() error {
 		},
 	}
 
-	ch := llm.ChatCompletions(messages, llamacpp.Params{
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	params := llamacpp.Params{
 		TopK: 1.0,
 		TopP: 0.9,
 		Temp: 0.7,
-	})
+	}
+
+	ch, err := llm.ChatCompletions(ctx, messages, params)
+	if err != nil {
+		return fmt.Errorf("chat completions: %w", err)
+	}
 
 	for msg := range ch {
 		if msg.Err != nil {

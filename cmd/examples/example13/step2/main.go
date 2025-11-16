@@ -8,8 +8,10 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/ardanlabs/ai-training/cmd/examples/example13/install"
 	"github.com/ardanlabs/ai-training/cmd/examples/example13/llamacpp"
@@ -48,11 +50,13 @@ func run() error {
 
 	// -------------------------------------------------------------------------
 
+	const concurrency = 1
+
 	cfg := llamacpp.Config{
 		ContextWindow: 4096,
 	}
 
-	llm, err := llamacpp.New(libPath, modelFile, cfg, llamacpp.WithProjection(projFile))
+	llm, err := llamacpp.NewGroup(concurrency, libPath, modelFile, cfg, llamacpp.WithProjection(projFile))
 	if err != nil {
 		return fmt.Errorf("unable to create inference model: %w", err)
 	}
@@ -76,9 +80,12 @@ func run() error {
 		Temp: 0.7,
 	}
 
-	ch, err := llm.ChatVision(message, imageFile, params)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	ch, err := llm.ChatVision(ctx, message, imageFile, params)
 	if err != nil {
-		return fmt.Errorf("unable to chat vision: %w", err)
+		return fmt.Errorf("chat vision: %w", err)
 	}
 
 	for msg := range ch {

@@ -9,8 +9,10 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/ardanlabs/ai-training/cmd/examples/example13/install"
 	"github.com/ardanlabs/ai-training/cmd/examples/example13/llamacpp"
@@ -42,7 +44,9 @@ func run() error {
 
 	// -------------------------------------------------------------------------
 
-	llm, err := llamacpp.New(libPath, modelFile, llamacpp.Config{
+	const concurrency = 1
+
+	llm, err := llamacpp.NewGroup(concurrency, libPath, modelFile, llamacpp.Config{
 		ContextWindow: 1024 * 32,
 	})
 	if err != nil {
@@ -70,11 +74,19 @@ func run() error {
 			Content: userInput,
 		})
 
-		ch := llm.ChatCompletions(messages, llamacpp.Params{
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+
+		params := llamacpp.Params{
 			TopK: 1.0,
 			TopP: 0.9,
 			Temp: 0.7,
-		})
+		}
+
+		ch, err := llm.ChatCompletions(ctx, messages, params)
+		if err != nil {
+			return fmt.Errorf("chat completions: %w", err)
+		}
 
 		fmt.Print("\nMODEL> ")
 
@@ -83,6 +95,7 @@ func run() error {
 			if msg.Err != nil {
 				return fmt.Errorf("error from model: %w", msg.Err)
 			}
+
 			fmt.Print(msg.Response)
 			finalResponse = fmt.Sprintf("%s %s", finalResponse, msg.Response)
 		}

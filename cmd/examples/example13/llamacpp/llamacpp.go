@@ -2,286 +2,149 @@
 package llamacpp
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"sort"
-	"unsafe"
 
-	"github.com/hybridgroup/yzma/pkg/llama"
 	"github.com/hybridgroup/yzma/pkg/mtmd"
 )
 
+// Llama represents a concurrency group of a specified model.
 type Llama struct {
-	libPath   string
-	model     llama.Model
-	vocab     llama.Vocab
-	ctxParams llama.ContextParams
-	template  string
-	projFile  string
+	llama chan *model
 }
 
-func New(libPath string, modelFile string, cfg Config, options ...func(llm *Llama) error) (*Llama, error) {
-	if err := llama.Load(libPath); err != nil {
-		return nil, fmt.Errorf("unable to load library: %w", err)
-	}
+// New provides the ability to use models in a concurrently safe way.
+func New(concurrency int, libPath string, modelFile string, cfg Config, options ...func(llg *model) error) (*Llama, error) {
+	llama := make(chan *model, concurrency)
 
-	// -------------------------------------------------------------------------
-
-	llama.Init()
-	llama.LogSet(llama.LogSilent())
-
-	// -------------------------------------------------------------------------
-
-	model, err := llama.ModelLoadFromFile(modelFile, llama.ModelDefaultParams())
-	if err != nil {
-		return nil, fmt.Errorf("unable to load model: %w", err)
-	}
-
-	vocab := llama.ModelGetVocab(model)
-
-	// -------------------------------------------------------------------------
-
-	template := llama.ModelChatTemplate(model, "")
-	if template == "" {
-		template, _ = llama.ModelMetaValStr(model, "tokenizer.chat_template")
-	}
-
-	if template == "" {
-		template = "chatml"
-	}
-
-	// -------------------------------------------------------------------------
-
-	llm := Llama{
-		libPath:   libPath,
-		model:     model,
-		vocab:     vocab,
-		ctxParams: cfg.ctxParams(),
-		template:  template,
-	}
-
-	for _, option := range options {
-		if err := option(&llm); err != nil {
+	for range concurrency {
+		l, err := newModel(libPath, modelFile, cfg, options...)
+		if err != nil {
 			return nil, err
 		}
+
+		llama <- l
 	}
 
-	return &llm, nil
+	mgr := Llama{
+		llama: llama,
+	}
+
+	return &mgr, nil
 }
 
-func WithProjection(projFile string) func(llm *Llama) error {
-	return func(llm *Llama) error {
-		if err := mtmd.Load(llm.libPath); err != nil {
+func WithProjection(projFile string) func(m *model) error {
+	return func(m *model) error {
+		if err := mtmd.Load(m.libPath); err != nil {
 			return fmt.Errorf("unable to load mtmd library: %w", err)
 		}
 
-		llm.projFile = projFile
+		m.projFile = projFile
 
 		return nil
 	}
 }
 
+// Unload will close down all loaded models. You should call this only when you
+// are completely done using the group.
 func (llm *Llama) Unload() {
-	llama.ModelFree(llm.model)
-	llama.BackendFree()
+	close(llm.llama)
+	for llama := range llm.llama {
+		llama.unload()
+	}
 }
 
-func (llm *Llama) ChatCompletions(messages []ChatMessage, params Params) <-chan ChatResponse {
-	ch := make(chan ChatResponse)
+// ModelInfo provides support to extract the model card information.
+func (llm *Llama) ModelInfo(ctx context.Context) (ModelInfo, error) {
+	select {
+	case <-ctx.Done():
+		return ModelInfo{}, ctx.Err()
 
-	go func() {
-		lctx, err := llama.InitFromModel(llm.model, llm.ctxParams)
-		if err != nil {
-			ch <- ChatResponse{Err: fmt.Errorf("unable to init from model: %w", err)}
-			close(ch)
-			return
-		}
+	case llama := <-llm.llama:
 		defer func() {
-			llama.Synchronize(lctx)
-			llama.Free(lctx)
+			llm.llama <- llama
 		}()
 
-		// ---------------------------------------------------------------------
-
-		msgs := make([]llama.ChatMessage, len(messages))
-		for i, msg := range messages {
-			msgs[i] = llama.NewChatMessage(msg.Role, msg.Content)
-		}
-
-		buf := make([]byte, 1024*32)
-		l := llama.ChatApplyTemplate(llm.template, msgs, true, buf)
-		text := string(buf[:l])
-
-		// ---------------------------------------------------------------------
-
-		tokens := llama.Tokenize(llm.vocab, text, true, true)
-		batch := llama.BatchGetOne(tokens)
-		sampler := params.sampler()
-
-		// ---------------------------------------------------------------------
-
-		for range llama.MaxToken {
-			llama.Decode(lctx, batch)
-			token := llama.SamplerSample(sampler, lctx, -1)
-
-			if llama.VocabIsEOG(llm.vocab, token) {
-				close(ch)
-				break
-			}
-
-			buf := make([]byte, 1024*32)
-			l := llama.TokenToPiece(llm.vocab, token, buf, 0, false)
-
-			resp := string(buf[:l])
-			if resp == "" {
-				close(ch)
-				break
-			}
-
-			ch <- ChatResponse{Response: resp}
-
-			batch = llama.BatchGetOne([]llama.Token{token})
-		}
-	}()
-
-	return ch
+		return llama.modelInfo(), nil
+	}
 }
 
-func (llm *Llama) ChatVision(message ChatMessage, imageFile string, params Params) <-chan ChatResponse {
+// ChatCompletions provides support to interact with an inference model.
+// It will block until a model becomes available or the context times out.
+func (llm *Llama) ChatCompletions(ctx context.Context, messages []ChatMessage, params Params) (<-chan ChatResponse, error) {
 	ch := make(chan ChatResponse)
 
-	go func() {
-		if llm.projFile == "" {
-			ch <- ChatResponse{Err: fmt.Errorf("projection file not set")}
-			close(ch)
-			return
-		}
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
 
-		lctx, err := llama.InitFromModel(llm.model, llm.ctxParams)
-		if err != nil {
-			ch <- ChatResponse{Err: fmt.Errorf("unable to init from model: %v", err)}
-			close(ch)
-			return
-		}
+	case llama := <-llm.llama:
+		go func() {
+			defer func() {
+				close(ch)
+				llm.llama <- llama
+			}()
+
+			lch := llama.chatCompletions(messages, params)
+			for msg := range lch {
+				ch <- msg
+			}
+		}()
+	}
+
+	return ch, nil
+}
+
+// ChatVision provides support to interact with a vision language model. It will
+// block until a model becomes available or the context times out.
+func (llm *Llama) ChatVision(ctx context.Context, message ChatMessage, imageFile string, params Params) (<-chan ChatResponse, error) {
+	ch := make(chan ChatResponse)
+
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+
+	case llama := <-llm.llama:
+		go func() {
+			defer func() {
+				close(ch)
+				llm.llama <- llama
+			}()
+
+			lch := llama.chatVision(message, imageFile, params)
+			for msg := range lch {
+				ch <- msg
+			}
+		}()
+	}
+
+	return ch, nil
+}
+
+// Embed provides support to interact with an embedding model. It will block
+// until a model becomes available or the context times out.
+func (llm *Llama) Embed(ctx context.Context, text string) ([]float32, error) {
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+
+	case llama := <-llm.llama:
 		defer func() {
-			llama.Synchronize(lctx)
-			llama.Free(lctx)
+			llm.llama <- llama
 		}()
 
-		// ---------------------------------------------------------------------
-
-		msgs := []llama.ChatMessage{
-			llama.NewChatMessage(message.Role, message.Content),
-			llama.NewChatMessage("user", mtmd.DefaultMarker()),
-		}
-
-		buf := make([]byte, 1024*32)
-		len := llama.ChatApplyTemplate(llm.template, msgs, true, buf)
-		template := string(buf[:len])
-
-		// ---------------------------------------------------------------------
-
-		output := mtmd.InputChunksInit()
-		input := mtmd.NewInputText(template, true, true)
-
-		mctxParams := mtmd.ContextParamsDefault()
-
-		mtmdCtx, err := mtmd.InitFromFile(llm.projFile, llm.model, mctxParams)
+		vec, err := llama.embed(text)
 		if err != nil {
-			ch <- ChatResponse{Err: fmt.Errorf("unable to init from model: %v", err)}
-			close(ch)
-			return
+			return nil, err
 		}
-		defer mtmd.Free(mtmdCtx)
 
-		bitmap := mtmd.BitmapInitFromFile(mtmdCtx, imageFile)
-		defer mtmd.BitmapFree(bitmap)
-
-		mtmd.Tokenize(mtmdCtx, output, input, []mtmd.Bitmap{bitmap})
-
-		var n llama.Pos
-		mtmd.HelperEvalChunks(mtmdCtx, lctx, output, 0, 0, int32(llm.ctxParams.NBatch), true, &n)
-
-		// ---------------------------------------------------------------------
-
-		var sz int32 = 1
-		batch := llama.BatchInit(1, 0, 1)
-		batch.NSeqId = &sz
-		batch.NTokens = 1
-		seqs := unsafe.SliceData([]llama.SeqId{0})
-		batch.SeqId = &seqs
-
-		// ---------------------------------------------------------------------
-
-		sampler := params.sampler()
-
-		for range llama.MaxToken {
-			llama.Decode(lctx, batch)
-			token := llama.SamplerSample(sampler, lctx, -1)
-
-			if llama.VocabIsEOG(llm.vocab, token) {
-				close(ch)
-				break
-			}
-
-			buf := make([]byte, 1024*32)
-			l := llama.TokenToPiece(llm.vocab, token, buf, 0, false)
-
-			resp := string(buf[:l])
-			if resp == "" {
-				close(ch)
-				break
-			}
-
-			ch <- ChatResponse{
-				Response: resp,
-			}
-
-			batch = llama.BatchGetOne([]llama.Token{token})
-		}
-	}()
-
-	return ch
+		return vec, nil
+	}
 }
 
-func (llm *Llama) Embed(text string) ([]float32, error) {
-	lctx, err := llama.InitFromModel(llm.model, llm.ctxParams)
-	if err != nil {
-		return nil, fmt.Errorf("unable to init from model: %v", err)
-	}
-	defer func() {
-		llama.Synchronize(lctx)
-		llama.Free(lctx)
-	}()
-
-	// -------------------------------------------------------------------------
-
-	tokens := llama.Tokenize(llm.vocab, text, true, true)
-	batch := llama.BatchGetOne(tokens)
-	llama.Decode(lctx, batch)
-	nEmbd := llama.ModelNEmbd(llm.model)
-	vec, err := llama.GetEmbeddingsSeq(lctx, 0, nEmbd)
-	if err != nil {
-		return nil, fmt.Errorf("unable to get embeddings: %v", err)
-	}
-
-	// -------------------------------------------------------------------------
-
-	var sum float64
-	for _, v := range vec {
-		sum += float64(v * v)
-	}
-
-	sum = math.Sqrt(sum)
-	norm := float32(1.0 / sum)
-
-	for i, v := range vec {
-		vec[i] = v * norm
-	}
-
-	return vec, nil
-}
-
+// Rerank provides support to rerank a set of embeddings.
 func (llm *Llama) Rerank(rankingDocs []RankingDocument) ([]Ranking, error) {
 	rerankedDocs := make([]Ranking, len(rankingDocs))
 
@@ -312,46 +175,4 @@ func (llm *Llama) Rerank(rankingDocs []RankingDocument) ([]Ranking, error) {
 	})
 
 	return rerankedDocs, nil
-}
-
-func (llm *Llama) ShowModelInfo() {
-	fmt.Println()
-
-	desc := llama.ModelDesc(llm.model)
-	fmt.Printf("Model Description: %s\n", desc)
-
-	size := llama.ModelSize(llm.model)
-	fmt.Printf("Model Size: %d tensors\n", size)
-
-	encoder := llama.ModelHasEncoder(llm.model)
-	fmt.Printf("Model Has Encoder: %v\n", encoder)
-
-	decoder := llama.ModelHasDecoder(llm.model)
-	fmt.Printf("Model Has Decoder: %v\n", decoder)
-
-	recurrent := llama.ModelIsRecurrent(llm.model)
-	fmt.Printf("Model Is Recurrent: %v\n", recurrent)
-
-	hybrid := llama.ModelIsHybrid(llm.model)
-	fmt.Printf("Model Is Hybrid: %v\n", hybrid)
-
-	count := llama.ModelMetaCount(llm.model)
-	fmt.Printf("Model Metadata (%d entries):\n", count)
-	for i := range count {
-		key, ok := llama.ModelMetaKeyByIndex(llm.model, i)
-		if !ok {
-			fmt.Printf("Error getting key for index %d\n", i)
-			continue
-		}
-
-		value, ok := llama.ModelMetaValStrByIndex(llm.model, i)
-		if !ok {
-			fmt.Printf("Error getting value for index %d\n", i)
-			continue
-		}
-
-		fmt.Printf("  %s: %s\n", key, value)
-	}
-
-	fmt.Println()
 }

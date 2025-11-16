@@ -56,7 +56,7 @@ func run() error {
 		ContextWindow: 4096,
 	}
 
-	llm, err := llamacpp.NewGroup(concurrency, libPath, modelFile, cfg, llamacpp.WithProjection(projFile))
+	llm, err := llamacpp.New(concurrency, libPath, modelFile, cfg, llamacpp.WithProjection(projFile))
 	if err != nil {
 		return fmt.Errorf("unable to create inference model: %w", err)
 	}

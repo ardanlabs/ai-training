@@ -2,6 +2,7 @@ package llamacpp
 
 import "github.com/hybridgroup/yzma/pkg/llama"
 
+// Params represents the different sample options when using a model.
 type Params struct {
 	TopK float32
 	TopP float32

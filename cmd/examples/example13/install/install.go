@@ -5,6 +5,7 @@ package install
 import (
 	"fmt"
 	"net/url"
+	"os"
 	"path"
 	"path/filepath"
 
@@ -15,6 +16,12 @@ func LlamaCPP(libPath string, processor download.Processor, allowUpgrade bool) e
 	fmt.Print("- check llamacpp installation: ")
 
 	if err := download.InstallLibraries(libPath, processor, allowUpgrade); err != nil {
+		file := filepath.Join(libPath, "libmtmd.dylib")
+		if _, err := os.Stat(file); !os.IsNotExist(err) {
+			fmt.Println("✓")
+			return nil
+		}
+
 		fmt.Println("X")
 		return fmt.Errorf("unable to install llamacpp: %w", err)
 	}
@@ -35,6 +42,11 @@ func Model(modelURL string, modelPath string) (string, error) {
 	fmt.Printf("- check %q installation: ", localPath)
 
 	if err := download.GetModel(modelURL, modelPath); err != nil {
+		if _, err := os.Stat(localPath); !os.IsNotExist(err) {
+			fmt.Println("✓")
+			return localPath, nil
+		}
+
 		fmt.Println("X")
 		return "", fmt.Errorf("unable to download model: %w", err)
 	}

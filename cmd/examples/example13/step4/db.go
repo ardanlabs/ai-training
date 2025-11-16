@@ -13,7 +13,7 @@ import (
 	"github.com/duckdb/duckdb-go/v2"
 )
 
-func dbConnection(llm *llamacpp.Group, dimentions int) (*sql.DB, error) {
+func dbConnection(llm *llamacpp.Llama, dimentions int) (*sql.DB, error) {
 	connector, err := duckdb.NewConnector(dbPath, nil)
 	if err != nil {
 		return nil, fmt.Errorf("error creating connector: %w", err)
@@ -108,7 +108,7 @@ func dbConnection(llm *llamacpp.Group, dimentions int) (*sql.DB, error) {
 	return db, nil
 }
 
-func dbLoadChunks(db *sql.DB, llm *llamacpp.Group) error {
+func dbLoadChunks(db *sql.DB, llm *llamacpp.Llama) error {
 	data, err := os.ReadFile("zarf/data/book.chunks")
 	if err != nil {
 		return fmt.Errorf("read file: %w", err)

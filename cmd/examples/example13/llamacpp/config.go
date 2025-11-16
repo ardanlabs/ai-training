@@ -2,6 +2,7 @@ package llamacpp
 
 import "github.com/hybridgroup/yzma/pkg/llama"
 
+// Config represents model level configuration.
 type Config struct {
 	ContextWindow uint32
 	Embeddings    bool

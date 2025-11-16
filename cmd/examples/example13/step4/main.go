@@ -58,7 +58,7 @@ func run() error {
 
 	const concurrency = 1
 
-	llmEmbed, err := llamacpp.NewGroup(concurrency, libPath, modelEmbedFile, llamacpp.Config{
+	llmEmbed, err := llamacpp.New(concurrency, libPath, modelEmbedFile, llamacpp.Config{
 		ContextWindow: 1024 * 32,
 		Embeddings:    true,
 	})
@@ -67,7 +67,7 @@ func run() error {
 	}
 	defer llmEmbed.Unload()
 
-	llmChat, err := llamacpp.NewGroup(concurrency, libPath, modelChatFile, llamacpp.Config{
+	llmChat, err := llamacpp.New(concurrency, libPath, modelChatFile, llamacpp.Config{
 		ContextWindow: 1024 * 32,
 	})
 	if err != nil {
@@ -133,19 +133,9 @@ func run() error {
 			documents[i] = llamacpp.RankingDocument{Document: doc.Text, Embedding: doc.Embedding}
 		}
 
-		rankings, err := func() ([]llamacpp.Ranking, error) {
-			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-			defer cancel()
-
-			rankings, err := llmEmbed.Rerank(ctx, documents)
-			if err != nil {
-				return nil, fmt.Errorf("rerank: %w", err)
-			}
-
-			return rankings, nil
-		}()
+		rankings, err := llmEmbed.Rerank(documents)
 		if err != nil {
-			return err
+			return fmt.Errorf("rerank: %w", err)
 		}
 
 		for _, ranking := range rankings {

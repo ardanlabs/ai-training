@@ -46,7 +46,7 @@ func run() error {
 
 	const concurrency = 1
 
-	llm, err := llamacpp.NewGroup(concurrency, libPath, modelFile, llamacpp.Config{
+	llm, err := llamacpp.New(concurrency, libPath, modelFile, llamacpp.Config{
 		ContextWindow: 1024 * 32,
 	})
 	if err != nil {

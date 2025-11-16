@@ -25,7 +25,7 @@ import (
 var (
 	modelChatURL  = "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-fp16.gguf?download=true"
 	modelEmbedURL = "https://huggingface.co/ggml-org/embeddinggemma-300m-qat-q8_0-GGUF/resolve/main/embeddinggemma-300m-qat-Q8_0.gguf?download=true"
-	libPath       = os.Getenv("YZMA_LIB")
+	libPath       = "zarf/llamacpp"
 	modelPath     = "zarf/models"
 	dbPath        = "zarf/data/duck.db" // ":memory:"
 	dimentions    = 768

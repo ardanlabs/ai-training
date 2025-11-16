@@ -20,7 +20,7 @@ import (
 
 var (
 	modelURL  = "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-fp16.gguf?download=true"
-	libPath   = os.Getenv("YZMA_LIB")
+	libPath   = "zarf/llamacpp"
 	modelPath = "zarf/models"
 )
 

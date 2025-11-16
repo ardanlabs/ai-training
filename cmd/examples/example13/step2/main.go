@@ -1,5 +1,6 @@
 // This example shows you how to use yzma to execute a simple prompt
-// against a vision model using llamacpp directly via a native Go application.
+// against a vision model using llamacpp directly via yzma and a native Go
+// application.
 //
 // # Running the example:
 //

@@ -256,10 +256,6 @@ example13-step3:
 	export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:zarf/llamacpp && \
 	go run cmd/examples/example13/step3/*.go 2>/dev/null
 
-example13-step4:
-	export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:zarf/llamacpp && \
-	go run cmd/examples/example13/step4/*.go 2>/dev/null
-
 # ==============================================================================
 # Run Postgres, MongoDB, and Open WebUI
 

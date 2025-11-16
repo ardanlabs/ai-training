@@ -1,5 +1,5 @@
-// This example shows you how to use yzma to execute a simple prompt
-// against a model using llamacpp directly via a native Go application.
+// This example shows you how to create a simple chat application against an
+// inference model using llamacpp directly via yzma and a native Go application.
 //
 // # Running the example:
 //
@@ -8,9 +8,11 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/ardanlabs/ai-training/cmd/examples/example13/install"
@@ -46,49 +48,64 @@ func run() error {
 	const concurrency = 1
 
 	llm, err := llamacpp.New(concurrency, libPath, modelFile, llamacpp.Config{
-		ContextWindow: 8196,
+		ContextWindow: 1024 * 32,
 	})
 	if err != nil {
-		return fmt.Errorf("unable to load model: %w", err)
+		return fmt.Errorf("unable to create inference model: %w", err)
 	}
 	defer llm.Unload()
 
 	// -------------------------------------------------------------------------
 
-	fmt.Println()
+	var messages []llamacpp.ChatMessage
 
-	question := "Write a hello world program in Go?"
-	fmt.Printf("Question: %s\n\n", question)
+	for {
+		fmt.Print("\nUSER> ")
 
-	messages := []llamacpp.ChatMessage{
-		{
-			Role:    "user",
-			Content: question,
-		},
-	}
+		reader := bufio.NewReader(os.Stdin)
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
-
-	params := llamacpp.Params{
-		TopK: 1.0,
-		TopP: 0.9,
-		Temp: 0.7,
-	}
-
-	ch, err := llm.ChatCompletions(ctx, messages, params)
-	if err != nil {
-		return fmt.Errorf("chat completions: %w", err)
-	}
-
-	for msg := range ch {
-		if msg.Err != nil {
-			return fmt.Errorf("error from model: %w", msg.Err)
+		userInput, err := reader.ReadString('\n')
+		if err != nil {
+			fmt.Println("unable to read user input", err.Error())
+			os.Exit(1)
 		}
-		fmt.Print(msg.Response)
+
+		messages = append(messages, llamacpp.ChatMessage{
+			Role:    "user",
+			Content: userInput,
+		})
+
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+
+		params := llamacpp.Params{
+			TopK: 1.0,
+			TopP: 0.9,
+			Temp: 0.7,
+		}
+
+		ch, err := llm.ChatCompletions(ctx, messages, params)
+		if err != nil {
+			return fmt.Errorf("chat completions: %w", err)
+		}
+
+		fmt.Print("\nMODEL> ")
+
+		var finalResponse strings.Builder
+		for msg := range ch {
+			if msg.Err != nil {
+				return fmt.Errorf("error from model: %w", msg.Err)
+			}
+
+			fmt.Print(msg.Response)
+			finalResponse.WriteString(msg.Response)
+		}
+
+		messages = append(messages, llamacpp.ChatMessage{
+			Role:    "assistant",
+			Content: finalResponse.String(),
+		})
+
+		fmt.Println()
 	}
-
-	fmt.Println()
-
-	return nil
 }

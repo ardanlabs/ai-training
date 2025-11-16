@@ -1,5 +1,6 @@
-// This example shows you how to create a simple chat application against an
-// inference model using llamacpp directly via a native Go application.
+// This example shows you a complete RAG application used duckDB as an embedding
+// DB and an embedding model to generate embeddings, and a chat model for
+// answering a question using llamacpp directly via yzma and a native Go application.
 //
 // # Running the example:
 //
@@ -11,6 +12,7 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"log"
 	"os"
 	"strings"
 	"time"
@@ -21,15 +23,19 @@ import (
 )
 
 var (
-	modelURL  = "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-fp16.gguf?download=true"
-	libPath   = "zarf/llamacpp"
-	modelPath = "zarf/models"
+	modelChatURL  = "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-fp16.gguf?download=true"
+	modelEmbedURL = "https://huggingface.co/ggml-org/embeddinggemma-300m-qat-q8_0-GGUF/resolve/main/embeddinggemma-300m-qat-Q8_0.gguf?download=true"
+	libPath       = "zarf/llamacpp"
+	modelPath     = "zarf/models"
+	dbPath        = "zarf/data/duck.db" // ":memory:"
+	dimentions    = 768
 )
 
 func main() {
+	log.Default().SetOutput(os.Stdout)
+
 	if err := run(); err != nil {
-		fmt.Println("error running example:", err)
-		os.Exit(1)
+		log.Fatal(err)
 	}
 }
 
@@ -38,73 +44,157 @@ func run() error {
 		return fmt.Errorf("unable to install llamacpp: %w", err)
 	}
 
-	modelFile, err := install.Model(modelURL, modelPath)
+	modelEmbedFile, err := install.Model(modelEmbedURL, modelPath)
 	if err != nil {
-		return fmt.Errorf("unable to install model: %w", err)
+		return fmt.Errorf("unable to install embedding model: %w", err)
+	}
+
+	modelChatFile, err := install.Model(modelChatURL, modelPath)
+	if err != nil {
+		return fmt.Errorf("unable to install chat model: %w", err)
 	}
 
 	// -------------------------------------------------------------------------
 
 	const concurrency = 1
 
-	llm, err := llamacpp.New(concurrency, libPath, modelFile, llamacpp.Config{
+	llmEmbed, err := llamacpp.New(concurrency, libPath, modelEmbedFile, llamacpp.Config{
+		ContextWindow: 1024 * 32,
+		Embeddings:    true,
+	})
+	if err != nil {
+		return fmt.Errorf("unable to create embedding model: %w", err)
+	}
+	defer llmEmbed.Unload()
+
+	llmChat, err := llamacpp.New(concurrency, libPath, modelChatFile, llamacpp.Config{
 		ContextWindow: 1024 * 32,
 	})
 	if err != nil {
-		return fmt.Errorf("unable to create inference model: %w", err)
+		return fmt.Errorf("unable to create chat model: %w", err)
 	}
-	defer llm.Unload()
+	defer llmChat.Unload()
 
 	// -------------------------------------------------------------------------
 
-	var messages []llamacpp.ChatMessage
+	db, err := dbConnection(llmEmbed, dimentions)
+	if err != nil {
+		return fmt.Errorf("error connecting to database: %w", err)
+	}
+	defer db.Close()
+
+	// -------------------------------------------------------------------------
 
 	for {
-		fmt.Print("\nUSER> ")
+		fmt.Print("\nQuestion> ")
 
 		reader := bufio.NewReader(os.Stdin)
 
-		userInput, err := reader.ReadString('\n')
+		question, err := reader.ReadString('\n')
 		if err != nil {
 			fmt.Println("unable to read user input", err.Error())
 			os.Exit(1)
 		}
 
-		messages = append(messages, llamacpp.ChatMessage{
-			Role:    "user",
-			Content: userInput,
-		})
+		// ---------------------------------------------------------------------
 
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-		defer cancel()
+		fmt.Print("\n-- Similarity ---\n\n")
 
-		params := llamacpp.Params{
-			TopK: 1.0,
-			TopP: 0.9,
-			Temp: 0.7,
-		}
+		queryVector, err := func() ([]float32, error) {
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+			defer cancel()
 
-		ch, err := llm.ChatCompletions(ctx, messages, params)
-		if err != nil {
-			return fmt.Errorf("chat completions: %w", err)
-		}
-
-		fmt.Print("\nMODEL> ")
-
-		var finalResponse strings.Builder
-		for msg := range ch {
-			if msg.Err != nil {
-				return fmt.Errorf("error from model: %w", msg.Err)
+			queryVector, err := llmEmbed.Embed(ctx, question)
+			if err != nil {
+				return nil, fmt.Errorf("embed: %w", err)
 			}
 
-			fmt.Print(msg.Response)
-			finalResponse.WriteString(msg.Response)
+			return queryVector, nil
+		}()
+		if err != nil {
+			return err
 		}
 
-		messages = append(messages, llamacpp.ChatMessage{
-			Role:    "assistant",
-			Content: finalResponse.String(),
-		})
+		docs, err := dbSearch(db, queryVector, 5)
+		if err != nil {
+			return fmt.Errorf("error searching database: %w", err)
+		}
+
+		for _, doc := range docs {
+			fmt.Printf("Doc: %f: %s\n", doc.Similarity, strings.ReplaceAll(doc.Text, "\n", " ")[:100])
+		}
+
+		// ---------------------------------------------------------------------
+
+		fmt.Print("\n-- Rerank ---\n\n")
+
+		documents := make([]llamacpp.RankingDocument, len(docs))
+		for i, doc := range docs {
+			documents[i] = llamacpp.RankingDocument{Document: doc.Text, Embedding: doc.Embedding}
+		}
+
+		rankings, err := llmEmbed.Rerank(documents)
+		if err != nil {
+			return fmt.Errorf("rerank: %w", err)
+		}
+
+		for _, ranking := range rankings {
+			fmt.Printf("Doc: %f: %s\n", ranking.Score, strings.ReplaceAll(ranking.Document, "\n", " ")[:100])
+		}
+
+		// ---------------------------------------------------------------------
+
+		fmt.Print("\n-- Response ---\n\n")
+
+		const prompt = `
+		- Use the following Context to answer the user's question.
+		- If you don't know the answer, say that you don't know.
+		- Responses should be properly formatted to be easily read.
+		- Share code if code is presented in the context.
+		- Do not include any additional information not present in the context.
+
+		Context:
+		
+		%s
+
+		Question: %s
+		`
+
+		var content string
+		for _, ranking := range rankings[:2] {
+			content = fmt.Sprintf("%s\n%s\n", content, ranking.Document)
+		}
+
+		finalPrompt := fmt.Sprintf(prompt, content, question)
+
+		msgs := []llamacpp.ChatMessage{
+			{Role: "user", Content: finalPrompt},
+		}
+
+		err = func() error {
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+			defer cancel()
+
+			ch, err := llmChat.ChatCompletions(ctx, msgs, llamacpp.Params{
+				TopK: 1.0,
+				TopP: 0.9,
+				Temp: 0.7,
+			})
+			if err != nil {
+				return fmt.Errorf("chat completions: %w", err)
+			}
+
+			for msg := range ch {
+				if msg.Err != nil {
+					return fmt.Errorf("error from model: %w", msg.Err)
+				}
+				fmt.Print(msg.Response)
+			}
+			return nil
+		}()
+		if err != nil {
+			return err
+		}
 
 		fmt.Println()
 	}

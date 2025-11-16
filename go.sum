@@ -62,10 +62,6 @@ github.com/hashicorp/go-safetemp v1.0.0 h1:2HR189eFNrjHQyENnQMMpCiBAsRxzbTMIgBhE
 github.com/hashicorp/go-safetemp v1.0.0/go.mod h1:oaerMy3BhqiTbVye6QuFhFtIceqFoDHxNAB65b+Rj1I=
 github.com/hashicorp/go-version v1.7.0 h1:5tqGy27NaOTB8yJKUZELlFAS/LTKJkrmONwQKeRZfjY=
 github.com/hashicorp/go-version v1.7.0/go.mod h1:fltr4n8CU8Ke44wwGCBoEymUuxUHl09ZGVZPK5anwXA=
-github.com/hybridgroup/yzma v0.9.1-0.20251113154638-8a816bf8e66e h1:CpxXi9d8rS9PgfSFPaY+7krZvE31dq+eCIy5w/tTqEQ=
-github.com/hybridgroup/yzma v0.9.1-0.20251113154638-8a816bf8e66e/go.mod h1:0j0lGvdDPSe+WnwmCQJWep37K6htvK+VN7lL9NHQ1V4=
-github.com/hybridgroup/yzma v0.9.1-0.20251114232254-ec3e1d4f7a2a h1:PBH4g7LmaMNWOH4eulT9Gz+cgkldBAj8uomHI1Cg0Hg=
-github.com/hybridgroup/yzma v0.9.1-0.20251114232254-ec3e1d4f7a2a/go.mod h1:0j0lGvdDPSe+WnwmCQJWep37K6htvK+VN7lL9NHQ1V4=
 github.com/hybridgroup/yzma v0.9.1-0.20251115171701-2d89b395d8d6 h1:QEbJ6e/bXEFlTMwLXsJfWeFfaZuknkroc69wmWnHWyk=
 github.com/hybridgroup/yzma v0.9.1-0.20251115171701-2d89b395d8d6/go.mod h1:0j0lGvdDPSe+WnwmCQJWep37K6htvK+VN7lL9NHQ1V4=
 github.com/jackc/pgpassfile v1.0.0 h1:/6Hmqy13Ss2zCq62VdNG8tM1wchn8zjSGOBJ6icpsIM=

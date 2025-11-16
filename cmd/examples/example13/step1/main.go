@@ -20,7 +20,7 @@ import (
 	"github.com/hybridgroup/yzma/pkg/download"
 )
 
-var (
+const (
 	modelURL  = "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-fp16.gguf?download=true"
 	libPath   = "zarf/llamacpp"
 	modelPath = "zarf/models"
@@ -28,7 +28,7 @@ var (
 
 func main() {
 	if err := run(); err != nil {
-		fmt.Println("error running example:", err)
+		fmt.Println(err)
 		os.Exit(1)
 	}
 }

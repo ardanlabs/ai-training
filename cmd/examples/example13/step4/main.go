@@ -1,9 +1,14 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/ardanlabs/ai-training/cmd/examples/example13/duck"
 	"github.com/ardanlabs/ai-training/cmd/examples/example13/install"
@@ -11,21 +16,27 @@ import (
 	"github.com/hybridgroup/yzma/pkg/download"
 )
 
-var (
-	modelChatURL  = "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-fp16.gguf?download=true"
-	modelEmbedURL = "https://huggingface.co/ggml-org/embeddinggemma-300m-qat-q8_0-GGUF/resolve/main/embeddinggemma-300m-qat-Q8_0.gguf?download=true"
-	libPath       = "zarf/llamacpp"
-	modelPath     = "zarf/models"
-	dbPath        = "zarf/data/duck-ex13-step3.db" // ":memory:"
-	chunksFile    = "zarf/data/book.chunks"
-	dimentions    = 768
+const (
+	modelChatURL       = "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-fp16.gguf?download=true"
+	modelEmbedURL      = "https://huggingface.co/ggml-org/embeddinggemma-300m-qat-q8_0-GGUF/resolve/main/embeddinggemma-300m-qat-Q8_0.gguf?download=true"
+	libPath            = "zarf/llamacpp"
+	modelPath          = "zarf/models"
+	dbPath             = "zarf/data/duck-ex13-step3.db" // ":memory:"
+	chunksFile         = "zarf/data/book.chunks"
+	dimentions         = 768
+	WebReadTimeout     = 5 * time.Second
+	WebWriteTimeout    = 10 * time.Second
+	WebIdleTimeout     = 120 * time.Second
+	WebShutdownTimeout = 20 * time.Second
+	WebAPIHost         = "0.0.0.0:3000"
 )
 
 func main() {
 	log.Default().SetOutput(os.Stdout)
 
 	if err := run(); err != nil {
-		log.Fatal(err)
+		fmt.Println(err)
+		os.Exit(1)
 	}
 }
 
@@ -75,7 +86,49 @@ func run() error {
 
 	// -------------------------------------------------------------------------
 
-	// NOW ADD ENDPOINT TO SERVE UP CHAT.
+	fmt.Println()
+	fmt.Println("startup: status: initializing V1 API support")
+
+	shutdown := make(chan os.Signal, 1)
+	signal.Notify(shutdown, syscall.SIGINT, syscall.SIGTERM)
+
+	cfg := muxConfig{
+		llmEmbed: llmEmbed,
+		llmChat:  llmChat,
+		db:       db,
+	}
+
+	api := http.Server{
+		Addr:         WebAPIHost,
+		Handler:      mux(cfg),
+		ReadTimeout:  WebReadTimeout,
+		WriteTimeout: WebWriteTimeout,
+		IdleTimeout:  WebIdleTimeout,
+	}
+
+	serverErrors := make(chan error, 1)
+
+	go func() {
+		fmt.Println("startup: status: api router started: host", api.Addr)
+		serverErrors <- api.ListenAndServe()
+	}()
+
+	select {
+	case err := <-serverErrors:
+		return fmt.Errorf("server error: %w", err)
+
+	case sig := <-shutdown:
+		fmt.Println("shutdown: status: shutdown started: signal", sig)
+		defer fmt.Println("shutdown: status: shutdown complete: signal", sig)
+
+		ctx, cancel := context.WithTimeout(context.Background(), WebShutdownTimeout)
+		defer cancel()
+
+		if err := api.Shutdown(ctx); err != nil {
+			api.Close()
+			return fmt.Errorf("could not stop server gracefully: %w", err)
+		}
+	}
 
 	return nil
 }

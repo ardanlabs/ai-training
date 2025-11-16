@@ -19,7 +19,7 @@ import (
 	"github.com/hybridgroup/yzma/pkg/download"
 )
 
-var (
+const (
 	modelURL  = "https://huggingface.co/ggml-org/Qwen2.5-VL-3B-Instruct-GGUF/resolve/main/Qwen2.5-VL-3B-Instruct-Q8_0.gguf?download=true"
 	projURL   = "https://huggingface.co/ggml-org/Qwen2.5-VL-3B-Instruct-GGUF/resolve/main/mmproj-Qwen2.5-VL-3B-Instruct-Q8_0.gguf?download=true"
 	imageFile = "zarf/samples/gallery/giraffe.jpg"
@@ -29,7 +29,7 @@ var (
 
 func main() {
 	if err := run(); err != nil {
-		fmt.Println("error running example:", err)
+		fmt.Println(err)
 		os.Exit(1)
 	}
 }

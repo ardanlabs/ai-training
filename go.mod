@@ -5,6 +5,7 @@ go 1.25.0
 require (
 	github.com/dlclark/regexp2 v1.11.5
 	github.com/duckdb/duckdb-go/v2 v2.5.1
+	github.com/google/uuid v1.6.0
 	github.com/hybridgroup/yzma v0.9.1-0.20251115171701-2d89b395d8d6
 	github.com/jackc/pgx/v5 v5.7.6
 	github.com/jmoiron/sqlx v1.4.0
@@ -30,7 +31,6 @@ require (
 	github.com/golang/snappy v1.0.0 // indirect
 	github.com/google/flatbuffers v25.9.23+incompatible // indirect
 	github.com/google/jsonschema-go v0.3.0 // indirect
-	github.com/google/uuid v1.6.0 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
 	github.com/hashicorp/go-getter/v2 v2.2.3 // indirect

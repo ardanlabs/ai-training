@@ -120,55 +120,61 @@ func (m *model) chatCompletions(messages []ChatMessage, params Params) <-chan Ch
 			close(ch)
 			return
 		}
+
 		defer func() {
 			llama.Synchronize(lctx)
 			llama.Free(lctx)
 		}()
 
-		// ---------------------------------------------------------------------
-
-		msgs := make([]llama.ChatMessage, len(messages))
-		for i, msg := range messages {
-			msgs[i] = llama.NewChatMessage(msg.Role, msg.Content)
-		}
-
-		buf := make([]byte, 1024*32)
-		l := llama.ChatApplyTemplate(m.template, msgs, true, buf)
-		text := string(buf[:l])
-
-		// ---------------------------------------------------------------------
-
-		tokens := llama.Tokenize(m.vocab, text, true, true)
-		batch := llama.BatchGetOne(tokens)
+		text := m.applyChatCompletionsTemplate(messages)
 		sampler := params.sampler()
-
-		// ---------------------------------------------------------------------
-
-		for range llama.MaxToken {
-			llama.Decode(lctx, batch)
-			token := llama.SamplerSample(sampler, lctx, -1)
-
-			if llama.VocabIsEOG(m.vocab, token) {
-				close(ch)
-				break
-			}
-
-			buf := make([]byte, 1024*32)
-			l := llama.TokenToPiece(m.vocab, token, buf, 0, false)
-
-			resp := string(buf[:l])
-			if resp == "" {
-				close(ch)
-				break
-			}
-
-			ch <- ChatResponse{Response: resp}
-
-			batch = llama.BatchGetOne([]llama.Token{token})
-		}
+		m.processChatCompletionsTokens(lctx, text, sampler, ch)
 	}()
 
 	return ch
+}
+
+func (m *model) applyChatCompletionsTemplate(messages []ChatMessage) string {
+	msgs := make([]llama.ChatMessage, len(messages))
+	for i, msg := range messages {
+		msgs[i] = llama.NewChatMessage(msg.Role, msg.Content)
+	}
+
+	buf := make([]byte, 1024*32)
+	l := llama.ChatApplyTemplate(m.template, msgs, true, buf)
+
+	return string(buf[:l])
+}
+
+func (m *model) processChatCompletionsTokens(lctx llama.Context, text string, sampler llama.Sampler, ch chan<- ChatResponse) {
+	tokens := llama.Tokenize(m.vocab, text, true, true)
+
+	for range llama.MaxToken {
+		batch := llama.BatchGetOne(tokens)
+		llama.Decode(lctx, batch)
+
+		token := llama.SamplerSample(sampler, lctx, -1)
+
+		if llama.VocabIsEOG(m.vocab, token) {
+			close(ch)
+			break
+		}
+
+		buf := make([]byte, 1024*32)
+		l := llama.TokenToPiece(m.vocab, token, buf, 0, false)
+
+		resp := string(buf[:l])
+		if resp == "" {
+			close(ch)
+			break
+		}
+
+		ch <- ChatResponse{
+			Response: resp,
+		}
+
+		tokens = []llama.Token{token}
+	}
 }
 
 func (m *model) chatVision(message ChatMessage, imageFile string, params Params) <-chan ChatResponse {
@@ -187,26 +193,11 @@ func (m *model) chatVision(message ChatMessage, imageFile string, params Params)
 			close(ch)
 			return
 		}
+
 		defer func() {
 			llama.Synchronize(lctx)
 			llama.Free(lctx)
 		}()
-
-		// ---------------------------------------------------------------------
-
-		msgs := []llama.ChatMessage{
-			llama.NewChatMessage(message.Role, message.Content),
-			llama.NewChatMessage("user", mtmd.DefaultMarker()),
-		}
-
-		buf := make([]byte, 1024*32)
-		len := llama.ChatApplyTemplate(m.template, msgs, true, buf)
-		template := string(buf[:len])
-
-		// ---------------------------------------------------------------------
-
-		output := mtmd.InputChunksInit()
-		input := mtmd.NewInputText(template, true, true)
 
 		mctxParams := mtmd.ContextParamsDefault()
 
@@ -218,60 +209,84 @@ func (m *model) chatVision(message ChatMessage, imageFile string, params Params)
 		}
 		defer mtmd.Free(mtmdCtx)
 
-		bitmap := mtmd.BitmapInitFromFile(mtmdCtx, imageFile)
+		text := m.applyChatVisionTemplate(message)
+
+		bitmap := m.processBitmap(lctx, mtmdCtx, imageFile, text)
 		defer mtmd.BitmapFree(bitmap)
 
-		mtmd.Tokenize(mtmdCtx, output, input, []mtmd.Bitmap{bitmap})
-
-		var n llama.Pos
-
-		func() {
-			// Docs indicate this function is NOT thread-safe.
-			m.muHEC.Lock()
-			defer m.muHEC.Unlock()
-			mtmd.HelperEvalChunks(mtmdCtx, lctx, output, 0, 0, int32(m.ctxParams.NBatch), true, &n)
-		}()
-
-		// ---------------------------------------------------------------------
-
-		var sz int32 = 1
-		batch := llama.BatchInit(1, 0, 1)
-		batch.NSeqId = &sz
-		batch.NTokens = 1
-		seqs := unsafe.SliceData([]llama.SeqId{0})
-		batch.SeqId = &seqs
-
-		// ---------------------------------------------------------------------
-
 		sampler := params.sampler()
-
-		for range llama.MaxToken {
-			llama.Decode(lctx, batch)
-			token := llama.SamplerSample(sampler, lctx, -1)
-
-			if llama.VocabIsEOG(m.vocab, token) {
-				close(ch)
-				break
-			}
-
-			buf := make([]byte, 1024*32)
-			l := llama.TokenToPiece(m.vocab, token, buf, 0, false)
-
-			resp := string(buf[:l])
-			if resp == "" {
-				close(ch)
-				break
-			}
-
-			ch <- ChatResponse{
-				Response: resp,
-			}
-
-			batch = llama.BatchGetOne([]llama.Token{token})
-		}
+		m.processChatVisionTokens(lctx, sampler, ch)
 	}()
 
 	return ch
+}
+
+func (m *model) applyChatVisionTemplate(message ChatMessage) string {
+	msgs := []llama.ChatMessage{
+		llama.NewChatMessage(message.Role, message.Content),
+		llama.NewChatMessage("user", mtmd.DefaultMarker()),
+	}
+
+	buf := make([]byte, 1024*32)
+	len := llama.ChatApplyTemplate(m.template, msgs, true, buf)
+
+	return string(buf[:len])
+}
+
+func (m *model) processBitmap(lctx llama.Context, mtmdCtx mtmd.Context, imageFile string, template string) mtmd.Bitmap {
+	bitmap := mtmd.BitmapInitFromFile(mtmdCtx, imageFile)
+
+	output := mtmd.InputChunksInit()
+	input := mtmd.NewInputText(template, true, true)
+
+	mtmd.Tokenize(mtmdCtx, output, input, []mtmd.Bitmap{bitmap})
+
+	// Docs indicate this function is NOT thread-safe.
+	func() {
+		m.muHEC.Lock()
+		defer m.muHEC.Unlock()
+		var n llama.Pos
+		mtmd.HelperEvalChunks(mtmdCtx, lctx, output, 0, 0, int32(m.ctxParams.NBatch), true, &n)
+	}()
+
+	return bitmap
+}
+
+func (m *model) processChatVisionTokens(lctx llama.Context, sampler llama.Sampler, ch chan ChatResponse) {
+	batch := llama.BatchInit(1, 0, 1)
+	defer llama.BatchFree(batch)
+
+	var sz int32 = 1
+	batch.NSeqId = &sz
+	batch.NTokens = 1
+	seqs := unsafe.SliceData([]llama.SeqId{0})
+	batch.SeqId = &seqs
+
+	for range llama.MaxToken {
+		llama.Decode(lctx, batch)
+
+		token := llama.SamplerSample(sampler, lctx, -1)
+
+		if llama.VocabIsEOG(m.vocab, token) {
+			close(ch)
+			break
+		}
+
+		buf := make([]byte, 1024*32)
+		l := llama.TokenToPiece(m.vocab, token, buf, 0, false)
+
+		resp := string(buf[:l])
+		if resp == "" {
+			close(ch)
+			break
+		}
+
+		ch <- ChatResponse{
+			Response: resp,
+		}
+
+		batch = llama.BatchGetOne([]llama.Token{token})
+	}
 }
 
 func (m *model) embed(text string) ([]float32, error) {
@@ -279,23 +294,21 @@ func (m *model) embed(text string) ([]float32, error) {
 	if err != nil {
 		return nil, fmt.Errorf("unable to init from model: %v", err)
 	}
+
 	defer func() {
 		llama.Synchronize(lctx)
 		llama.Free(lctx)
 	}()
 
-	// -------------------------------------------------------------------------
-
 	tokens := llama.Tokenize(m.vocab, text, true, true)
 	batch := llama.BatchGetOne(tokens)
 	llama.Decode(lctx, batch)
-	nEmbd := llama.ModelNEmbd(m.model)
-	vec, err := llama.GetEmbeddingsSeq(lctx, 0, nEmbd)
+
+	dimentions := llama.ModelNEmbd(m.model)
+	vec, err := llama.GetEmbeddingsSeq(lctx, 0, dimentions)
 	if err != nil {
 		return nil, fmt.Errorf("unable to get embeddings: %v", err)
 	}
-
-	// -------------------------------------------------------------------------
 
 	var sum float64
 	for _, v := range vec {

@@ -5,14 +5,17 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.com/hybridgroup/yzma/pkg/mtmd"
 )
 
 // Llama represents a concurrency group of a specified model.
 type Llama struct {
-	llama chan *model
+	modelName string
+	llama     chan *model
 }
 
 // New provides the ability to use models in a concurrently safe way.
@@ -29,7 +32,8 @@ func New(concurrency int, libPath string, modelFile string, cfg Config, options 
 	}
 
 	mgr := Llama{
-		llama: llama,
+		modelName: strings.TrimSuffix(filepath.Base(modelFile), filepath.Ext(modelFile)),
+		llama:     llama,
 	}
 
 	return &mgr, nil
@@ -45,6 +49,11 @@ func WithProjection(projFile string) func(m *model) error {
 
 		return nil
 	}
+}
+
+// ModelName returns the model name.
+func (llm *Llama) ModelName() string {
+	return llm.modelName
 }
 
 // Unload will close down all loaded models. You should call this only when you

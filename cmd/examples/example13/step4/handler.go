@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/ardanlabs/ai-training/cmd/examples/example13/duck"
@@ -25,8 +26,32 @@ type Request struct {
 	TopK        *int      `json:"top_k"`
 }
 
-func (r *Request) Decode(data []byte) error {
-	return json.Unmarshal(data, r)
+type Response struct {
+	ID      string `json:"id,omitempty"`
+	Created int64  `json:"created,omitempty"`
+	Model   string `json:"model,omitempty"`
+	Delta   string `json:"choices,omitempty"`
+	Final   string `json:"final,omitempty"`
+	Error   string `json:"error,omitempty"`
+}
+
+func newResponse(id string, model string, content string, final string, err error) string {
+	var errStr string
+	if err != nil {
+		errStr = err.Error()
+	}
+
+	resp := Response{
+		ID:      id,
+		Created: time.Now().UTC().UnixMilli(),
+		Model:   model,
+		Delta:   content,
+		Final:   final,
+		Error:   errStr,
+	}
+
+	d, _ := json.Marshal(resp)
+	return string(d)
 }
 
 // =============================================================================
@@ -42,7 +67,7 @@ func mux(cfg muxConfig) *http.ServeMux {
 
 	rts := routes(cfg)
 
-	mux.HandleFunc("POST /bookquestion", rts.bookQuestion)
+	mux.HandleFunc("POST /chat", rts.chat)
 
 	return mux
 }
@@ -55,15 +80,15 @@ type routes struct {
 	db       *sql.DB
 }
 
-func (rts *routes) bookQuestion(w http.ResponseWriter, r *http.Request) {
+func (rts *routes) chat(w http.ResponseWriter, r *http.Request) {
 	traceID := uuid.NewString()
 
-	fmt.Printf("traceID %s: bookQuestion: started\n", traceID)
-	defer fmt.Printf("traceID %s: bookQuestion: complete\n", traceID)
+	fmt.Printf("traceID %s: chat: started\n", traceID)
+	defer fmt.Printf("traceID %s: chat: complete\n", traceID)
 
 	var req Request
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		fmt.Printf("traceID %s: bookQuestion: ERROR: %s\n", traceID, err)
+		fmt.Printf("traceID %s: chat: ERROR: %s\n", traceID, err)
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
@@ -72,7 +97,7 @@ func (rts *routes) bookQuestion(w http.ResponseWriter, r *http.Request) {
 
 	question := req.Messages[len(req.Messages)-1].Content
 
-	fmt.Printf("traceID %s: bookQuestion: question: %s\n", traceID, question)
+	fmt.Printf("traceID %s: chat: question: %s\n", traceID, question)
 
 	queryVector, err := func() ([]float32, error) {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
@@ -92,7 +117,7 @@ func (rts *routes) bookQuestion(w http.ResponseWriter, r *http.Request) {
 
 	docs, err := duck.Search(rts.db, queryVector, 5)
 	if err != nil {
-		fmt.Printf("traceID %s: bookQuestion: ERROR: %s\n", traceID, err)
+		fmt.Printf("traceID %s: chat: ERROR: %s\n", traceID, err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -106,7 +131,7 @@ func (rts *routes) bookQuestion(w http.ResponseWriter, r *http.Request) {
 
 	rankings, err := rts.llmChat.Rerank(documents)
 	if err != nil {
-		fmt.Printf("traceID %s: bookQuestion: ERROR: %s\n", traceID, err)
+		fmt.Printf("traceID %s: chat: ERROR: %s\n", traceID, err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -151,7 +176,7 @@ func (rts *routes) bookQuestion(w http.ResponseWriter, r *http.Request) {
 		Temp: 0.7,
 	})
 	if err != nil {
-		fmt.Printf("traceID %s: bookQuestion: ERROR: %s\n", traceID, err)
+		fmt.Printf("traceID %s: chat: ERROR: %s\n", traceID, err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -160,28 +185,40 @@ func (rts *routes) bookQuestion(w http.ResponseWriter, r *http.Request) {
 
 	f, ok := w.(http.Flusher)
 	if !ok {
-		fmt.Printf("traceID %s: bookQuestion: ERROR: %s\n", traceID, "streaming not supported")
+		fmt.Printf("traceID %s: chat: ERROR: %s\n", traceID, "streaming not supported")
 		http.Error(w, "streaming not supported", http.StatusInternalServerError)
 		return
 	}
 
-	// Start sending Server Sent Events.
+	fmt.Printf("traceID %s: chat: sending response\n", traceID)
+
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Transfer-Encoding", "chunked")
 	w.WriteHeader(http.StatusOK)
 	f.Flush()
 
+	id := uuid.NewString()
+	var finalResponse strings.Builder
+
 	for msg := range ch {
 		if msg.Err != nil {
-			fmt.Printf("bookQuestion: status: %s traceID: %s", msg.Err, traceID)
-			w.Write([]byte("data: [DONE]\n\n"))
+			fmt.Printf("traceID: %s: chat: ERROR: %s\n", traceID, msg.Err)
+			fmt.Fprintf(w, "data: %s\n", newResponse(id, rts.llmChat.ModelName(), "", "", msg.Err))
 			f.Flush()
-			return
+			break
 		}
-		fmt.Fprintf(w, "data: %s\n\n", msg.Response)
+
+		finalResponse.WriteString(msg.Response)
+		fmt.Fprintf(w, "data: %s\n", newResponse(id, rts.llmChat.ModelName(), msg.Response, "", nil))
 		f.Flush()
 	}
 
-	w.Write([]byte("data: [DONE]\n\n"))
+	fr := finalResponse.String()
+	if len(fr) > 0 {
+		fmt.Fprintf(w, "data: %s\n", newResponse(id, rts.llmChat.ModelName(), "", fr, nil))
+		f.Flush()
+	}
+
+	w.Write([]byte("data: [DONE]\n"))
 	f.Flush()
 }

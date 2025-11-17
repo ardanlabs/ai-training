@@ -122,9 +122,9 @@ install:
 
 docker:
 	docker pull mongodb/mongodb-atlas-local:8.0
-	docker pull ghcr.io/open-webui/open-webui:v0.6.32
+	docker pull ghcr.io/open-webui/open-webui:v0.6.34
 	docker pull postgres:18.0
-	docker pull quay.io/docling-project/docling-serve:v1.6.0
+	docker pull quay.io/docling-project/docling-serve:v1.8.0
 
 python-install:
 	rm -rf .venv
@@ -261,7 +261,7 @@ example13-step4:
 	go run cmd/examples/example13/step4/*.go 2>/dev/null
 
 example13-step4-curl:
-	curl -i -X POST http://0.0.0.0:3000/bookquestion \
+	curl -i -X POST http://0.0.0.0:3000/chat \
      -H "Content-Type: application/json" \
      -d '{ \
 		"messages": [ \

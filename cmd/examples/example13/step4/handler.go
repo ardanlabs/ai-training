@@ -27,12 +27,12 @@ type Request struct {
 }
 
 type Response struct {
-	ID      string `json:"id,omitempty"`
-	Created int64  `json:"created,omitempty"`
-	Model   string `json:"model,omitempty"`
-	Delta   string `json:"choices,omitempty"`
-	Final   string `json:"final,omitempty"`
-	Error   string `json:"error,omitempty"`
+	ID      string  `json:"id,omitempty"`
+	Created int64   `json:"created,omitempty"`
+	Model   string  `json:"model,omitempty"`
+	Delta   Message `json:"delta,omitempty"`
+	Final   string  `json:"final,omitempty"`
+	Error   string  `json:"error,omitempty"`
 }
 
 func newResponse(id string, model string, content string, final string, err error) string {
@@ -45,7 +45,7 @@ func newResponse(id string, model string, content string, final string, err erro
 		ID:      id,
 		Created: time.Now().UTC().UnixMilli(),
 		Model:   model,
-		Delta:   content,
+		Delta:   Message{Role: "assistant", Content: content},
 		Final:   final,
 		Error:   errStr,
 	}
@@ -62,19 +62,34 @@ type muxConfig struct {
 	db       *sql.DB
 }
 
-func mux(cfg muxConfig) *http.ServeMux {
+func mux(cfg muxConfig) http.Handler {
 	mux := http.NewServeMux()
 
 	rts := routes(cfg)
 
 	mux.HandleFunc("POST /chat", rts.chat)
 
-	return mux
+	return corsMiddleware(mux)
 }
 
 func sendError(w http.ResponseWriter, traceID string, context string, err error) {
 	fmt.Printf("traceID: %s: chat: %s: ERROR: %s\n", traceID, context, err)
 	http.Error(w, err.Error(), http.StatusInternalServerError)
+}
+
+func corsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+
+		if r.Method == "OPTIONS" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
 }
 
 // =============================================================================

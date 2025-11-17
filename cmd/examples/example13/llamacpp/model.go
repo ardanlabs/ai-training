@@ -200,6 +200,8 @@ func (m *model) chatVision(message ChatMessage, imageFile string, params Params)
 		}()
 
 		mctxParams := mtmd.ContextParamsDefault()
+		mctxParams.UseGPU = true
+		mctxParams.FlashAttentionType = llama.FlashAttentionTypeAuto
 
 		mtmdCtx, err := mtmd.InitFromFile(m.projFile, m.model, mctxParams)
 		if err != nil {

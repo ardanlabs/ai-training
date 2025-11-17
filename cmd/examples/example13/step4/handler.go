@@ -72,6 +72,11 @@ func mux(cfg muxConfig) *http.ServeMux {
 	return mux
 }
 
+func sendError(w http.ResponseWriter, traceID string, context string, err error) {
+	fmt.Printf("traceID: %s: chat: %s: ERROR: %s\n", traceID, context, err)
+	http.Error(w, err.Error(), http.StatusInternalServerError)
+}
+
 // =============================================================================
 
 type routes struct {
@@ -83,46 +88,64 @@ type routes struct {
 func (rts *routes) chat(w http.ResponseWriter, r *http.Request) {
 	traceID := uuid.NewString()
 
-	fmt.Printf("traceID %s: chat: started\n", traceID)
-	defer fmt.Printf("traceID %s: chat: complete\n", traceID)
+	fmt.Printf("traceID: %s: chat: started\n", traceID)
+	defer fmt.Printf("traceID: %s: chat: complete\n", traceID)
 
 	var req Request
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		fmt.Printf("traceID %s: chat: ERROR: %s\n", traceID, err)
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		sendError(w, traceID, "NewDecoder", err)
 		return
 	}
 
-	// -------------------------------------------------------------------------
+	docs, err := rts.vectorSearch(traceID, req)
+	if err != nil {
+		sendError(w, traceID, "vectorSearch", err)
+		return
+	}
 
+	rankings, err := rts.rerank(traceID, docs)
+	if err != nil {
+		sendError(w, traceID, "rerank", err)
+		return
+	}
+
+	msgs := rts.compileChatMessages(traceID, req, rankings)
+
+	ch, err := rts.performChat(traceID, msgs)
+	if err != nil {
+		sendError(w, traceID, "performChat", err)
+		return
+	}
+
+	if err := rts.streamResponse(traceID, w, ch); err != nil {
+		sendError(w, traceID, "streamResponse", err)
+		return
+	}
+}
+
+func (rts *routes) vectorSearch(traceID string, req Request) ([]duck.Document, error) {
 	question := req.Messages[len(req.Messages)-1].Content
 
-	fmt.Printf("traceID %s: chat: question: %s\n", traceID, question)
+	fmt.Printf("traceID: %s: vectorSearch: started: question: %s\n", traceID, question)
 
-	queryVector, err := func() ([]float32, error) {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-		defer cancel()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
 
-		queryVector, err := rts.llmEmbed.Embed(ctx, question)
-		if err != nil {
-			return nil, fmt.Errorf("embed: %w", err)
-		}
-
-		return queryVector, nil
-	}()
+	queryVector, err := rts.llmEmbed.Embed(ctx, question)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+		return nil, fmt.Errorf("embed: %w", err)
 	}
 
 	docs, err := duck.Search(rts.db, queryVector, 5)
 	if err != nil {
-		fmt.Printf("traceID %s: chat: ERROR: %s\n", traceID, err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+		return nil, fmt.Errorf("search: %w", err)
 	}
 
-	// -------------------------------------------------------------------------
+	return docs, nil
+}
+
+func (rts *routes) rerank(traceID string, docs []duck.Document) ([]llamacpp.Ranking, error) {
+	fmt.Printf("traceID: %s: rerank: started: docs: %d\n", traceID, len(docs))
 
 	documents := make([]llamacpp.RankingDocument, len(docs))
 	for i, doc := range docs {
@@ -131,12 +154,16 @@ func (rts *routes) chat(w http.ResponseWriter, r *http.Request) {
 
 	rankings, err := rts.llmChat.Rerank(documents)
 	if err != nil {
-		fmt.Printf("traceID %s: chat: ERROR: %s\n", traceID, err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+		return nil, fmt.Errorf("rerank: %w", err)
 	}
 
-	// -------------------------------------------------------------------------
+	return rankings, nil
+}
+
+func (rts *routes) compileChatMessages(traceID string, req Request, rankings []llamacpp.Ranking) []llamacpp.ChatMessage {
+	fmt.Printf("traceID: %s: compileChatMessages: started\n", traceID)
+
+	question := req.Messages[len(req.Messages)-1].Content
 
 	msgs := make([]llamacpp.ChatMessage, len(req.Messages)+1)
 	for i, msg := range req.Messages {
@@ -165,9 +192,13 @@ func (rts *routes) chat(w http.ResponseWriter, r *http.Request) {
 	finalPrompt := fmt.Sprintf(prompt, content, question)
 	msgs[len(msgs)-1] = llamacpp.ChatMessage{Role: "user", Content: finalPrompt}
 
-	// -------------------------------------------------------------------------
+	return msgs
+}
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+func (rts *routes) performChat(traceID string, msgs []llamacpp.ChatMessage) (<-chan llamacpp.ChatResponse, error) {
+	fmt.Printf("traceID: %s: performChat: started: msgs: %d\n", traceID, len(msgs))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	ch, err := rts.llmChat.ChatCompletions(ctx, msgs, llamacpp.Params{
@@ -176,21 +207,19 @@ func (rts *routes) chat(w http.ResponseWriter, r *http.Request) {
 		Temp: 0.7,
 	})
 	if err != nil {
-		fmt.Printf("traceID %s: chat: ERROR: %s\n", traceID, err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+		return nil, fmt.Errorf("chat completions: %w", err)
 	}
 
-	// -------------------------------------------------------------------------
+	return ch, nil
+}
+
+func (rts *routes) streamResponse(traceID string, w http.ResponseWriter, ch <-chan llamacpp.ChatResponse) error {
+	fmt.Printf("traceID: %s: streamResponse: started\n", traceID)
 
 	f, ok := w.(http.Flusher)
 	if !ok {
-		fmt.Printf("traceID %s: chat: ERROR: %s\n", traceID, "streaming not supported")
-		http.Error(w, "streaming not supported", http.StatusInternalServerError)
-		return
+		return fmt.Errorf("streaming not supported")
 	}
-
-	fmt.Printf("traceID %s: chat: sending response\n", traceID)
 
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Transfer-Encoding", "chunked")
@@ -221,4 +250,6 @@ func (rts *routes) chat(w http.ResponseWriter, r *http.Request) {
 
 	w.Write([]byte("data: [DONE]\n"))
 	f.Flush()
+
+	return nil
 }

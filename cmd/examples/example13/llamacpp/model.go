@@ -126,9 +126,9 @@ func (m *model) chatCompletions(messages []ChatMessage, params Params) <-chan Ch
 			llama.Free(lctx)
 		}()
 
-		text := m.applyChatCompletionsTemplate(messages)
+		prompt := m.applyChatCompletionsTemplate(messages)
 		sampler := params.sampler()
-		m.processChatCompletionsTokens(lctx, text, sampler, ch)
+		m.processChatCompletions(lctx, prompt, sampler, ch)
 	}()
 
 	return ch
@@ -146,8 +146,8 @@ func (m *model) applyChatCompletionsTemplate(messages []ChatMessage) string {
 	return string(buf[:l])
 }
 
-func (m *model) processChatCompletionsTokens(lctx llama.Context, text string, sampler llama.Sampler, ch chan<- ChatResponse) {
-	tokens := llama.Tokenize(m.vocab, text, true, true)
+func (m *model) processChatCompletions(lctx llama.Context, prompt string, sampler llama.Sampler, ch chan<- ChatResponse) {
+	tokens := llama.Tokenize(m.vocab, prompt, true, true)
 
 	for range llama.MaxToken {
 		batch := llama.BatchGetOne(tokens)
@@ -209,13 +209,13 @@ func (m *model) chatVision(message ChatMessage, imageFile string, params Params)
 		}
 		defer mtmd.Free(mtmdCtx)
 
-		text := m.applyChatVisionTemplate(message)
+		prompt := m.applyChatVisionTemplate(message)
 
-		bitmap := m.processBitmap(lctx, mtmdCtx, imageFile, text)
+		bitmap := m.processBitmap(lctx, mtmdCtx, imageFile, prompt)
 		defer mtmd.BitmapFree(bitmap)
 
 		sampler := params.sampler()
-		m.processChatVisionTokens(lctx, sampler, ch)
+		m.processChatVision(lctx, sampler, ch)
 	}()
 
 	return ch
@@ -233,11 +233,11 @@ func (m *model) applyChatVisionTemplate(message ChatMessage) string {
 	return string(buf[:len])
 }
 
-func (m *model) processBitmap(lctx llama.Context, mtmdCtx mtmd.Context, imageFile string, template string) mtmd.Bitmap {
+func (m *model) processBitmap(lctx llama.Context, mtmdCtx mtmd.Context, imageFile string, prompt string) mtmd.Bitmap {
 	bitmap := mtmd.BitmapInitFromFile(mtmdCtx, imageFile)
 
 	output := mtmd.InputChunksInit()
-	input := mtmd.NewInputText(template, true, true)
+	input := mtmd.NewInputText(prompt, true, true)
 
 	mtmd.Tokenize(mtmdCtx, output, input, []mtmd.Bitmap{bitmap})
 
@@ -252,7 +252,7 @@ func (m *model) processBitmap(lctx llama.Context, mtmdCtx mtmd.Context, imageFil
 	return bitmap
 }
 
-func (m *model) processChatVisionTokens(lctx llama.Context, sampler llama.Sampler, ch chan ChatResponse) {
+func (m *model) processChatVision(lctx llama.Context, sampler llama.Sampler, ch chan ChatResponse) {
 	batch := llama.BatchInit(1, 0, 1)
 	defer llama.BatchFree(batch)
 

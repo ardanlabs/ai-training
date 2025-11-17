@@ -1,3 +1,15 @@
+// This example shows you a web service that provides a chat endpoint for asking
+// questions about the Go notebook. It uses the code from step3 for the RAG
+// aspects of the application.
+//
+// # Running the example:
+//
+//	$ make example13-step4
+//
+// # CURL call
+//
+//	$ make example13-step4-curl
+
 package main
 
 import (

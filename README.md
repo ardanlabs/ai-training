@@ -29,7 +29,7 @@ You will find in the source code file for each example notes to help you underst
 
 The makefile has everything you need to get up and running quickly.
 
-### Examples
+## Examples
 
 **- Example 01**: This example shows you what a vector and embedding is by hand crafting a relationship of data. It also shows you how cosine similarity works between different vectors.
 
@@ -96,7 +96,7 @@ The makefile has everything you need to get up and running quickly.
 **- Example 14**: This example shows you how to use GoMLX and GoNB projects so we can run a Jupyter notebook that can
 execute Go code.
 
-### Installing Software
+## Installing Software
 
 To run the examples in this repo, start by installing `mongosh` and `ollama` using Brew. If you don't have Brew installed, I highly recommend it.
 

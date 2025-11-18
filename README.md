@@ -35,19 +35,8 @@ To run the examples in this repo, start by installing `mongosh` and `ollama` usi
 
 ```
 make install
-```
-
-Next you want to pull down these images:
-
-- `mongodb/mongodb-atlas-local:8.0`
-- `ghcr.io/open-webui/open-webui:v0.6.18`
-- `postgres:18.0`
-- `quay.io/docling-project/docling-serve`
-
-Run the following command to do so:
-
-```
 make docker
+make python-install
 ```
 
 With the software installed, you will want to start your Ollama service. Open a terminal and run the following command. This will show logs so start a terminal window you can see but won't need.

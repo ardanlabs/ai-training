@@ -4,7 +4,9 @@ package install
 
 import (
 	"fmt"
+	"net/url"
 	"path"
+	"strings"
 
 	"github.com/ardanlabs/llamacpp"
 	"github.com/hybridgroup/yzma/pkg/download"
@@ -24,7 +26,10 @@ func LlamaCPP(libPath string, processor download.Processor, allowUpgrade bool) e
 }
 
 func Model(modelURL string, modelPath string) (string, error) {
-	fmt.Printf("- check %q installation: ", path.Base(modelURL))
+	u, _ := url.Parse(modelURL)
+	filename := path.Base(u.Path)
+	name := strings.TrimSuffix(filename, path.Ext(filename))
+	fmt.Printf("- check %q installation: ", name)
 
 	localPath, err := llamacpp.InstallModel(modelURL, modelPath)
 	if err != nil {

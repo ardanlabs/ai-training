@@ -46,33 +46,15 @@ func (h *handlers) chat(w http.ResponseWriter, r *http.Request) {
 	}
 
 	fmt.Printf("traceID: %s: chat: msgs: %#v\n", traceID, req.Messages)
-	params := getParams(traceID, req)
 
-	yesSearch, err := h.needVectorSearch(traceID, req)
+	rankings, err := h.findContext(traceID, req)
 	if err != nil {
-		sendError(w, traceID, "needVectorSearch", err)
+		sendError(w, traceID, "findContext", err)
 		return
 	}
 
-	var rankings []llamacpp.Ranking
-	if yesSearch {
-		docs, err := h.vectorSearch(traceID, req)
-		if err != nil {
-			sendError(w, traceID, "vectorSearch", err)
-			return
-		}
-
-		if len(docs) > 0 {
-			const threshold = 0.65
-			rankings, err = h.rerank(traceID, docs, threshold)
-			if err != nil {
-				sendError(w, traceID, "rerank", err)
-				return
-			}
-		}
-	}
-
 	msgs := h.compileChatMessages(traceID, req, rankings)
+	params := getParams(traceID, req)
 
 	ch, err := h.performChat(traceID, msgs, params)
 	if err != nil {
@@ -118,6 +100,32 @@ func (h *handlers) fileServerReact() func(w http.ResponseWriter, r *http.Request
 }
 
 // =============================================================================
+
+func (h *handlers) findContext(traceID string, req Request) ([]llamacpp.Ranking, error) {
+	yesSearch, err := h.needVectorSearch(traceID, req)
+	if err != nil {
+		return nil, fmt.Errorf("needVectorSearch: %w", err)
+	}
+
+	var rankings []llamacpp.Ranking
+
+	if yesSearch {
+		docs, err := h.vectorSearch(traceID, req)
+		if err != nil {
+			return nil, fmt.Errorf("vectorSearch: %w", err)
+		}
+
+		if len(docs) > 0 {
+			const threshold = 0.60
+			rankings, err = h.rerank(traceID, docs, threshold)
+			if err != nil {
+				return nil, fmt.Errorf("rerank: %w", err)
+			}
+		}
+	}
+
+	return rankings, nil
+}
 
 func (h *handlers) needVectorSearch(traceID string, req Request) (bool, error) {
 	const prompt = `

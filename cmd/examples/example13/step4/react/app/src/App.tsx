@@ -148,6 +148,10 @@ function App() {
     }
   }
 
+  const clearHistory = () => {
+    setMessages([])
+  }
+
   return (
     <div className="app">
       <div className="chat-container">
@@ -188,6 +192,9 @@ function App() {
               disabled={isLoading}
             />
           </div>
+          <button onClick={clearHistory} className="clear-button" disabled={isLoading}>
+            Clear History
+          </button>
         </div>
         <div className="messages">
           {messages.map((msg, idx) => (

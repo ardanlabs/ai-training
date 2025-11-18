@@ -50,6 +50,30 @@
   opacity: 0.5;
 }
 
+.clear-button {
+  padding: 0 16px;
+  height: 36px;
+  align-self: flex-end;
+  background: #dc3545;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+  white-space: nowrap;
+}
+
+.clear-button:hover:not(:disabled) {
+  background: #c82333;
+}
+
+.clear-button:disabled {
+  background: #e0a8b0;
+  cursor: not-allowed;
+}
+
 .messages {
   flex: 1;
   overflow-y: auto;

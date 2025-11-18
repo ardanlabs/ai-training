@@ -1,6 +1,13 @@
 // This example shows you a web service that provides a chat endpoint for asking
 // questions about the Go notebook. It uses the code from step3 for the RAG
-// aspects of the application.
+// aspects of the application. The code also provides an embedded react app
+// that can be used to interact with the chat endpoint. The react app is built
+// using vite and the code is in the app directory.
+//
+// # If you want to rebuild the react app:
+//
+//	$ make example13-step4-npm-install
+//	$ make example13-step4-npm-build
 //
 // # Running the example:
 //
@@ -24,6 +31,7 @@ import (
 
 	"github.com/ardanlabs/ai-training/cmd/examples/example13/duck"
 	"github.com/ardanlabs/ai-training/cmd/examples/example13/install"
+	"github.com/ardanlabs/ai-training/cmd/examples/example13/step4/website"
 	"github.com/ardanlabs/llamacpp"
 	"github.com/hybridgroup/yzma/pkg/download"
 )
@@ -104,15 +112,15 @@ func run() error {
 	shutdown := make(chan os.Signal, 1)
 	signal.Notify(shutdown, syscall.SIGINT, syscall.SIGTERM)
 
-	cfg := muxConfig{
-		llmEmbed: llmEmbed,
-		llmChat:  llmChat,
-		db:       db,
+	cfg := website.Config{
+		LLMEmbed: llmEmbed,
+		DBMChat:  llmChat,
+		DB:       db,
 	}
 
 	api := http.Server{
 		Addr:         WebAPIHost,
-		Handler:      mux(cfg),
+		Handler:      website.WebAPI(cfg),
 		ReadTimeout:  WebReadTimeout,
 		WriteTimeout: WebWriteTimeout,
 		IdleTimeout:  WebIdleTimeout,
@@ -121,7 +129,7 @@ func run() error {
 	serverErrors := make(chan error, 1)
 
 	go func() {
-		fmt.Println("startup: status: api router started: host", api.Addr)
+		fmt.Println("startup: status: api router and website started: host", api.Addr)
 		serverErrors <- api.ListenAndServe()
 	}()
 

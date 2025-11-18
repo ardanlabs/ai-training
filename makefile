@@ -260,6 +260,15 @@ example13-step4:
 	export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:zarf/llamacpp && \
 	go run cmd/examples/example13/step4/*.go 2>/dev/null
 
+example13-step4-npm-install:
+	cd cmd/examples/example13/step4/react/app && npm install
+
+example13-step4-npm-build:
+	cd cmd/examples/example13/step4/react/app && npm run build
+
+example13-step4-npm-run:
+	cd cmd/examples/example13/step4/react/app && npm run dev
+
 example13-step4-curl:
 	curl -i -X POST http://0.0.0.0:3000/chat \
      -H "Content-Type: application/json" \

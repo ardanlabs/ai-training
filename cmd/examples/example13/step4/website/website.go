@@ -1,11 +1,15 @@
-package main
+// Package website provides api and web ui for the chatbot.
+package website
 
 import (
 	"context"
 	"database/sql"
+	"embed"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 
@@ -14,93 +18,21 @@ import (
 	"github.com/google/uuid"
 )
 
-type Message struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
-}
+//go:embed static
+var website embed.FS
 
-type Request struct {
-	Messages    []Message `json:"messages"`
-	Temperature *float64  `json:"temperature"`
-	TopP        *float64  `json:"top_p"`
-	TopK        *int      `json:"top_k"`
-}
+const (
+	websiteDir  = "static"
+	websitePath = "/"
+)
 
-type Response struct {
-	ID      string  `json:"id,omitempty"`
-	Created int64   `json:"created,omitempty"`
-	Model   string  `json:"model,omitempty"`
-	Delta   Message `json:"delta,omitempty"`
-	Final   string  `json:"final,omitempty"`
-	Error   string  `json:"error,omitempty"`
-}
-
-func newResponse(id string, model string, content string, final string, err error) string {
-	var errStr string
-	if err != nil {
-		errStr = err.Error()
-	}
-
-	resp := Response{
-		ID:      id,
-		Created: time.Now().UTC().UnixMilli(),
-		Model:   model,
-		Delta:   Message{Role: "assistant", Content: content},
-		Final:   final,
-		Error:   errStr,
-	}
-
-	d, _ := json.Marshal(resp)
-	return string(d)
-}
-
-// =============================================================================
-
-type muxConfig struct {
+type handlers struct {
 	llmEmbed *llamacpp.Llama
 	llmChat  *llamacpp.Llama
 	db       *sql.DB
 }
 
-func mux(cfg muxConfig) http.Handler {
-	mux := http.NewServeMux()
-
-	rts := routes(cfg)
-
-	mux.HandleFunc("POST /chat", rts.chat)
-
-	return corsMiddleware(mux)
-}
-
-func sendError(w http.ResponseWriter, traceID string, context string, err error) {
-	fmt.Printf("traceID: %s: chat: %s: ERROR: %s\n", traceID, context, err)
-	http.Error(w, err.Error(), http.StatusInternalServerError)
-}
-
-func corsMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-
-		if r.Method == "OPTIONS" {
-			w.WriteHeader(http.StatusOK)
-			return
-		}
-
-		next.ServeHTTP(w, r)
-	})
-}
-
-// =============================================================================
-
-type routes struct {
-	llmEmbed *llamacpp.Llama
-	llmChat  *llamacpp.Llama
-	db       *sql.DB
-}
-
-func (rts *routes) chat(w http.ResponseWriter, r *http.Request) {
+func (h *handlers) chat(w http.ResponseWriter, r *http.Request) {
 	traceID := uuid.NewString()
 
 	fmt.Printf("traceID: %s: chat: started\n", traceID)
@@ -112,33 +44,68 @@ func (rts *routes) chat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	docs, err := rts.vectorSearch(traceID, req)
+	fmt.Printf("traceID: %s: chat: req: %#v\n", traceID, req)
+
+	docs, err := h.vectorSearch(traceID, req)
 	if err != nil {
 		sendError(w, traceID, "vectorSearch", err)
 		return
 	}
 
-	rankings, err := rts.rerank(traceID, docs)
+	rankings, err := h.rerank(traceID, docs)
 	if err != nil {
 		sendError(w, traceID, "rerank", err)
 		return
 	}
 
-	msgs := rts.compileChatMessages(traceID, req, rankings)
+	msgs := h.compileChatMessages(traceID, req, rankings)
 
-	ch, err := rts.performChat(traceID, msgs)
+	ch, err := h.performChat(traceID, msgs)
 	if err != nil {
 		sendError(w, traceID, "performChat", err)
 		return
 	}
 
-	if err := rts.streamResponse(traceID, w, ch); err != nil {
+	if err := h.streamResponse(traceID, w, ch); err != nil {
 		sendError(w, traceID, "streamResponse", err)
 		return
 	}
 }
 
-func (rts *routes) vectorSearch(traceID string, req Request) ([]duck.Document, error) {
+func (h *handlers) fileServerReact() func(w http.ResponseWriter, r *http.Request) {
+	fileMatcher := regexp.MustCompile(`\.[a-zA-Z]*$`)
+
+	fSys, err := fs.Sub(website, websiteDir)
+	if err != nil {
+		fmt.Printf("switching to static folder: %s", err)
+		return nil
+	}
+
+	fileServer := http.StripPrefix(websitePath, http.FileServer(http.FS(fSys)))
+
+	f := func(w http.ResponseWriter, r *http.Request) {
+		if !fileMatcher.MatchString(r.URL.Path) {
+			p, err := website.ReadFile(fmt.Sprintf("%s/index.html", websiteDir))
+			if err != nil {
+				fmt.Printf("FileServerReact: index.html not found: %v\n", err)
+				http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+				return
+			}
+
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			w.Write(p)
+			return
+		}
+
+		fileServer.ServeHTTP(w, r)
+	}
+
+	return f
+}
+
+// =============================================================================
+
+func (h *handlers) vectorSearch(traceID string, req Request) ([]duck.Document, error) {
 	question := req.Messages[len(req.Messages)-1].Content
 
 	fmt.Printf("traceID: %s: vectorSearch: started: question: %s\n", traceID, question)
@@ -146,12 +113,12 @@ func (rts *routes) vectorSearch(traceID string, req Request) ([]duck.Document, e
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
-	queryVector, err := rts.llmEmbed.Embed(ctx, question)
+	queryVector, err := h.llmEmbed.Embed(ctx, question)
 	if err != nil {
 		return nil, fmt.Errorf("embed: %w", err)
 	}
 
-	docs, err := duck.Search(rts.db, queryVector, 5)
+	docs, err := duck.Search(h.db, queryVector, 5)
 	if err != nil {
 		return nil, fmt.Errorf("search: %w", err)
 	}
@@ -159,7 +126,7 @@ func (rts *routes) vectorSearch(traceID string, req Request) ([]duck.Document, e
 	return docs, nil
 }
 
-func (rts *routes) rerank(traceID string, docs []duck.Document) ([]llamacpp.Ranking, error) {
+func (h *handlers) rerank(traceID string, docs []duck.Document) ([]llamacpp.Ranking, error) {
 	fmt.Printf("traceID: %s: rerank: started: docs: %d\n", traceID, len(docs))
 
 	documents := make([]llamacpp.RankingDocument, len(docs))
@@ -167,7 +134,7 @@ func (rts *routes) rerank(traceID string, docs []duck.Document) ([]llamacpp.Rank
 		documents[i] = llamacpp.RankingDocument{Document: doc.Text, Embedding: doc.Embedding}
 	}
 
-	rankings, err := rts.llmChat.Rerank(documents)
+	rankings, err := h.llmChat.Rerank(documents)
 	if err != nil {
 		return nil, fmt.Errorf("rerank: %w", err)
 	}
@@ -175,7 +142,7 @@ func (rts *routes) rerank(traceID string, docs []duck.Document) ([]llamacpp.Rank
 	return rankings, nil
 }
 
-func (rts *routes) compileChatMessages(traceID string, req Request, rankings []llamacpp.Ranking) []llamacpp.ChatMessage {
+func (h *handlers) compileChatMessages(traceID string, req Request, rankings []llamacpp.Ranking) []llamacpp.ChatMessage {
 	fmt.Printf("traceID: %s: compileChatMessages: started\n", traceID)
 
 	question := req.Messages[len(req.Messages)-1].Content
@@ -210,13 +177,13 @@ func (rts *routes) compileChatMessages(traceID string, req Request, rankings []l
 	return msgs
 }
 
-func (rts *routes) performChat(traceID string, msgs []llamacpp.ChatMessage) (<-chan llamacpp.ChatResponse, error) {
+func (h *handlers) performChat(traceID string, msgs []llamacpp.ChatMessage) (<-chan llamacpp.ChatResponse, error) {
 	fmt.Printf("traceID: %s: performChat: started: msgs: %d\n", traceID, len(msgs))
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	ch, err := rts.llmChat.ChatCompletions(ctx, msgs, llamacpp.Params{
+	ch, err := h.llmChat.ChatCompletions(ctx, msgs, llamacpp.Params{
 		TopK: 1.0,
 		TopP: 0.9,
 		Temp: 0.7,
@@ -228,7 +195,7 @@ func (rts *routes) performChat(traceID string, msgs []llamacpp.ChatMessage) (<-c
 	return ch, nil
 }
 
-func (rts *routes) streamResponse(traceID string, w http.ResponseWriter, ch <-chan llamacpp.ChatResponse) error {
+func (h *handlers) streamResponse(traceID string, w http.ResponseWriter, ch <-chan llamacpp.ChatResponse) error {
 	fmt.Printf("traceID: %s: streamResponse: started\n", traceID)
 
 	f, ok := w.(http.Flusher)
@@ -247,19 +214,19 @@ func (rts *routes) streamResponse(traceID string, w http.ResponseWriter, ch <-ch
 	for msg := range ch {
 		if msg.Err != nil {
 			fmt.Printf("traceID: %s: chat: ERROR: %s\n", traceID, msg.Err)
-			fmt.Fprintf(w, "data: %s\n", newResponse(id, rts.llmChat.ModelName(), "", "", msg.Err))
+			fmt.Fprintf(w, "data: %s\n", newResponse(id, h.llmChat.ModelName(), "", "", msg.Err))
 			f.Flush()
 			break
 		}
 
 		finalResponse.WriteString(msg.Response)
-		fmt.Fprintf(w, "data: %s\n", newResponse(id, rts.llmChat.ModelName(), msg.Response, "", nil))
+		fmt.Fprintf(w, "data: %s\n", newResponse(id, h.llmChat.ModelName(), msg.Response, "", nil))
 		f.Flush()
 	}
 
 	fr := finalResponse.String()
 	if len(fr) > 0 {
-		fmt.Fprintf(w, "data: %s\n", newResponse(id, rts.llmChat.ModelName(), "", fr, nil))
+		fmt.Fprintf(w, "data: %s\n", newResponse(id, h.llmChat.ModelName(), "", fr, nil))
 		f.Flush()
 	}
 

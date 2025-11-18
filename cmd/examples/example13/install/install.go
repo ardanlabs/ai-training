@@ -40,13 +40,12 @@ func Model(modelURL string, modelPath string) (string, error) {
 	localPath := filepath.Join(modelPath, path.Base(u.Path))
 
 	fmt.Printf("- check %q installation: ", localPath)
+	if _, err := os.Stat(localPath); !os.IsNotExist(err) {
+		fmt.Println("✓")
+		return localPath, nil
+	}
 
 	if err := download.GetModel(modelURL, modelPath); err != nil {
-		if _, err := os.Stat(localPath); !os.IsNotExist(err) {
-			fmt.Println("✓")
-			return localPath, nil
-		}
-
 		fmt.Println("X")
 		return "", fmt.Errorf("unable to download model: %w", err)
 	}

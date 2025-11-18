@@ -1,12 +1,13 @@
 module github.com/ardanlabs/ai-training
 
-go 1.25.0
+go 1.25.3
 
 require (
+	github.com/ardanlabs/llamacpp v0.0.0-20251118064528-bd139311b51a
 	github.com/dlclark/regexp2 v1.11.5
 	github.com/duckdb/duckdb-go/v2 v2.5.1
 	github.com/google/uuid v1.6.0
-	github.com/hybridgroup/yzma v0.9.1-0.20251115171701-2d89b395d8d6
+	github.com/hybridgroup/yzma v0.9.1-0.20251116180121-e2b6e555c164
 	github.com/jackc/pgx/v5 v5.7.6
 	github.com/jmoiron/sqlx v1.4.0
 	github.com/modelcontextprotocol/go-sdk v1.1.0

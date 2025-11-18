@@ -20,8 +20,7 @@ type model struct {
 	muHEC     sync.Mutex
 }
 
-func newModel(libPath string, modelFile string, cfg Config, options ...func(
-	m *model) error) (*model, error) {
+func newModel(libPath string, modelFile string, cfg Config, options ...func(m *model) error) (*model, error) {
 	if err := llama.Load(libPath); err != nil {
 		return nil, fmt.Errorf("unable to load library: %w", err)
 	}

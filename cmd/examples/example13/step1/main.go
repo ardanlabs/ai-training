@@ -16,7 +16,7 @@ import (
 	"time"
 
 	"github.com/ardanlabs/ai-training/cmd/examples/example13/install"
-	"github.com/ardanlabs/ai-training/cmd/examples/example13/llamacpp"
+	"github.com/ardanlabs/llamacpp"
 	"github.com/hybridgroup/yzma/pkg/download"
 )
 

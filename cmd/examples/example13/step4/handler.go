@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/ardanlabs/ai-training/cmd/examples/example13/duck"
-	"github.com/ardanlabs/ai-training/cmd/examples/example13/llamacpp"
+	"github.com/ardanlabs/llamacpp"
 	"github.com/google/uuid"
 )
 

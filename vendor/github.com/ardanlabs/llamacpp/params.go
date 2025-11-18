@@ -9,7 +9,7 @@ type Params struct {
 	Temp float32
 }
 
-func (p Params) sampler() llama.Sampler {
+func toSampler(p Params) llama.Sampler {
 	sampler := llama.SamplerChainInit(llama.SamplerChainDefaultParams())
 
 	if p.TopK > 0 {

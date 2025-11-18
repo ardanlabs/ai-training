@@ -126,8 +126,7 @@ func (m *model) chatCompletions(messages []ChatMessage, params Params) <-chan Ch
 		}()
 
 		prompt := m.applyChatCompletionsTemplate(messages)
-		sampler := params.sampler()
-		m.processChatCompletions(lctx, prompt, sampler, ch)
+		m.processChatCompletions(lctx, prompt, toSampler(params), ch)
 	}()
 
 	return ch
@@ -215,8 +214,7 @@ func (m *model) chatVision(message ChatMessage, imageFile string, params Params)
 		bitmap := m.processBitmap(lctx, mtmdCtx, imageFile, prompt)
 		defer mtmd.BitmapFree(bitmap)
 
-		sampler := params.sampler()
-		m.processChatVision(lctx, sampler, ch)
+		m.processChatVision(lctx, toSampler(params), ch)
 	}()
 
 	return ch

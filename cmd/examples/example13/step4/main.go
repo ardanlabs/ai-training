@@ -44,8 +44,8 @@ const (
 	dbPath             = "zarf/data/duck-ex13-step3.db" // ":memory:"
 	chunksFile         = "zarf/data/book.chunks"
 	dimentions         = 768
-	WebReadTimeout     = 5 * time.Second
-	WebWriteTimeout    = 10 * time.Second
+	WebReadTimeout     = 10 * time.Second
+	WebWriteTimeout    = 120 * time.Second
 	WebIdleTimeout     = 120 * time.Second
 	WebShutdownTimeout = 20 * time.Second
 	WebAPIHost         = "0.0.0.0:3000"

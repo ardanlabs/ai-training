@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 	"net/http"
@@ -46,16 +47,28 @@ func (h *handlers) chat(w http.ResponseWriter, r *http.Request) {
 
 	fmt.Printf("traceID: %s: chat: req: %#v\n", traceID, req)
 
-	docs, err := h.vectorSearch(traceID, req)
+	yesSearch, err := h.needVectorSearch(traceID, req)
 	if err != nil {
-		sendError(w, traceID, "vectorSearch", err)
+		sendError(w, traceID, "needVectorSearch", err)
 		return
 	}
 
-	rankings, err := h.rerank(traceID, docs)
-	if err != nil {
-		sendError(w, traceID, "rerank", err)
-		return
+	var rankings []llamacpp.Ranking
+	if yesSearch {
+		docs, err := h.vectorSearch(traceID, req)
+		if err != nil {
+			sendError(w, traceID, "vectorSearch", err)
+			return
+		}
+
+		if len(docs) > 0 {
+			const threshold = 0.65
+			rankings, err = h.rerank(traceID, docs, threshold)
+			if err != nil {
+				sendError(w, traceID, "rerank", err)
+				return
+			}
+		}
 	}
 
 	msgs := h.compileChatMessages(traceID, req, rankings)
@@ -66,7 +79,7 @@ func (h *handlers) chat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.streamResponse(traceID, w, ch); err != nil {
+	if err := h.streamResponse(r.Context(), traceID, w, ch); err != nil {
 		sendError(w, traceID, "streamResponse", err)
 		return
 	}
@@ -105,7 +118,47 @@ func (h *handlers) fileServerReact() func(w http.ResponseWriter, r *http.Request
 
 // =============================================================================
 
+func (h *handlers) needVectorSearch(traceID string, req Request) (bool, error) {
+	const prompt = `
+		Is the following question related to the Go programming language?
+		Please response with a YES or NO answer.
+
+		Question:
+		%s
+	`
+
+	msgs := []llamacpp.ChatMessage{
+		{
+			Role:    "user",
+			Content: fmt.Sprintf(prompt, req.Messages[len(req.Messages)-1].Content),
+		},
+	}
+
+	ch, err := h.performChat(traceID, msgs)
+	if err != nil {
+		return false, err
+	}
+
+	var response strings.Builder
+
+	for msg := range ch {
+		response.WriteString(msg.Response)
+	}
+
+	resp := strings.ToLower(response.String())
+
+	if strings.Contains(resp, "yes") {
+		fmt.Printf("traceID: %s: needVectorSearch: response: YES: %s\n", traceID, resp)
+		return true, nil
+	}
+
+	fmt.Printf("traceID: %s: needVectorSearch: response: NO: %s\n", traceID, resp)
+	return false, nil
+}
+
 func (h *handlers) vectorSearch(traceID string, req Request) ([]duck.Document, error) {
+	fmt.Printf("traceID: %s: vectorSearch: started", traceID)
+
 	question := req.Messages[len(req.Messages)-1].Content
 
 	fmt.Printf("traceID: %s: vectorSearch: started: question: %s\n", traceID, question)
@@ -126,12 +179,18 @@ func (h *handlers) vectorSearch(traceID string, req Request) ([]duck.Document, e
 	return docs, nil
 }
 
-func (h *handlers) rerank(traceID string, docs []duck.Document) ([]llamacpp.Ranking, error) {
+func (h *handlers) rerank(traceID string, docs []duck.Document, threshold float64) ([]llamacpp.Ranking, error) {
 	fmt.Printf("traceID: %s: rerank: started: docs: %d\n", traceID, len(docs))
 
-	documents := make([]llamacpp.RankingDocument, len(docs))
-	for i, doc := range docs {
-		documents[i] = llamacpp.RankingDocument{Document: doc.Text, Embedding: doc.Embedding}
+	documents := make([]llamacpp.RankingDocument, 0, len(docs))
+	for _, doc := range docs {
+		fmt.Printf("traceID: %s: rerank: doc: %.2f: ", traceID, doc.Similarity)
+		if doc.Similarity >= threshold {
+			fmt.Println("keeping")
+			documents = append(documents, llamacpp.RankingDocument{Document: doc.Text, Embedding: doc.Embedding})
+			continue
+		}
+		fmt.Println("discarding")
 	}
 
 	rankings, err := h.llmChat.Rerank(documents)
@@ -143,36 +202,45 @@ func (h *handlers) rerank(traceID string, docs []duck.Document) ([]llamacpp.Rank
 }
 
 func (h *handlers) compileChatMessages(traceID string, req Request, rankings []llamacpp.Ranking) []llamacpp.ChatMessage {
-	fmt.Printf("traceID: %s: compileChatMessages: started\n", traceID)
+	fmt.Printf("traceID: %s: compileChatMessages: started: msgs: %d: rankings: %d\n", traceID, len(req.Messages), len(rankings))
 
-	question := req.Messages[len(req.Messages)-1].Content
-
-	msgs := make([]llamacpp.ChatMessage, len(req.Messages)+1)
-	for i, msg := range req.Messages {
-		msgs[i] = llamacpp.ChatMessage{Role: "user", Content: msg.Content}
-	}
-
-	const prompt = `
-		- Use the following Context to answer the user's question.
+	const systemPrompt = `
+		- Use any provided Context to answer the user's question.
 		- If you don't know the answer, say that you don't know.
 		- Responses should be properly formatted to be easily read.
 		- Share code if code is presented in the context.
-		- Do not include any additional information not present in the context.
+		- If relavant Context is available, use it to answer the question and don't include any additional information not present in the Context.
+	`
 
-		Context:
-		
-		%s
+	// Add 2 more elements for the system prompt and any context.
+	msgs := make([]llamacpp.ChatMessage, 0, len(req.Messages)+2)
 
-		Question: %s
-		`
+	// Add the system prompt.
+	msgs = append(msgs, llamacpp.ChatMessage{Role: "system", Content: systemPrompt})
 
-	var content string
-	for _, ranking := range rankings[:2] {
-		content = fmt.Sprintf("%s\n%s\n", content, ranking.Document)
+	// Add all but the very last message in the history.
+	for _, msg := range req.Messages[:len(req.Messages)-1] {
+		msgs = append(msgs, llamacpp.ChatMessage{Role: "user", Content: msg.Content})
 	}
 
-	finalPrompt := fmt.Sprintf(prompt, content, question)
-	msgs[len(msgs)-1] = llamacpp.ChatMessage{Role: "user", Content: finalPrompt}
+	// Add the top 2 extra context if it exists.
+	if len(rankings) > 0 {
+		var content string
+		for i, ranking := range rankings {
+			content = fmt.Sprintf("%s\n%s\n", content, ranking.Document)
+			if i == 1 {
+				break
+			}
+		}
+
+		msgs = append(msgs, llamacpp.ChatMessage{Role: "user", Content: fmt.Sprintf("Context:\n%s", content)})
+	}
+
+	// Add the final message from the history. We expect this to be a question.
+	question := req.Messages[len(req.Messages)-1].Content
+	msgs = append(msgs, llamacpp.ChatMessage{Role: "user", Content: question})
+
+	fmt.Printf("traceID: %s: compileChatMessages: ended: msgs: %d\n", traceID, len(msgs))
 
 	return msgs
 }
@@ -195,7 +263,7 @@ func (h *handlers) performChat(traceID string, msgs []llamacpp.ChatMessage) (<-c
 	return ch, nil
 }
 
-func (h *handlers) streamResponse(traceID string, w http.ResponseWriter, ch <-chan llamacpp.ChatResponse) error {
+func (h *handlers) streamResponse(ctx context.Context, traceID string, w http.ResponseWriter, ch <-chan llamacpp.ChatResponse) error {
 	fmt.Printf("traceID: %s: streamResponse: started\n", traceID)
 
 	f, ok := w.(http.Flusher)
@@ -212,6 +280,12 @@ func (h *handlers) streamResponse(traceID string, w http.ResponseWriter, ch <-ch
 	var finalResponse strings.Builder
 
 	for msg := range ch {
+		if err := ctx.Err(); err != nil {
+			if errors.Is(err, context.Canceled) {
+				return errors.New("client disconnected, do not send response")
+			}
+		}
+
 		if msg.Err != nil {
 			fmt.Printf("traceID: %s: chat: ERROR: %s\n", traceID, msg.Err)
 			fmt.Fprintf(w, "data: %s\n", newResponse(id, h.llmChat.ModelName(), "", "", msg.Err))

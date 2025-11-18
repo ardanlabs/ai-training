@@ -48,7 +48,7 @@ const (
 	WebWriteTimeout    = 120 * time.Second
 	WebIdleTimeout     = 120 * time.Second
 	WebShutdownTimeout = 20 * time.Second
-	WebAPIHost         = "0.0.0.0:3000"
+	WebAPIHost         = "0.0.0.0:8080"
 )
 
 func main() {

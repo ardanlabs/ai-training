@@ -26,6 +26,9 @@ function App() {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+  const [temperature, setTemperature] = useState(1.0)
+  const [topP, setTopP] = useState(0.95)
+  const [topK, setTopK] = useState(50)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   const scrollToBottom = () => {
@@ -57,10 +60,13 @@ function App() {
 
     try {
       const requestBody: ChatRequest = {
-        messages: updatedMessages
+        messages: updatedMessages,
+        temperature,
+        top_p: topP,
+        top_k: topK
       }
 
-      const response = await fetch('http://localhost:3000/chat', {
+      const response = await fetch('http://localhost:8080/chat', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -145,6 +151,44 @@ function App() {
   return (
     <div className="app">
       <div className="chat-container">
+        <div className="parameters">
+          <div className="param">
+            <label>Temperature: {temperature}</label>
+            <input
+              type="range"
+              min="0"
+              max="2"
+              step="0.1"
+              value={temperature}
+              onChange={(e) => setTemperature(parseFloat(e.target.value))}
+              disabled={isLoading}
+            />
+          </div>
+          <div className="param">
+            <label>Top P: {topP}</label>
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.05"
+              value={topP}
+              onChange={(e) => setTopP(parseFloat(e.target.value))}
+              disabled={isLoading}
+            />
+          </div>
+          <div className="param">
+            <label>Top K: {topK}</label>
+            <input
+              type="range"
+              min="1"
+              max="100"
+              step="1"
+              value={topK}
+              onChange={(e) => setTopK(parseInt(e.target.value))}
+              disabled={isLoading}
+            />
+          </div>
+        </div>
         <div className="messages">
           {messages.map((msg, idx) => (
             <div key={idx} className={`message ${msg.role}`}>

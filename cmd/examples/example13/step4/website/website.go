@@ -45,7 +45,8 @@ func (h *handlers) chat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fmt.Printf("traceID: %s: chat: req: %#v\n", traceID, req)
+	fmt.Printf("traceID: %s: chat: msgs: %#v\n", traceID, req.Messages)
+	params := getParams(traceID, req)
 
 	yesSearch, err := h.needVectorSearch(traceID, req)
 	if err != nil {
@@ -73,7 +74,7 @@ func (h *handlers) chat(w http.ResponseWriter, r *http.Request) {
 
 	msgs := h.compileChatMessages(traceID, req, rankings)
 
-	ch, err := h.performChat(traceID, msgs)
+	ch, err := h.performChat(traceID, msgs, params)
 	if err != nil {
 		sendError(w, traceID, "performChat", err)
 		return
@@ -134,7 +135,13 @@ func (h *handlers) needVectorSearch(traceID string, req Request) (bool, error) {
 		},
 	}
 
-	ch, err := h.performChat(traceID, msgs)
+	params := llamacpp.Params{
+		TopK: 1.0,
+		TopP: 0.9,
+		Temp: 0.7,
+	}
+
+	ch, err := h.performChat(traceID, msgs, params)
 	if err != nil {
 		return false, err
 	}
@@ -245,17 +252,13 @@ func (h *handlers) compileChatMessages(traceID string, req Request, rankings []l
 	return msgs
 }
 
-func (h *handlers) performChat(traceID string, msgs []llamacpp.ChatMessage) (<-chan llamacpp.ChatResponse, error) {
+func (h *handlers) performChat(traceID string, msgs []llamacpp.ChatMessage, params llamacpp.Params) (<-chan llamacpp.ChatResponse, error) {
 	fmt.Printf("traceID: %s: performChat: started: msgs: %d\n", traceID, len(msgs))
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	ch, err := h.llmChat.ChatCompletions(ctx, msgs, llamacpp.Params{
-		TopK: 1.0,
-		TopP: 0.9,
-		Temp: 0.7,
-	})
+	ch, err := h.llmChat.ChatCompletions(ctx, msgs, params)
 	if err != nil {
 		return nil, fmt.Errorf("chat completions: %w", err)
 	}

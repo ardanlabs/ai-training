@@ -29,6 +29,73 @@ You will find in the source code file for each example notes to help you underst
 
 The makefile has everything you need to get up and running quickly.
 
+### Examples
+
+**- Example 01**: This example shows you what a vector and embedding is by hand crafting a relationship of data. It also shows you how cosine similarity works between different vectors.
+
+**- Example 02**: This example shows you how to use an LLM to create vector embeddings and get the same results from the hand crafted solution.
+
+**- Example 03**: This example shows you how to use MongoDB as a vector database to perform a nearest neighbor vector search. The example will create a vector search index, store 2 documents, and perform a vector search.
+
+**- Example 04**: This example shows you how to use Ollama to create a reasonable response to a question with provided content.
+
+**- Example 05**: This example shows you how to use MongoDB and Ollama to create a proper vector embedding database for the Ultimate Go Notebook. With this vector database, you will be able to query for content that has a strong similarity to your question.
+
+**- Example 06**: This example shows you how to use MongoDB and Ollama to perform a vector search for a user question. The search will return the top 5 chunks from the database. Then these chunks are sent to the Llama model to create a coherent response. You must run example05 first.
+
+**- Example 07**: This example shows you how to get a model to generate SQL queries.
+
+**- Example 08**:
+
+- **Step 1**: This example shows you how to use a vision model to generate an image description.
+
+- **Step 2**: This examples takes step1 and shows you how to generate a vector embedding from the image description and for the image itself.
+
+- **Step 3**: This example takes step2 and shows you how to store the image details into a vector database for similarity searching.
+
+- **Step 4**: This example takes step3 and shows you how to search for an image based on its description.
+
+- **Step 5**: This example takes step4 and shows you how to process a set of images from a location on disk and provide search capabilities by text or similar image.
+
+**- Example 09**:
+
+- **Step 1**: This example shows you how to create a terminal based chat agent using the Ollama service.
+
+- **Step 2**: This example shows you how to add a system prompt and better UI formatting from the chat agent in step 1.
+
+- **Step 3**: This example shows you the workflow and mechanics for tool calling.
+
+- **Step 4**: This example shows you how to add tool calling to the chat agent from steps 2 and 3.
+
+- **Step 5**: This example shows you how introduce "real" tooling into the coding agent from step4. We will add support for reading, listing, creating, and editing files. We also enhance the agent's UI.
+
+**- Example 10**:
+
+- **Step 1**: This example shows you how to create a basic MCP interaction where the Server runs as a service and extends the set of tools as endpoints. The Client makes a call to the Server via the MCP SSE protocol. The makefile shows you the raw CURL calls that are used to make the client/server interaction.
+
+- **Step 2**: This example shows you how to use the program from cmd/examples/example10/step4/main.go and move the tooling to a MCP service that is called by the tooling.
+
+**- Example 11**:
+
+- **Step 1**: This example provides a proof of concept for extracting transcriptions and, code examples from videos using the Ollama and a vision model. It then stores the extracted data in a MongoDB database for vector search and RAG functionality.
+
+- **Step 2**: This example provides a chat interface for the video that was processed in step1.
+
+**- Example 12**: This example shows you how to query the Docling API to extract data from a PDF and have it processed by an LLM.
+
+**- Example 13**:
+
+- **Step 1**: This example shows you how to create a simple chat application against an inference model using llamacpp directly via yzma and a native Go application.
+
+- **Step 2**: This example shows you how to use yzma to execute a simple prompt against a vision model using llamacpp directly via yzma and a native Go application.
+
+- **Step 3**: This example shows you a complete RAG application using DuckDB as an embedding DB and an embedding model to generate embeddings, and a chat model for answering a question using llamacpp directly via yzma and a native Go application.
+
+- **Step 4**: This example shows you a web service that provides a chat endpoint for asking questions about the Go notebook. It uses the code from step3 for the RAG aspects of the application. The code also provides an embedded react app that can be used to interact with the chat endpoint. The react app is built using vite and the code is in the app directory.
+
+**- Example 14**: This example shows you how to use GoMLX and GoNB projects so we can run a Jupyter notebook that can
+execute Go code.
+
 ### Installing Software
 
 To run the examples in this repo, start by installing `mongosh` and `ollama` using Brew. If you don't have Brew installed, I highly recommend it.

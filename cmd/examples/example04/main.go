@@ -1,4 +1,4 @@
-// This example shows you how to Ollama to create a reasonable response to a
+// This example shows you how to use Ollama to create a reasonable response to a
 // question with provided content.
 //
 // # Running the example:

@@ -1,4 +1,4 @@
-// This example shows you how add tool calling to the chat agent from
+// This example shows you how to add tool calling to the chat agent from
 // steps 2 and 3.
 //
 // # Running the example:

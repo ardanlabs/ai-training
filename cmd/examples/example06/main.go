@@ -1,7 +1,7 @@
 // This example shows you how to use MongoDB and Ollama to perform a vector
 // search for a user question. The search will return the top 5 chunks from
 // the database. Then these chunks are sent to the Llama model to create a
-// coherent response. You must run example06 first.
+// coherent response. You must run example05 first.
 //
 // # Running the example:
 //

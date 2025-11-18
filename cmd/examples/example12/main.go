@@ -3,7 +3,7 @@
 //
 // # Running the example:
 //
-//	$ make example12-step1
+//	$ make example12
 //
 // # This requires running the following commands:
 //

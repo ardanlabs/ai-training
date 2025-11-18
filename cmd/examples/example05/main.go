@@ -1,5 +1,5 @@
 // This example shows you how to use MongoDB and Ollama to create a proper vector
-// embedding database of the Ultimate Go Notebook. With this vector database,
+// embedding database for the Ultimate Go Notebook. With this vector database,
 // you will be able to query for content that has a strong similarity to your
 // question.
 //

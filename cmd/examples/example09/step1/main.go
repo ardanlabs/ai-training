@@ -1,4 +1,4 @@
-// This example shows you how to create a terminal based chat agent.
+// This example shows you how to create a terminal based chat agent
 // using the Ollama service.
 //
 // # Running the example:

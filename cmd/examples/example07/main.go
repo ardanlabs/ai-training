@@ -1,4 +1,4 @@
-// This example shows you how to get the model to generate SQL queries.
+// This example shows you how to get a model to generate SQL queries.
 //
 // # Running the example:
 //

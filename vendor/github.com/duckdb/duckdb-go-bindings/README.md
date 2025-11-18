@@ -19,6 +19,7 @@ This module's *first* release contains DuckDB's v1.2.0 release.
 
 | duckdb version | main module | darwin amd | darwin arm | linux amd | linux arm | windows amd |
 |----------------|-------------|------------|------------|-----------|-----------|-------------|
+| v1.4.2         | v0.1.23     | v0.1.23    | v0.1.23    | v0.1.23   | v0.1.23   | v0.1.23     |
 | v1.4.1         | v0.1.21     | v0.1.21    | v0.1.21    | v0.1.21   | v0.1.21   | v0.1.21     |
 | v1.4.0         | v0.1.19     | v0.1.19    | v0.1.19    | v0.1.19   | v0.1.19   | v0.1.19     |
 | v1.3.2         | v0.1.17     | v0.1.12    | v0.1.12    | v0.1.12   | v0.1.12   | v0.1.12     |
@@ -92,4 +93,6 @@ On Linux.
 CGO_ENABLED=1 CGO_LDFLAGS="-lduckdb -L/path/to/dir" LD_LIBRARY_PATH=/path/to/dir go build -tags=duckdb_use_lib
 ```
 
+## Arrow functions
 
+Provide the duckdb_arrow build tag if you want to use arrow functions

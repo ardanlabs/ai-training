@@ -3,9 +3,9 @@ module github.com/ardanlabs/ai-training
 go 1.25.3
 
 require (
-	github.com/ardanlabs/llamacpp v0.0.0-20251118064528-bd139311b51a
+	github.com/ardanlabs/llamacpp v0.0.0-20251118065124-ab22634791d6
 	github.com/dlclark/regexp2 v1.11.5
-	github.com/duckdb/duckdb-go/v2 v2.5.1
+	github.com/duckdb/duckdb-go/v2 v2.5.2
 	github.com/google/uuid v1.6.0
 	github.com/hybridgroup/yzma v0.9.1-0.20251116180121-e2b6e555c164
 	github.com/jackc/pgx/v5 v5.7.6
@@ -18,14 +18,14 @@ require (
 require (
 	github.com/apache/arrow-go/v18 v18.4.1 // indirect
 	github.com/bgentry/go-netrc v0.0.0-20140422174119-9fd32a8b3d3d // indirect
-	github.com/duckdb/duckdb-go-bindings v0.1.22 // indirect
-	github.com/duckdb/duckdb-go-bindings/darwin-amd64 v0.1.22 // indirect
-	github.com/duckdb/duckdb-go-bindings/darwin-arm64 v0.1.22 // indirect
-	github.com/duckdb/duckdb-go-bindings/linux-amd64 v0.1.22 // indirect
-	github.com/duckdb/duckdb-go-bindings/linux-arm64 v0.1.22 // indirect
-	github.com/duckdb/duckdb-go-bindings/windows-amd64 v0.1.22 // indirect
-	github.com/duckdb/duckdb-go/arrowmapping v0.0.24 // indirect
-	github.com/duckdb/duckdb-go/mapping v0.0.24 // indirect
+	github.com/duckdb/duckdb-go-bindings v0.1.23 // indirect
+	github.com/duckdb/duckdb-go-bindings/darwin-amd64 v0.1.23 // indirect
+	github.com/duckdb/duckdb-go-bindings/darwin-arm64 v0.1.23 // indirect
+	github.com/duckdb/duckdb-go-bindings/linux-amd64 v0.1.23 // indirect
+	github.com/duckdb/duckdb-go-bindings/linux-arm64 v0.1.23 // indirect
+	github.com/duckdb/duckdb-go-bindings/windows-amd64 v0.1.23 // indirect
+	github.com/duckdb/duckdb-go/arrowmapping v0.0.25 // indirect
+	github.com/duckdb/duckdb-go/mapping v0.0.25 // indirect
 	github.com/ebitengine/purego v0.9.1 // indirect
 	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
 	github.com/goccy/go-json v0.10.5 // indirect

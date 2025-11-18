@@ -1,4 +1,4 @@
-DUCKDB_VERSION=v1.4.1
+DUCKDB_VERSION=v1.4.2
 
 fetch.static.libs:
 	cd ${DIRECTORY} && \
@@ -9,8 +9,8 @@ fetch.static.libs:
 	rm -f ${FILENAME}.zip
 
 update.binding:
-	rm -f ${DIRECTORY}/bindings.go && \
-	cp bindings.go ${DIRECTORY}/bindings.go
+	rm -f ${DIRECTORY}/bindings*.go && \
+	cp bindings*.go ${DIRECTORY}/.
 
 test.dynamic.lib:
 	mkdir dynamic-dir && \

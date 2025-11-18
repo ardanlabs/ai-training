@@ -778,9 +778,7 @@ var (
 
 // Result interface.
 
-var (
-	FetchChunk = bindings.FetchChunk
-)
+var FetchChunk = bindings.FetchChunk
 
 // Expression.
 

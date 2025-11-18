@@ -23,7 +23,7 @@ github.com/apache/arrow-go/v18/internal/bitutils
 github.com/apache/arrow-go/v18/internal/hashing
 github.com/apache/arrow-go/v18/internal/json
 github.com/apache/arrow-go/v18/internal/utils
-# github.com/ardanlabs/llamacpp v0.0.0-20251118064528-bd139311b51a
+# github.com/ardanlabs/llamacpp v0.0.0-20251118065124-ab22634791d6
 ## explicit; go 1.25.3
 github.com/ardanlabs/llamacpp
 # github.com/bgentry/go-netrc v0.0.0-20140422174119-9fd32a8b3d3d
@@ -33,31 +33,31 @@ github.com/bgentry/go-netrc/netrc
 ## explicit; go 1.13
 github.com/dlclark/regexp2
 github.com/dlclark/regexp2/syntax
-# github.com/duckdb/duckdb-go-bindings v0.1.22
+# github.com/duckdb/duckdb-go-bindings v0.1.23
 ## explicit; go 1.24
 github.com/duckdb/duckdb-go-bindings
-# github.com/duckdb/duckdb-go-bindings/darwin-amd64 v0.1.22
+# github.com/duckdb/duckdb-go-bindings/darwin-amd64 v0.1.23
 ## explicit; go 1.24
 github.com/duckdb/duckdb-go-bindings/darwin-amd64
-# github.com/duckdb/duckdb-go-bindings/darwin-arm64 v0.1.22
+# github.com/duckdb/duckdb-go-bindings/darwin-arm64 v0.1.23
 ## explicit; go 1.24
 github.com/duckdb/duckdb-go-bindings/darwin-arm64
-# github.com/duckdb/duckdb-go-bindings/linux-amd64 v0.1.22
+# github.com/duckdb/duckdb-go-bindings/linux-amd64 v0.1.23
 ## explicit; go 1.24
 github.com/duckdb/duckdb-go-bindings/linux-amd64
-# github.com/duckdb/duckdb-go-bindings/linux-arm64 v0.1.22
+# github.com/duckdb/duckdb-go-bindings/linux-arm64 v0.1.23
 ## explicit; go 1.24
 github.com/duckdb/duckdb-go-bindings/linux-arm64
-# github.com/duckdb/duckdb-go-bindings/windows-amd64 v0.1.22
+# github.com/duckdb/duckdb-go-bindings/windows-amd64 v0.1.23
 ## explicit; go 1.24
 github.com/duckdb/duckdb-go-bindings/windows-amd64
-# github.com/duckdb/duckdb-go/arrowmapping v0.0.24
+# github.com/duckdb/duckdb-go/arrowmapping v0.0.25
 ## explicit; go 1.24
 github.com/duckdb/duckdb-go/arrowmapping
-# github.com/duckdb/duckdb-go/mapping v0.0.24
+# github.com/duckdb/duckdb-go/mapping v0.0.25
 ## explicit; go 1.24
 github.com/duckdb/duckdb-go/mapping
-# github.com/duckdb/duckdb-go/v2 v2.5.1
+# github.com/duckdb/duckdb-go/v2 v2.5.2
 ## explicit; go 1.24
 github.com/duckdb/duckdb-go/v2
 # github.com/ebitengine/purego v0.9.1

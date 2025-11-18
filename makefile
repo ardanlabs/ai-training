@@ -404,6 +404,8 @@ tidy:
 
 deps-upgrade:
 	go get -u -v ./...
+	GOPROXY=direct go get github.com/hybridgroup/yzma@main
+	GOPROXY=direct go get github.com/ardanlabs/llamacpp@main
 	go mod tidy
 	go mod vendor
 

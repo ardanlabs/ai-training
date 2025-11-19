@@ -54,7 +54,7 @@ SHELL = $(if $(wildcard $(SHELL_PATH)),/bin/ash,/bin/bash)
 #	Run these commands to install everything needed.
 #	$ make install
 #	$ make docker
-#	$ make python-install
+#	$ make install-python
 
 # ==============================================================================
 # Remove Ollama Auto-Run
@@ -126,7 +126,7 @@ docker:
 	docker pull postgres:18.0
 	docker pull quay.io/docling-project/docling-serve:v1.8.0
 
-python-install:
+install-python:
 	rm -rf .venv
 	uv venv --python 3.12
 	uv lock
@@ -135,10 +135,11 @@ python-install:
 	uv pip install jupyterlab
 	uv pip list > pydeps.txt
 
-yzma-models:
+install-models:
+	mkdir -p zarf/models
 	curl -L -o zarf/models/Qwen2.5-VL-3B-Instruct-Q8_0.gguf "https://huggingface.co/ggml-org/Qwen2.5-VL-3B-Instruct-GGUF/resolve/main/Qwen2.5-VL-3B-Instruct-Q8_0.gguf?download=true"
 	curl -L -o zarf/models/mmproj-Qwen2.5-VL-3B-Instruct-Q8_0.gguf "https://huggingface.co/ggml-org/Qwen2.5-VL-3B-Instruct-GGUF/resolve/main/mmproj-Qwen2.5-VL-3B-Instruct-Q8_0.gguf?download=true"
-	curl -L -o zarf/models/qwen2.5-0.5b-instruct-fp16.gguf "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-fp16.gguf?download=true"
+	curl -L -o zarf/models/qwen2.5-0.5b-instruct-q8_0.gguf "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q8_0.gguf?download=true"
 	curl -L -o zarf/models/embeddinggemma-300m-qat-Q8_0.gguf "https://huggingface.co/ggml-org/embeddinggemma-300m-qat-q8_0-GGUF/resolve/main/embeddinggemma-300m-qat-Q8_0.gguf?download=true"
 
 # ==============================================================================
@@ -242,22 +243,27 @@ example12:
 
 example13-test:
 	export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:zarf/llamacpp && \
+	export YZMA_LIB=libraries && \
 	go test -count=1 ./cmd/examples/example13/llamacpp
 
 example13-step1:
 	export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:zarf/llamacpp && \
+	export YZMA_LIB=libraries && \
 	go run cmd/examples/example13/step1/*.go 2>/dev/null
 
 example13-step2:
 	export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:zarf/llamacpp && \
+	export YZMA_LIB=libraries && \
 	go run cmd/examples/example13/step2/*.go 2>/dev/null
 
 example13-step3:
 	export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:zarf/llamacpp && \
+	export YZMA_LIB=libraries && \
 	go run cmd/examples/example13/step3/*.go 2>/dev/null
 
 example13-step4:
 	export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:zarf/llamacpp && \
+	export YZMA_LIB=libraries && \
 	go run cmd/examples/example13/step4/*.go 2>/dev/null
 
 example13-step4-npm-install:

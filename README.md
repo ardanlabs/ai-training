@@ -103,7 +103,7 @@ To run the examples in this repo, start by installing `mongosh` and `ollama` usi
 ```
 make install
 make docker
-make python-install
+make install-python
 ```
 
 With the software installed, you will want to start your Ollama service. Open a terminal and run the following command. This will show logs so start a terminal window you can see but won't need.

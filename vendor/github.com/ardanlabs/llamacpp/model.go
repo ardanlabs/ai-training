@@ -28,13 +28,17 @@ func newModel(libPath string, modelFile string, cfg Config, options ...func(m *m
 	// -------------------------------------------------------------------------
 
 	llama.Init()
-	llama.LogSet(llama.LogSilent())
+	cfg.setLog()
 
 	// -------------------------------------------------------------------------
 
 	mdl, err := llama.ModelLoadFromFile(modelFile, llama.ModelDefaultParams())
 	if err != nil {
 		return nil, fmt.Errorf("unable to load model: %w", err)
+	}
+
+	if mdl == 0 {
+		return nil, fmt.Errorf("unable to load model: bad handle: %d", mdl)
 	}
 
 	vocab := llama.ModelGetVocab(mdl)

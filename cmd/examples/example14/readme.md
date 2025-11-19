@@ -8,7 +8,7 @@ To run this example, you need to have Go, Jupyter and GoNB installed.
 
 ```
 $ make install
-$ make python-install
+$ make install-python
 ```
 
 Once everything is installed you can run the Jupyter notebook:

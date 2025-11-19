@@ -6,8 +6,8 @@ github.com/apache/arrow-go/v18 v18.4.1 h1:q/jVkBWCJOB9reDgaIZIdruLQUb1kbkvOnOFez
 github.com/apache/arrow-go/v18 v18.4.1/go.mod h1:tLyFubsAl17bvFdUAy24bsSvA/6ww95Iqi67fTpGu3E=
 github.com/apache/thrift v0.22.0 h1:r7mTJdj51TMDe6RtcmNdQxgn9XcyfGDOzegMDRg47uc=
 github.com/apache/thrift v0.22.0/go.mod h1:1e7J/O1Ae6ZQMTYdy9xa3w9k+XHWPfRvdPyJeynQ+/g=
-github.com/ardanlabs/llamacpp v0.0.0-20251118211402-c3d89980582d h1:ogFSdc5ZMVuoDL6RBLkrXDpiL96ikwjMRNeg9Yxwj/U=
-github.com/ardanlabs/llamacpp v0.0.0-20251118211402-c3d89980582d/go.mod h1:9t/x7fpFrULOvQ+Utg/S0dzhytkN7rXK0Jrx8xggs8M=
+github.com/ardanlabs/llamacpp v0.0.0-20251119170132-9bf0b8113c6f h1:9KTCq4pJWOV6Sql86GDGn6OYcqdCFhJVsy/4oD9BUc8=
+github.com/ardanlabs/llamacpp v0.0.0-20251119170132-9bf0b8113c6f/go.mod h1:5MrfxDMVAZpBdcmxcB9ruDsev3qiUCapkgiQej8V834=
 github.com/bgentry/go-netrc v0.0.0-20140422174119-9fd32a8b3d3d h1:xDfNPAt8lFiC1UJrqV3uuy861HCTo708pDMbjHHdCas=
 github.com/bgentry/go-netrc v0.0.0-20140422174119-9fd32a8b3d3d/go.mod h1:6QX/PXZ00z/TKoufEY6K/a0k6AhaJrQKdFe6OfVXsa4=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=

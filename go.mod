@@ -3,7 +3,7 @@ module github.com/ardanlabs/ai-training
 go 1.25.3
 
 require (
-	github.com/ardanlabs/llamacpp v0.0.0-20251118211402-c3d89980582d
+	github.com/ardanlabs/llamacpp v0.0.0-20251119170132-9bf0b8113c6f
 	github.com/dlclark/regexp2 v1.11.5
 	github.com/duckdb/duckdb-go/v2 v2.5.2
 	github.com/google/uuid v1.6.0

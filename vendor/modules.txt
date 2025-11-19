@@ -23,7 +23,7 @@ github.com/apache/arrow-go/v18/internal/bitutils
 github.com/apache/arrow-go/v18/internal/hashing
 github.com/apache/arrow-go/v18/internal/json
 github.com/apache/arrow-go/v18/internal/utils
-# github.com/ardanlabs/llamacpp v0.0.0-20251119170132-9bf0b8113c6f
+# github.com/ardanlabs/llamacpp v0.0.0-20251119220224-515b0e29dbb5
 ## explicit; go 1.25.3
 github.com/ardanlabs/llamacpp
 # github.com/bgentry/go-netrc v0.0.0-20140422174119-9fd32a8b3d3d
@@ -112,7 +112,7 @@ github.com/hashicorp/go-safetemp
 # github.com/hashicorp/go-version v1.7.0
 ## explicit
 github.com/hashicorp/go-version
-# github.com/hybridgroup/yzma v0.9.1-0.20251116180121-e2b6e555c164
+# github.com/hybridgroup/yzma v0.9.1-0.20251119191510-c58adaf7296f
 ## explicit; go 1.24.0
 github.com/hybridgroup/yzma/pkg/download
 github.com/hybridgroup/yzma/pkg/llama
@@ -260,7 +260,7 @@ go.mongodb.org/mongo-driver/x/mongo/driver/operation
 go.mongodb.org/mongo-driver/x/mongo/driver/session
 go.mongodb.org/mongo-driver/x/mongo/driver/topology
 go.mongodb.org/mongo-driver/x/mongo/driver/wiremessage
-# golang.org/x/crypto v0.44.0
+# golang.org/x/crypto v0.45.0
 ## explicit; go 1.24.0
 golang.org/x/crypto/ocsp
 golang.org/x/crypto/pbkdf2

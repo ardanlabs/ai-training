@@ -23,7 +23,7 @@ github.com/apache/arrow-go/v18/internal/bitutils
 github.com/apache/arrow-go/v18/internal/hashing
 github.com/apache/arrow-go/v18/internal/json
 github.com/apache/arrow-go/v18/internal/utils
-# github.com/ardanlabs/llamacpp v0.0.0-20251119220224-515b0e29dbb5
+# github.com/ardanlabs/llamacpp v0.0.0-20251120001423-10d54fab8b8f
 ## explicit; go 1.25.3
 github.com/ardanlabs/llamacpp
 # github.com/bgentry/go-netrc v0.0.0-20140422174119-9fd32a8b3d3d

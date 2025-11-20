@@ -113,10 +113,11 @@ func (m *model) chatCompletions(messages []ChatMessage, params Params) <-chan Ch
 	ch := make(chan ChatResponse)
 
 	go func() {
+		defer close(ch)
+
 		lctx, err := llama.InitFromModel(m.model, m.ctxParams)
 		if err != nil {
 			ch <- ChatResponse{Err: fmt.Errorf("unable to init from model: %w", err)}
-			close(ch)
 			return
 		}
 
@@ -154,7 +155,6 @@ func (m *model) processChatCompletions(lctx llama.Context, prompt string, sample
 		token := llama.SamplerSample(sampler, lctx, -1)
 
 		if llama.VocabIsEOG(m.vocab, token) {
-			close(ch)
 			break
 		}
 
@@ -163,7 +163,6 @@ func (m *model) processChatCompletions(lctx llama.Context, prompt string, sample
 
 		resp := string(buf[:l])
 		if resp == "" {
-			close(ch)
 			break
 		}
 
@@ -179,16 +178,16 @@ func (m *model) chatVision(message ChatMessage, imageFile string, params Params)
 	ch := make(chan ChatResponse)
 
 	go func() {
+		defer close(ch)
+
 		if m.projFile == "" {
 			ch <- ChatResponse{Err: fmt.Errorf("projection file not set")}
-			close(ch)
 			return
 		}
 
 		lctx, err := llama.InitFromModel(m.model, m.ctxParams)
 		if err != nil {
 			ch <- ChatResponse{Err: fmt.Errorf("unable to init from model: %v", err)}
-			close(ch)
 			return
 		}
 
@@ -204,7 +203,6 @@ func (m *model) chatVision(message ChatMessage, imageFile string, params Params)
 		mtmdCtx, err := mtmd.InitFromFile(m.projFile, m.model, mctxParams)
 		if err != nil {
 			ch <- ChatResponse{Err: fmt.Errorf("unable to init from model: %v", err)}
-			close(ch)
 			return
 		}
 		defer mtmd.Free(mtmdCtx)
@@ -267,7 +265,6 @@ func (m *model) processChatVision(lctx llama.Context, sampler llama.Sampler, ch 
 		token := llama.SamplerSample(sampler, lctx, -1)
 
 		if llama.VocabIsEOG(m.vocab, token) {
-			close(ch)
 			break
 		}
 
@@ -276,7 +273,6 @@ func (m *model) processChatVision(lctx llama.Context, sampler llama.Sampler, ch 
 
 		resp := string(buf[:l])
 		if resp == "" {
-			close(ch)
 			break
 		}
 

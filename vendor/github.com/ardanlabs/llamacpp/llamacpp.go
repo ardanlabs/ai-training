@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/hybridgroup/yzma/pkg/mtmd"
 )
@@ -16,6 +17,7 @@ import (
 type Llama struct {
 	modelName string
 	llama     chan *model
+	wg        sync.WaitGroup
 }
 
 // New provides the ability to use models in a concurrently safe way.
@@ -59,6 +61,8 @@ func (llm *Llama) ModelName() string {
 // Unload will close down all loaded models. You should call this only when you
 // are completely done using the group.
 func (llm *Llama) Unload() {
+	llm.wg.Wait()
+
 	close(llm.llama)
 	for llama := range llm.llama {
 		llama.unload()
@@ -72,8 +76,10 @@ func (llm *Llama) ModelInfo(ctx context.Context) (ModelInfo, error) {
 		return ModelInfo{}, ctx.Err()
 
 	case llama := <-llm.llama:
+		llm.wg.Add(1)
 		defer func() {
 			llm.llama <- llama
+			llm.wg.Done()
 		}()
 
 		return llama.modelInfo(), nil
@@ -90,10 +96,12 @@ func (llm *Llama) ChatCompletions(ctx context.Context, messages []ChatMessage, p
 		return nil, ctx.Err()
 
 	case llama := <-llm.llama:
+		llm.wg.Add(1)
 		go func() {
 			defer func() {
 				close(ch)
 				llm.llama <- llama
+				llm.wg.Done()
 			}()
 
 			lch := llama.chatCompletions(messages, params)
@@ -116,10 +124,12 @@ func (llm *Llama) ChatVision(ctx context.Context, message ChatMessage, imageFile
 		return nil, ctx.Err()
 
 	case llama := <-llm.llama:
+		llm.wg.Add(1)
 		go func() {
 			defer func() {
 				close(ch)
 				llm.llama <- llama
+				llm.wg.Done()
 			}()
 
 			lch := llama.chatVision(message, imageFile, params)
@@ -140,8 +150,10 @@ func (llm *Llama) Embed(ctx context.Context, text string) ([]float32, error) {
 		return nil, ctx.Err()
 
 	case llama := <-llm.llama:
+		llm.wg.Add(1)
 		defer func() {
 			llm.llama <- llama
+			llm.wg.Done()
 		}()
 
 		vec, err := llama.embed(text)

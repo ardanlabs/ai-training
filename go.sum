@@ -6,8 +6,8 @@ github.com/apache/arrow-go/v18 v18.4.1 h1:q/jVkBWCJOB9reDgaIZIdruLQUb1kbkvOnOFez
 github.com/apache/arrow-go/v18 v18.4.1/go.mod h1:tLyFubsAl17bvFdUAy24bsSvA/6ww95Iqi67fTpGu3E=
 github.com/apache/thrift v0.22.0 h1:r7mTJdj51TMDe6RtcmNdQxgn9XcyfGDOzegMDRg47uc=
 github.com/apache/thrift v0.22.0/go.mod h1:1e7J/O1Ae6ZQMTYdy9xa3w9k+XHWPfRvdPyJeynQ+/g=
-github.com/ardanlabs/kronk v0.3.0 h1:zqs1080rswSngvd2GWRR3sSTzFy3RfGba1FGp5VNqLk=
-github.com/ardanlabs/kronk v0.3.0/go.mod h1:VrATvD6p3KeJbPUv0H5UkZk+botSm+3lpGTjKp/FJ5o=
+github.com/ardanlabs/kronk v0.3.1-0.20251120165745-d91fe56fd5d7 h1:5tKQ7xz7xMVscPAxelTFdK/4XovSyFnl2eDTa4V3B2o=
+github.com/ardanlabs/kronk v0.3.1-0.20251120165745-d91fe56fd5d7/go.mod h1:NyyPCCwDqf6Lw7v3C81h67VCpzHjOc4BDOymqjrgmqQ=
 github.com/bgentry/go-netrc v0.0.0-20140422174119-9fd32a8b3d3d h1:xDfNPAt8lFiC1UJrqV3uuy861HCTo708pDMbjHHdCas=
 github.com/bgentry/go-netrc v0.0.0-20140422174119-9fd32a8b3d3d/go.mod h1:6QX/PXZ00z/TKoufEY6K/a0k6AhaJrQKdFe6OfVXsa4=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
@@ -64,8 +64,8 @@ github.com/hashicorp/go-safetemp v1.0.0 h1:2HR189eFNrjHQyENnQMMpCiBAsRxzbTMIgBhE
 github.com/hashicorp/go-safetemp v1.0.0/go.mod h1:oaerMy3BhqiTbVye6QuFhFtIceqFoDHxNAB65b+Rj1I=
 github.com/hashicorp/go-version v1.7.0 h1:5tqGy27NaOTB8yJKUZELlFAS/LTKJkrmONwQKeRZfjY=
 github.com/hashicorp/go-version v1.7.0/go.mod h1:fltr4n8CU8Ke44wwGCBoEymUuxUHl09ZGVZPK5anwXA=
-github.com/hybridgroup/yzma v0.9.1-0.20251120131549-db9280ad28ab h1:c0wiujpXAPE/RcXeCd/rovq9PK+I3iN2Lw6STN9CmiM=
-github.com/hybridgroup/yzma v0.9.1-0.20251120131549-db9280ad28ab/go.mod h1:0j0lGvdDPSe+WnwmCQJWep37K6htvK+VN7lL9NHQ1V4=
+github.com/hybridgroup/yzma v0.9.1-0.20251120165427-dc22e1c115a3 h1:Bqav3O39o3XYYzlWFpVg21grIjbAF8d2+GmEZAAaPyQ=
+github.com/hybridgroup/yzma v0.9.1-0.20251120165427-dc22e1c115a3/go.mod h1:0j0lGvdDPSe+WnwmCQJWep37K6htvK+VN7lL9NHQ1V4=
 github.com/jackc/pgpassfile v1.0.0 h1:/6Hmqy13Ss2zCq62VdNG8tM1wchn8zjSGOBJ6icpsIM=
 github.com/jackc/pgpassfile v1.0.0/go.mod h1:CEx0iS5ambNFdcRtxPj5JhEz+xB6uRky5eyVu/W2HEg=
 github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 h1:iCEnooe7UlwOQYpKFhBabPMi4aNAfoODPEFNiAnClxo=

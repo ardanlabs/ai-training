@@ -241,29 +241,20 @@ example12:
 	export OLLAMA_CONTEXT_LENGTH=$(OLLAMA_CONTEXT_LENGTH) && \
 	go run cmd/examples/example12/*.go
 
-example13-test:
-	export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:zarf/llamacpp && \
-	export YZMA_LIB=zarf/llamacpp && \
-	go test -count=1 ./cmd/examples/example13/llamacpp
-
 example13-step1:
 	export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:zarf/llamacpp && \
-	export YZMA_LIB=zarf/llamacpp && \
 	go run cmd/examples/example13/step1/*.go 2>/dev/null
 
 example13-step2:
 	export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:zarf/llamacpp && \
-	export YZMA_LIB=zarf/llamacpp && \
 	go run cmd/examples/example13/step2/*.go 2>/dev/null
 
 example13-step3:
 	export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:zarf/llamacpp && \
-	export YZMA_LIB=zarf/llamacpp && \
 	go run cmd/examples/example13/step3/*.go 2>/dev/null
 
 example13-step4:
 	export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:zarf/llamacpp && \
-	export YZMA_LIB=zarf/llamacpp && \
 	go run cmd/examples/example13/step4/*.go 2>/dev/null
 
 example13-step4-npm-install:

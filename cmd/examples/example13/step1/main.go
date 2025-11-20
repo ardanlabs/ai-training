@@ -45,9 +45,13 @@ func run() error {
 
 	// -------------------------------------------------------------------------
 
+	if err := kronk.Init(libPath, kronk.LogSilent); err != nil {
+		return fmt.Errorf("unable to init kronk: %w", err)
+	}
+
 	const concurrency = 1
 
-	llm, err := kronk.New(concurrency, libPath, modelFile, kronk.Config{
+	llm, err := kronk.New(concurrency, modelFile, kronk.Config{
 		ContextWindow: 1024 * 32,
 	})
 	if err != nil {

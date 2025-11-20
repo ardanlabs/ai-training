@@ -15,10 +15,11 @@ install-models:
 # ==============================================================================
 # Tests
 
-test:
+test: deps-upgrade
 	export LD_LIBRARY_PATH=libraries && \
 	export YZMA_LIB=libraries && \
 	export CONCURRENCY=3 && \
+	export RUN_MACOS=1 && \
 	go test -v -count=1
 
 # ==============================================================================

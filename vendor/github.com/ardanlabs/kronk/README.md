@@ -5,8 +5,8 @@ This project lets you use Go for hardware accelerated local inference with llama
 Copyright 2025 Ardan Labs  
 hello@ardanlabs.com
 
-[![Linux](https://github.com/ardanlabs/llamacpp/actions/workflows/linux.yml/badge.svg)](https://github.com/ardanlabs/llamacpp/actions/workflows/linux.yml)
-[![macOS](https://github.com/ardanlabs/llamacpp/actions/workflows/macos.yml/badge.svg)](https://github.com/ardanlabs/llamacpp/actions/workflows/macos.yml)
+[![Linux](https://github.com/ardanlabs/kronk/actions/workflows/linux.yml/badge.svg)](https://github.com/ardanlabs/kronk/actions/workflows/linux.yml)
+[![macOS](https://github.com/ardanlabs/kronk/actions/workflows/macos.yml/badge.svg)](https://github.com/ardanlabs/kronk/actions/workflows/macos.yml)
 
 ## My Information
 

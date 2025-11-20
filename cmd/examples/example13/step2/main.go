@@ -51,13 +51,17 @@ func run() error {
 
 	// -------------------------------------------------------------------------
 
+	if err := kronk.Init(libPath, kronk.LogSilent); err != nil {
+		return fmt.Errorf("unable to init kronk: %w", err)
+	}
+
 	const concurrency = 1
 
 	cfg := kronk.Config{
 		ContextWindow: 4096,
 	}
 
-	llm, err := kronk.New(concurrency, libPath, modelFile, cfg, kronk.WithProjection(projFile))
+	llm, err := kronk.New(concurrency, modelFile, cfg, kronk.WithProjection(projFile))
 	if err != nil {
 		return fmt.Errorf("unable to create inference model: %w", err)
 	}

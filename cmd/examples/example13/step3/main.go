@@ -59,9 +59,13 @@ func run() error {
 
 	// -------------------------------------------------------------------------
 
+	if err := kronk.Init(libPath, kronk.LogSilent); err != nil {
+		return fmt.Errorf("unable to init kronk: %w", err)
+	}
+
 	const concurrency = 1
 
-	llmEmbed, err := kronk.New(concurrency, libPath, modelEmbedFile, kronk.Config{
+	llmEmbed, err := kronk.New(concurrency, modelEmbedFile, kronk.Config{
 		ContextWindow: 1024 * 32,
 		Embeddings:    true,
 	})
@@ -70,7 +74,7 @@ func run() error {
 	}
 	defer llmEmbed.Unload()
 
-	llmChat, err := kronk.New(concurrency, libPath, modelChatFile, kronk.Config{
+	llmChat, err := kronk.New(concurrency, modelChatFile, kronk.Config{
 		ContextWindow: 1024 * 32,
 	})
 	if err != nil {

@@ -23,7 +23,7 @@ github.com/apache/arrow-go/v18/internal/bitutils
 github.com/apache/arrow-go/v18/internal/hashing
 github.com/apache/arrow-go/v18/internal/json
 github.com/apache/arrow-go/v18/internal/utils
-# github.com/ardanlabs/kronk v0.3.1-0.20251120165745-d91fe56fd5d7
+# github.com/ardanlabs/kronk v0.3.0
 ## explicit; go 1.25.3
 github.com/ardanlabs/kronk
 # github.com/bgentry/go-netrc v0.0.0-20140422174119-9fd32a8b3d3d
@@ -51,7 +51,7 @@ github.com/duckdb/duckdb-go-bindings/linux-arm64
 # github.com/duckdb/duckdb-go-bindings/windows-amd64 v0.1.23
 ## explicit; go 1.24
 github.com/duckdb/duckdb-go-bindings/windows-amd64
-# github.com/duckdb/duckdb-go/arrowmapping v0.0.25
+# github.com/duckdb/duckdb-go/arrowmapping v0.0.26
 ## explicit; go 1.24
 github.com/duckdb/duckdb-go/arrowmapping
 # github.com/duckdb/duckdb-go/mapping v0.0.25
@@ -112,7 +112,7 @@ github.com/hashicorp/go-safetemp
 # github.com/hashicorp/go-version v1.7.0
 ## explicit
 github.com/hashicorp/go-version
-# github.com/hybridgroup/yzma v0.9.1-0.20251120165427-dc22e1c115a3
+# github.com/hybridgroup/yzma v1.0.0-beta1
 ## explicit; go 1.24.0
 github.com/hybridgroup/yzma/pkg/download
 github.com/hybridgroup/yzma/pkg/llama

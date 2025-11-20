@@ -3,11 +3,11 @@ module github.com/ardanlabs/ai-training
 go 1.25.3
 
 require (
-	github.com/ardanlabs/kronk v0.3.1-0.20251120165745-d91fe56fd5d7
+	github.com/ardanlabs/kronk v0.3.0
 	github.com/dlclark/regexp2 v1.11.5
 	github.com/duckdb/duckdb-go/v2 v2.5.2
 	github.com/google/uuid v1.6.0
-	github.com/hybridgroup/yzma v0.9.1-0.20251120165427-dc22e1c115a3
+	github.com/hybridgroup/yzma v1.0.0-beta1
 	github.com/jackc/pgx/v5 v5.7.6
 	github.com/jmoiron/sqlx v1.4.0
 	github.com/modelcontextprotocol/go-sdk v1.1.0
@@ -24,7 +24,7 @@ require (
 	github.com/duckdb/duckdb-go-bindings/linux-amd64 v0.1.23 // indirect
 	github.com/duckdb/duckdb-go-bindings/linux-arm64 v0.1.23 // indirect
 	github.com/duckdb/duckdb-go-bindings/windows-amd64 v0.1.23 // indirect
-	github.com/duckdb/duckdb-go/arrowmapping v0.0.25 // indirect
+	github.com/duckdb/duckdb-go/arrowmapping v0.0.26 // indirect
 	github.com/duckdb/duckdb-go/mapping v0.0.25 // indirect
 	github.com/ebitengine/purego v0.9.1 // indirect
 	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect

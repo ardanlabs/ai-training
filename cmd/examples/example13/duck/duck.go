@@ -10,13 +10,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ardanlabs/llamacpp"
+	"github.com/ardanlabs/kronk"
 	"github.com/duckdb/duckdb-go/v2"
 )
 
 // LoadData loads the specified chunks file into a duckdb database that is
 // configured to use the VSS extension for vector similarity search.
-func LoadData(dbPath string, llm *llamacpp.Llama, dimentions int, chunksFile string) (*sql.DB, error) {
+func LoadData(dbPath string, llm *kronk.Llama, dimentions int, chunksFile string) (*sql.DB, error) {
 	connector, err := duckdb.NewConnector(dbPath, nil)
 	if err != nil {
 		return nil, fmt.Errorf("error creating connector: %w", err)
@@ -111,7 +111,7 @@ func LoadData(dbPath string, llm *llamacpp.Llama, dimentions int, chunksFile str
 	return db, nil
 }
 
-func loadChunks(db *sql.DB, llm *llamacpp.Llama, chunksFile string) error {
+func loadChunks(db *sql.DB, llm *kronk.Llama, chunksFile string) error {
 	data, err := os.ReadFile(chunksFile)
 	if err != nil {
 		return fmt.Errorf("read file: %w", err)

@@ -32,7 +32,7 @@ import (
 	"github.com/ardanlabs/ai-training/cmd/examples/example13/duck"
 	"github.com/ardanlabs/ai-training/cmd/examples/example13/install"
 	"github.com/ardanlabs/ai-training/cmd/examples/example13/step4/website"
-	"github.com/ardanlabs/llamacpp"
+	"github.com/ardanlabs/kronk"
 	"github.com/hybridgroup/yzma/pkg/download"
 )
 
@@ -79,7 +79,7 @@ func run() error {
 
 	const concurrency = 5
 
-	llmEmbed, err := llamacpp.New(concurrency, libPath, modelEmbedFile, llamacpp.Config{
+	llmEmbed, err := kronk.New(concurrency, libPath, modelEmbedFile, kronk.Config{
 		ContextWindow: 1024 * 32,
 		Embeddings:    true,
 	})
@@ -88,7 +88,7 @@ func run() error {
 	}
 	defer llmEmbed.Unload()
 
-	llmChat, err := llamacpp.New(concurrency, libPath, modelChatFile, llamacpp.Config{
+	llmChat, err := kronk.New(concurrency, libPath, modelChatFile, kronk.Config{
 		ContextWindow: 1024 * 32,
 	})
 	if err != nil {

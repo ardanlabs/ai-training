@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/ardanlabs/llamacpp"
+	"github.com/ardanlabs/kronk"
 )
 
 type Config struct {
-	LLMEmbed *llamacpp.Llama
-	DBMChat  *llamacpp.Llama
+	LLMEmbed *kronk.Llama
+	DBMChat  *kronk.Llama
 	DB       *sql.DB
 }
 

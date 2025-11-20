@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ardanlabs/llamacpp"
+	"github.com/ardanlabs/kronk"
 )
 
 type Message struct {
@@ -20,7 +20,7 @@ type Request struct {
 	Temperature *float32  `json:"temperature"`
 }
 
-func getParams(traceID string, req Request) llamacpp.Params {
+func getParams(traceID string, req Request) kronk.Params {
 	topK := int32(50)
 	if req.TopK != nil {
 		fmt.Printf("traceID: %s: getParams: topK: %#v\n", traceID, *req.TopK)
@@ -39,7 +39,7 @@ func getParams(traceID string, req Request) llamacpp.Params {
 		temp = *req.Temperature
 	}
 
-	params := llamacpp.Params{
+	params := kronk.Params{
 		TopK: topK,
 		TopP: topP,
 		Temp: temp,

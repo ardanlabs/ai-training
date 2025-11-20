@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"github.com/ardanlabs/ai-training/cmd/examples/example13/install"
-	"github.com/ardanlabs/llamacpp"
+	"github.com/ardanlabs/kronk"
 	"github.com/hybridgroup/yzma/pkg/download"
 )
 
@@ -53,11 +53,11 @@ func run() error {
 
 	const concurrency = 1
 
-	cfg := llamacpp.Config{
+	cfg := kronk.Config{
 		ContextWindow: 4096,
 	}
 
-	llm, err := llamacpp.New(concurrency, libPath, modelFile, cfg, llamacpp.WithProjection(projFile))
+	llm, err := kronk.New(concurrency, libPath, modelFile, cfg, kronk.WithProjection(projFile))
 	if err != nil {
 		return fmt.Errorf("unable to create inference model: %w", err)
 	}
@@ -70,12 +70,12 @@ func run() error {
 	question := "What is in this picture?"
 	fmt.Printf("Question: %s\n\n", question)
 
-	message := llamacpp.ChatMessage{
+	message := kronk.ChatMessage{
 		Role:    "user",
 		Content: question,
 	}
 
-	params := llamacpp.Params{
+	params := kronk.Params{
 		TopK: 1.0,
 		TopP: 0.9,
 		Temp: 0.7,

@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"github.com/ardanlabs/ai-training/cmd/examples/example13/duck"
-	"github.com/ardanlabs/llamacpp"
+	"github.com/ardanlabs/kronk"
 	"github.com/google/uuid"
 )
 
@@ -28,8 +28,8 @@ const (
 )
 
 type handlers struct {
-	llmEmbed *llamacpp.Llama
-	llmChat  *llamacpp.Llama
+	llmEmbed *kronk.Llama
+	llmChat  *kronk.Llama
 	db       *sql.DB
 }
 
@@ -101,13 +101,13 @@ func (h *handlers) fileServerReact() func(w http.ResponseWriter, r *http.Request
 
 // =============================================================================
 
-func (h *handlers) findContext(traceID string, req Request) ([]llamacpp.Ranking, error) {
+func (h *handlers) findContext(traceID string, req Request) ([]kronk.Ranking, error) {
 	yesSearch, err := h.needVectorSearch(traceID, req)
 	if err != nil {
 		return nil, fmt.Errorf("needVectorSearch: %w", err)
 	}
 
-	var rankings []llamacpp.Ranking
+	var rankings []kronk.Ranking
 
 	if yesSearch {
 		docs, err := h.vectorSearch(traceID, req)
@@ -136,14 +136,14 @@ func (h *handlers) needVectorSearch(traceID string, req Request) (bool, error) {
 		%s
 	`
 
-	msgs := []llamacpp.ChatMessage{
+	msgs := []kronk.ChatMessage{
 		{
 			Role:    "user",
 			Content: fmt.Sprintf(prompt, req.Messages[len(req.Messages)-1].Content),
 		},
 	}
 
-	params := llamacpp.Params{
+	params := kronk.Params{
 		TopK: 1.0,
 		TopP: 0.9,
 		Temp: 0.7,
@@ -194,15 +194,15 @@ func (h *handlers) vectorSearch(traceID string, req Request) ([]duck.Document, e
 	return docs, nil
 }
 
-func (h *handlers) rerank(traceID string, docs []duck.Document, threshold float64) ([]llamacpp.Ranking, error) {
+func (h *handlers) rerank(traceID string, docs []duck.Document, threshold float64) ([]kronk.Ranking, error) {
 	fmt.Printf("traceID: %s: rerank: started: docs: %d\n", traceID, len(docs))
 
-	documents := make([]llamacpp.RankingDocument, 0, len(docs))
+	documents := make([]kronk.RankingDocument, 0, len(docs))
 	for _, doc := range docs {
 		fmt.Printf("traceID: %s: rerank: doc: %.2f: ", traceID, doc.Similarity)
 		if doc.Similarity >= threshold {
 			fmt.Println("keeping")
-			documents = append(documents, llamacpp.RankingDocument{Document: doc.Text, Embedding: doc.Embedding})
+			documents = append(documents, kronk.RankingDocument{Document: doc.Text, Embedding: doc.Embedding})
 			continue
 		}
 		fmt.Println("discarding")
@@ -216,7 +216,7 @@ func (h *handlers) rerank(traceID string, docs []duck.Document, threshold float6
 	return rankings, nil
 }
 
-func (h *handlers) compileChatMessages(traceID string, req Request, rankings []llamacpp.Ranking) []llamacpp.ChatMessage {
+func (h *handlers) compileChatMessages(traceID string, req Request, rankings []kronk.Ranking) []kronk.ChatMessage {
 	fmt.Printf("traceID: %s: compileChatMessages: started: msgs: %d: rankings: %d\n", traceID, len(req.Messages), len(rankings))
 
 	const systemPrompt = `
@@ -228,14 +228,14 @@ func (h *handlers) compileChatMessages(traceID string, req Request, rankings []l
 	`
 
 	// Add 2 more elements for the system prompt and any context.
-	msgs := make([]llamacpp.ChatMessage, 0, len(req.Messages)+2)
+	msgs := make([]kronk.ChatMessage, 0, len(req.Messages)+2)
 
 	// Add the system prompt.
-	msgs = append(msgs, llamacpp.ChatMessage{Role: "system", Content: systemPrompt})
+	msgs = append(msgs, kronk.ChatMessage{Role: "system", Content: systemPrompt})
 
 	// Add all but the very last message in the history.
 	for _, msg := range req.Messages[:len(req.Messages)-1] {
-		msgs = append(msgs, llamacpp.ChatMessage{Role: "user", Content: msg.Content})
+		msgs = append(msgs, kronk.ChatMessage{Role: "user", Content: msg.Content})
 	}
 
 	// Add the top 2 extra context if it exists.
@@ -248,19 +248,19 @@ func (h *handlers) compileChatMessages(traceID string, req Request, rankings []l
 			}
 		}
 
-		msgs = append(msgs, llamacpp.ChatMessage{Role: "user", Content: fmt.Sprintf("Context:\n%s", content)})
+		msgs = append(msgs, kronk.ChatMessage{Role: "user", Content: fmt.Sprintf("Context:\n%s", content)})
 	}
 
 	// Add the final message from the history. We expect this to be a question.
 	question := req.Messages[len(req.Messages)-1].Content
-	msgs = append(msgs, llamacpp.ChatMessage{Role: "user", Content: question})
+	msgs = append(msgs, kronk.ChatMessage{Role: "user", Content: question})
 
 	fmt.Printf("traceID: %s: compileChatMessages: ended: msgs: %d\n", traceID, len(msgs))
 
 	return msgs
 }
 
-func (h *handlers) performChat(traceID string, msgs []llamacpp.ChatMessage, params llamacpp.Params) (<-chan llamacpp.ChatResponse, error) {
+func (h *handlers) performChat(traceID string, msgs []kronk.ChatMessage, params kronk.Params) (<-chan kronk.ChatResponse, error) {
 	fmt.Printf("traceID: %s: performChat: started: msgs: %d\n", traceID, len(msgs))
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -274,7 +274,7 @@ func (h *handlers) performChat(traceID string, msgs []llamacpp.ChatMessage, para
 	return ch, nil
 }
 
-func (h *handlers) streamResponse(ctx context.Context, traceID string, w http.ResponseWriter, ch <-chan llamacpp.ChatResponse) error {
+func (h *handlers) streamResponse(ctx context.Context, traceID string, w http.ResponseWriter, ch <-chan kronk.ChatResponse) error {
 	fmt.Printf("traceID: %s: streamResponse: started\n", traceID)
 
 	f, ok := w.(http.Flusher)

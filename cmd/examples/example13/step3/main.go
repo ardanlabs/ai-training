@@ -19,7 +19,7 @@ import (
 
 	"github.com/ardanlabs/ai-training/cmd/examples/example13/duck"
 	"github.com/ardanlabs/ai-training/cmd/examples/example13/install"
-	"github.com/ardanlabs/llamacpp"
+	"github.com/ardanlabs/kronk"
 	"github.com/hybridgroup/yzma/pkg/download"
 )
 
@@ -61,7 +61,7 @@ func run() error {
 
 	const concurrency = 1
 
-	llmEmbed, err := llamacpp.New(concurrency, libPath, modelEmbedFile, llamacpp.Config{
+	llmEmbed, err := kronk.New(concurrency, libPath, modelEmbedFile, kronk.Config{
 		ContextWindow: 1024 * 32,
 		Embeddings:    true,
 	})
@@ -70,7 +70,7 @@ func run() error {
 	}
 	defer llmEmbed.Unload()
 
-	llmChat, err := llamacpp.New(concurrency, libPath, modelChatFile, llamacpp.Config{
+	llmChat, err := kronk.New(concurrency, libPath, modelChatFile, kronk.Config{
 		ContextWindow: 1024 * 32,
 	})
 	if err != nil {
@@ -131,9 +131,9 @@ func run() error {
 
 		fmt.Print("\n-- Rerank ---\n\n")
 
-		documents := make([]llamacpp.RankingDocument, len(docs))
+		documents := make([]kronk.RankingDocument, len(docs))
 		for i, doc := range docs {
-			documents[i] = llamacpp.RankingDocument{Document: doc.Text, Embedding: doc.Embedding}
+			documents[i] = kronk.RankingDocument{Document: doc.Text, Embedding: doc.Embedding}
 		}
 
 		rankings, err := llmEmbed.Rerank(documents)
@@ -170,7 +170,7 @@ func run() error {
 
 		finalPrompt := fmt.Sprintf(prompt, content, question)
 
-		msgs := []llamacpp.ChatMessage{
+		msgs := []kronk.ChatMessage{
 			{Role: "user", Content: finalPrompt},
 		}
 
@@ -178,7 +178,7 @@ func run() error {
 			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 			defer cancel()
 
-			ch, err := llmChat.ChatCompletions(ctx, msgs, llamacpp.Params{
+			ch, err := llmChat.ChatCompletions(ctx, msgs, kronk.Params{
 				TopK: 1.0,
 				TopP: 0.9,
 				Temp: 0.7,

@@ -16,7 +16,7 @@ import (
 	"time"
 
 	"github.com/ardanlabs/ai-training/cmd/examples/example13/install"
-	"github.com/ardanlabs/llamacpp"
+	"github.com/ardanlabs/kronk"
 	"github.com/hybridgroup/yzma/pkg/download"
 )
 
@@ -47,7 +47,7 @@ func run() error {
 
 	const concurrency = 1
 
-	llm, err := llamacpp.New(concurrency, libPath, modelFile, llamacpp.Config{
+	llm, err := kronk.New(concurrency, libPath, modelFile, kronk.Config{
 		ContextWindow: 1024 * 32,
 	})
 	if err != nil {
@@ -57,7 +57,7 @@ func run() error {
 
 	// -------------------------------------------------------------------------
 
-	var messages []llamacpp.ChatMessage
+	var messages []kronk.ChatMessage
 
 	for {
 		fmt.Print("\nUSER> ")
@@ -70,7 +70,7 @@ func run() error {
 			os.Exit(1)
 		}
 
-		messages = append(messages, llamacpp.ChatMessage{
+		messages = append(messages, kronk.ChatMessage{
 			Role:    "user",
 			Content: userInput,
 		})
@@ -78,7 +78,7 @@ func run() error {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		defer cancel()
 
-		params := llamacpp.Params{
+		params := kronk.Params{
 			TopK: 1.0,
 			TopP: 0.9,
 			Temp: 0.7,
@@ -101,7 +101,7 @@ func run() error {
 			finalResponse.WriteString(msg.Response)
 		}
 
-		messages = append(messages, llamacpp.ChatMessage{
+		messages = append(messages, kronk.ChatMessage{
 			Role:    "assistant",
 			Content: finalResponse.String(),
 		})

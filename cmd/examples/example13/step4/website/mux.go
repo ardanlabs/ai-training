@@ -4,22 +4,25 @@ import (
 	"database/sql"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/ardanlabs/kronk"
 )
 
 type Config struct {
-	LLMEmbed *kronk.Llama
-	DBMChat  *kronk.Llama
-	DB       *sql.DB
+	KRNEmbed   *kronk.Kronk
+	KRNChat    *kronk.Kronk
+	KRNTimeout time.Duration
+	DB         *sql.DB
 }
 
 func WebAPI(cfg Config) http.Handler {
 	mux := http.NewServeMux()
 
 	rts := handlers{
-		llmEmbed: cfg.LLMEmbed,
-		llmChat:  cfg.DBMChat,
+		krnEmbed: cfg.KRNEmbed,
+		krnChat:  cfg.KRNChat,
+		timeout:  cfg.KRNTimeout,
 		db:       cfg.DB,
 	}
 

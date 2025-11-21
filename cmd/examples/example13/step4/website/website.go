@@ -28,8 +28,9 @@ const (
 )
 
 type handlers struct {
-	llmEmbed *kronk.Llama
-	llmChat  *kronk.Llama
+	krnEmbed *kronk.Kronk
+	krnChat  *kronk.Kronk
+	timeout  time.Duration
 	db       *sql.DB
 }
 
@@ -56,7 +57,10 @@ func (h *handlers) chat(w http.ResponseWriter, r *http.Request) {
 	msgs := h.compileChatMessages(traceID, req, rankings)
 	params := getParams(traceID, req)
 
-	ch, err := h.performChat(traceID, msgs, params)
+	ctx, cancel := context.WithTimeout(context.Background(), h.timeout)
+	defer cancel()
+
+	ch, err := h.krnChat.ChatStreaming(ctx, msgs, params)
 	if err != nil {
 		sendError(w, traceID, "performChat", err)
 		return
@@ -149,18 +153,15 @@ func (h *handlers) needVectorSearch(traceID string, req Request) (bool, error) {
 		Temp: 0.7,
 	}
 
-	ch, err := h.performChat(traceID, msgs, params)
+	ctx, cancel := context.WithTimeout(context.Background(), h.timeout)
+	defer cancel()
+
+	response, err := h.krnChat.Chat(ctx, msgs, params)
 	if err != nil {
 		return false, err
 	}
 
-	var response strings.Builder
-
-	for msg := range ch {
-		response.WriteString(msg.Response)
-	}
-
-	resp := strings.ToLower(response.String())
+	resp := strings.ToLower(response)
 
 	if strings.Contains(resp, "yes") {
 		fmt.Printf("traceID: %s: needVectorSearch: response: YES: %s\n", traceID, resp)
@@ -178,10 +179,10 @@ func (h *handlers) vectorSearch(traceID string, req Request) ([]duck.Document, e
 
 	fmt.Printf("traceID: %s: vectorSearch: started: question: %s\n", traceID, question)
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), h.timeout)
 	defer cancel()
 
-	queryVector, err := h.llmEmbed.Embed(ctx, question)
+	queryVector, err := h.krnEmbed.Embed(ctx, question)
 	if err != nil {
 		return nil, fmt.Errorf("embed: %w", err)
 	}
@@ -208,7 +209,7 @@ func (h *handlers) rerank(traceID string, docs []duck.Document, threshold float6
 		fmt.Println("discarding")
 	}
 
-	rankings, err := h.llmChat.Rerank(documents)
+	rankings, err := h.krnChat.Rerank(documents)
 	if err != nil {
 		return nil, fmt.Errorf("rerank: %w", err)
 	}
@@ -260,20 +261,6 @@ func (h *handlers) compileChatMessages(traceID string, req Request, rankings []k
 	return msgs
 }
 
-func (h *handlers) performChat(traceID string, msgs []kronk.ChatMessage, params kronk.Params) (<-chan kronk.ChatResponse, error) {
-	fmt.Printf("traceID: %s: performChat: started: msgs: %d\n", traceID, len(msgs))
-
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	ch, err := h.llmChat.ChatCompletions(ctx, msgs, params)
-	if err != nil {
-		return nil, fmt.Errorf("chat completions: %w", err)
-	}
-
-	return ch, nil
-}
-
 func (h *handlers) streamResponse(ctx context.Context, traceID string, w http.ResponseWriter, ch <-chan kronk.ChatResponse) error {
 	fmt.Printf("traceID: %s: streamResponse: started\n", traceID)
 
@@ -299,19 +286,19 @@ func (h *handlers) streamResponse(ctx context.Context, traceID string, w http.Re
 
 		if msg.Err != nil {
 			fmt.Printf("traceID: %s: chat: ERROR: %s\n", traceID, msg.Err)
-			fmt.Fprintf(w, "data: %s\n", newResponse(id, h.llmChat.ModelName(), "", "", msg.Err))
+			fmt.Fprintf(w, "data: %s\n", newResponse(id, h.krnChat.ModelName(), "", "", msg.Err))
 			f.Flush()
 			break
 		}
 
 		finalResponse.WriteString(msg.Response)
-		fmt.Fprintf(w, "data: %s\n", newResponse(id, h.llmChat.ModelName(), msg.Response, "", nil))
+		fmt.Fprintf(w, "data: %s\n", newResponse(id, h.krnChat.ModelName(), msg.Response, "", nil))
 		f.Flush()
 	}
 
 	fr := finalResponse.String()
 	if len(fr) > 0 {
-		fmt.Fprintf(w, "data: %s\n", newResponse(id, h.llmChat.ModelName(), "", fr, nil))
+		fmt.Fprintf(w, "data: %s\n", newResponse(id, h.krnChat.ModelName(), "", fr, nil))
 		f.Flush()
 	}
 

@@ -61,11 +61,11 @@ func run() error {
 		ContextWindow: 4096,
 	}
 
-	llm, err := kronk.New(concurrency, modelFile, cfg, kronk.WithProjection(projFile))
+	krn, err := kronk.New(concurrency, modelFile, cfg, kronk.WithProjection(projFile))
 	if err != nil {
 		return fmt.Errorf("unable to create inference model: %w", err)
 	}
-	defer llm.Unload()
+	defer krn.Unload()
 
 	// -------------------------------------------------------------------------
 
@@ -85,12 +85,12 @@ func run() error {
 		Temp: 0.7,
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
 
-	ch, err := llm.ChatVision(ctx, message, imageFile, params)
+	ch, err := krn.VisionStreaming(ctx, message, imageFile, params)
 	if err != nil {
-		return fmt.Errorf("chat vision: %w", err)
+		return fmt.Errorf("vision streaming: %w", err)
 	}
 
 	for msg := range ch {

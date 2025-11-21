@@ -3,7 +3,7 @@ module github.com/ardanlabs/ai-training
 go 1.25.3
 
 require (
-	github.com/ardanlabs/kronk v0.5.1
+	github.com/ardanlabs/kronk v0.6.0
 	github.com/dlclark/regexp2 v1.11.5
 	github.com/duckdb/duckdb-go/v2 v2.5.2
 	github.com/google/uuid v1.6.0
@@ -60,7 +60,7 @@ require (
 	golang.org/x/mod v0.30.0 // indirect
 	golang.org/x/oauth2 v0.33.0 // indirect
 	golang.org/x/sys v0.38.0 // indirect
-	golang.org/x/telemetry v0.0.0-20251112162317-03ef243c208a // indirect
+	golang.org/x/telemetry v0.0.0-20251121192418-e4876590c019 // indirect
 	golang.org/x/text v0.31.0 // indirect
 	golang.org/x/tools v0.39.0 // indirect
 	golang.org/x/xerrors v0.0.0-20240903120638-7835f813f4da // indirect

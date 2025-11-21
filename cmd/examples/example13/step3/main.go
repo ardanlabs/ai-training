@@ -65,26 +65,26 @@ func run() error {
 
 	const concurrency = 1
 
-	llmEmbed, err := kronk.New(concurrency, modelEmbedFile, kronk.Config{
+	krnEmbed, err := kronk.New(concurrency, modelEmbedFile, kronk.Config{
 		ContextWindow: 1024 * 32,
 		Embeddings:    true,
 	})
 	if err != nil {
 		return fmt.Errorf("unable to create embedding model: %w", err)
 	}
-	defer llmEmbed.Unload()
+	defer krnEmbed.Unload()
 
-	llmChat, err := kronk.New(concurrency, modelChatFile, kronk.Config{
+	krnChat, err := kronk.New(concurrency, modelChatFile, kronk.Config{
 		ContextWindow: 1024 * 32,
 	})
 	if err != nil {
 		return fmt.Errorf("unable to create chat model: %w", err)
 	}
-	defer llmChat.Unload()
+	defer krnChat.Unload()
 
 	// -------------------------------------------------------------------------
 
-	db, err := duck.LoadData(dbPath, llmEmbed, dimentions, chunksFile)
+	db, err := duck.LoadData(dbPath, krnEmbed, dimentions, chunksFile)
 	if err != nil {
 		return fmt.Errorf("error connecting to database: %w", err)
 	}
@@ -108,10 +108,10 @@ func run() error {
 		fmt.Print("\n-- Similarity ---\n\n")
 
 		queryVector, err := func() ([]float32, error) {
-			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 			defer cancel()
 
-			queryVector, err := llmEmbed.Embed(ctx, question)
+			queryVector, err := krnEmbed.Embed(ctx, question)
 			if err != nil {
 				return nil, fmt.Errorf("embed: %w", err)
 			}
@@ -140,7 +140,7 @@ func run() error {
 			documents[i] = kronk.RankingDocument{Document: doc.Text, Embedding: doc.Embedding}
 		}
 
-		rankings, err := llmEmbed.Rerank(documents)
+		rankings, err := krnEmbed.Rerank(documents)
 		if err != nil {
 			return fmt.Errorf("rerank: %w", err)
 		}
@@ -179,16 +179,16 @@ func run() error {
 		}
 
 		err = func() error {
-			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 			defer cancel()
 
-			ch, err := llmChat.ChatCompletions(ctx, msgs, kronk.Params{
+			ch, err := krnChat.ChatStreaming(ctx, msgs, kronk.Params{
 				TopK: 1.0,
 				TopP: 0.9,
 				Temp: 0.7,
 			})
 			if err != nil {
-				return fmt.Errorf("chat completions: %w", err)
+				return fmt.Errorf("chat streaming: %w", err)
 			}
 
 			for msg := range ch {

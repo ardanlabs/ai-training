@@ -6,8 +6,8 @@ github.com/apache/arrow-go/v18 v18.4.1 h1:q/jVkBWCJOB9reDgaIZIdruLQUb1kbkvOnOFez
 github.com/apache/arrow-go/v18 v18.4.1/go.mod h1:tLyFubsAl17bvFdUAy24bsSvA/6ww95Iqi67fTpGu3E=
 github.com/apache/thrift v0.22.0 h1:r7mTJdj51TMDe6RtcmNdQxgn9XcyfGDOzegMDRg47uc=
 github.com/apache/thrift v0.22.0/go.mod h1:1e7J/O1Ae6ZQMTYdy9xa3w9k+XHWPfRvdPyJeynQ+/g=
-github.com/ardanlabs/kronk v0.5.1 h1:K6LMQaNIt1SUpLEfWeuTdxZ4Jmh9IH7XlMkRWW6d3uc=
-github.com/ardanlabs/kronk v0.5.1/go.mod h1:kxmzeRte+C5UzqJ3HPb7/O6C2raA0ZDZ7QtPYC22Wlw=
+github.com/ardanlabs/kronk v0.6.0 h1:8i1V9PKneRi1JxaeFvVbstI90H1a7axqc6v8nyIKMJc=
+github.com/ardanlabs/kronk v0.6.0/go.mod h1:kxmzeRte+C5UzqJ3HPb7/O6C2raA0ZDZ7QtPYC22Wlw=
 github.com/bgentry/go-netrc v0.0.0-20140422174119-9fd32a8b3d3d h1:xDfNPAt8lFiC1UJrqV3uuy861HCTo708pDMbjHHdCas=
 github.com/bgentry/go-netrc v0.0.0-20140422174119-9fd32a8b3d3d/go.mod h1:6QX/PXZ00z/TKoufEY6K/a0k6AhaJrQKdFe6OfVXsa4=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
@@ -154,8 +154,8 @@ golang.org/x/sys v0.0.0-20220520151302-bc2c85ada10a/go.mod h1:oPkhp1MJrh7nUepCBc
 golang.org/x/sys v0.0.0-20220722155257-8c9f86f7a55f/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
 golang.org/x/sys v0.38.0 h1:3yZWxaJjBmCWXqhN1qh02AkOnCQ1poK6oF+a7xWL6Gc=
 golang.org/x/sys v0.38.0/go.mod h1:OgkHotnGiDImocRcuBABYBEXf8A9a87e/uXjp9XT3ks=
-golang.org/x/telemetry v0.0.0-20251112162317-03ef243c208a h1:gUx35lvbguAhkO/SMZOrCTxb5u/ie8hWkMBdlqvc1gs=
-golang.org/x/telemetry v0.0.0-20251112162317-03ef243c208a/go.mod h1:hKdjCMrbv9skySur+Nek8Hd0uJ0GuxJIoIX2payrIdQ=
+golang.org/x/telemetry v0.0.0-20251121192418-e4876590c019 h1:MAuE33UHgAB5brtvVaYq8dyE7nrFfl2+QYv+5A8Apro=
+golang.org/x/telemetry v0.0.0-20251121192418-e4876590c019/go.mod h1:hKdjCMrbv9skySur+Nek8Hd0uJ0GuxJIoIX2payrIdQ=
 golang.org/x/term v0.0.0-20201126162022-7de9c90e9dd1/go.mod h1:bj7SfCRtBDWHUb9snDiAeCFNEtKQo2Wmx5Cou7ajbmo=
 golang.org/x/term v0.0.0-20210927222741-03fcf44c2211/go.mod h1:jbD1KX2456YbFQfuXm/mYQcufACuNUgVhRMnK/tPxf8=
 golang.org/x/text v0.3.0/go.mod h1:NqM8EUOU14njkJ3fqMW+pc6Ldnwhi/IjpwHt7yyuwOQ=

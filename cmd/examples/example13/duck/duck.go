@@ -16,7 +16,7 @@ import (
 
 // LoadData loads the specified chunks file into a duckdb database that is
 // configured to use the VSS extension for vector similarity search.
-func LoadData(dbPath string, llm *kronk.Llama, dimentions int, chunksFile string) (*sql.DB, error) {
+func LoadData(dbPath string, krn *kronk.Kronk, dimentions int, chunksFile string) (*sql.DB, error) {
 	connector, err := duckdb.NewConnector(dbPath, nil)
 	if err != nil {
 		return nil, fmt.Errorf("error creating connector: %w", err)
@@ -90,7 +90,7 @@ func LoadData(dbPath string, llm *kronk.Llama, dimentions int, chunksFile string
 	fmt.Print("LOADING DATA...")
 	t := time.Now()
 
-	if err := loadChunks(db, llm, chunksFile); err != nil {
+	if err := loadChunks(db, krn, chunksFile); err != nil {
 		return nil, fmt.Errorf("error loading data: %w", err)
 	}
 
@@ -111,7 +111,7 @@ func LoadData(dbPath string, llm *kronk.Llama, dimentions int, chunksFile string
 	return db, nil
 }
 
-func loadChunks(db *sql.DB, llm *kronk.Llama, chunksFile string) error {
+func loadChunks(db *sql.DB, krn *kronk.Kronk, chunksFile string) error {
 	data, err := os.ReadFile(chunksFile)
 	if err != nil {
 		return fmt.Errorf("read file: %w", err)
@@ -134,7 +134,7 @@ func loadChunks(db *sql.DB, llm *kronk.Llama, chunksFile string) error {
 			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 			defer cancel()
 
-			vec, err := llm.Embed(ctx, chunk)
+			vec, err := krn.Embed(ctx, chunk)
 			if err != nil {
 				return nil, fmt.Errorf("embed: %w", err)
 			}

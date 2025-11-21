@@ -83,26 +83,26 @@ func run() error {
 
 	const concurrency = 5
 
-	llmEmbed, err := kronk.New(concurrency, modelEmbedFile, kronk.Config{
+	krnEmbed, err := kronk.New(concurrency, modelEmbedFile, kronk.Config{
 		ContextWindow: 1024 * 32,
 		Embeddings:    true,
 	})
 	if err != nil {
 		return fmt.Errorf("unable to create embedding model: %w", err)
 	}
-	defer llmEmbed.Unload()
+	defer krnEmbed.Unload()
 
-	llmChat, err := kronk.New(concurrency, modelChatFile, kronk.Config{
+	krnChat, err := kronk.New(concurrency, modelChatFile, kronk.Config{
 		ContextWindow: 1024 * 32,
 	})
 	if err != nil {
 		return fmt.Errorf("unable to create chat model: %w", err)
 	}
-	defer llmChat.Unload()
+	defer krnChat.Unload()
 
 	// -------------------------------------------------------------------------
 
-	db, err := duck.LoadData(dbPath, llmEmbed, dimentions, chunksFile)
+	db, err := duck.LoadData(dbPath, krnEmbed, dimentions, chunksFile)
 	if err != nil {
 		return fmt.Errorf("error connecting to database: %w", err)
 	}
@@ -117,9 +117,10 @@ func run() error {
 	signal.Notify(shutdown, syscall.SIGINT, syscall.SIGTERM)
 
 	cfg := website.Config{
-		LLMEmbed: llmEmbed,
-		DBMChat:  llmChat,
-		DB:       db,
+		KRNEmbed:   krnEmbed,
+		KRNChat:    krnChat,
+		KRNTimeout: WebWriteTimeout,
+		DB:         db,
 	}
 
 	api := http.Server{

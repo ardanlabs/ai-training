@@ -23,7 +23,7 @@ github.com/apache/arrow-go/v18/internal/bitutils
 github.com/apache/arrow-go/v18/internal/hashing
 github.com/apache/arrow-go/v18/internal/json
 github.com/apache/arrow-go/v18/internal/utils
-# github.com/ardanlabs/kronk v0.3.0
+# github.com/ardanlabs/kronk v0.4.0
 ## explicit; go 1.25.3
 github.com/ardanlabs/kronk
 # github.com/bgentry/go-netrc v0.0.0-20140422174119-9fd32a8b3d3d

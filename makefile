@@ -247,19 +247,19 @@ example12:
 
 example13-step1:
 	export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:zarf/llamacpp && \
-	go run cmd/examples/example13/step1/*.go 2>/dev/null
+	CGO_ENABLED=0 go run cmd/examples/example13/step1/*.go 2>/dev/null
 
 example13-step2:
 	export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:zarf/llamacpp && \
-	go run cmd/examples/example13/step2/*.go 2>/dev/null
+	CGO_ENABLED=0 go run cmd/examples/example13/step2/*.go 2>/dev/null
 
 example13-step3:
 	export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:zarf/llamacpp && \
-	go run cmd/examples/example13/step3/*.go 2>/dev/null
+	CGO_ENABLED=0 go run cmd/examples/example13/step3/*.go 2>/dev/null
 
 example13-step4:
 	export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:zarf/llamacpp && \
-	go run cmd/examples/example13/step4/*.go 2>/dev/null
+	CGO_ENABLED=0 go run cmd/examples/example13/step4/*.go 2>/dev/null
 
 example13-step4-npm-install:
 	cd cmd/examples/example13/step4/react/app && npm install

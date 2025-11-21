@@ -142,6 +142,10 @@ install-models:
 	curl -L -o zarf/models/qwen2.5-0.5b-instruct-q8_0.gguf "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q8_0.gguf?download=true"
 	curl -L -o zarf/models/embeddinggemma-300m-qat-Q8_0.gguf "https://huggingface.co/ggml-org/embeddinggemma-300m-qat-q8_0-GGUF/resolve/main/embeddinggemma-300m-qat-Q8_0.gguf?download=true"
 
+test-models:
+	curl -L -o zarf/models/gpt-oss-20b-mxfp4.gguf "https://huggingface.co/ggml-org/gpt-oss-20b-GGUF/resolve/main/gpt-oss-20b-mxfp4.gguf?download=true"
+	curl -L -o zarf/models/gpt-oss-20b-Q8_0.gguf "https://huggingface.co/unsloth/gpt-oss-20b-GGUF/resolve/main/gpt-oss-20b-Q8_0.gguf?download=true"
+
 # ==============================================================================
 # Ollama Settings
 

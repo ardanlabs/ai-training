@@ -19,7 +19,6 @@ func (m *model) embed(ctx context.Context, text string) ([]float32, error) {
 		llama.Free(lctx)
 	}()
 
-	// Check context before potentially expensive operations
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()

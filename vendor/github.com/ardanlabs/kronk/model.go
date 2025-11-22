@@ -1,26 +1,33 @@
 package kronk
 
 import (
+	"context"
 	"fmt"
-	"sync"
 
 	"github.com/hybridgroup/yzma/pkg/llama"
 )
 
+const (
+	modeChat   = "chat"
+	modeVision = "vision"
+)
+
 type model struct {
+	cfg       ModelConfig
 	model     llama.Model
 	vocab     llama.Vocab
 	ctxParams llama.ContextParams
 	template  string
 	projFile  string
-	muHEC     sync.Mutex
 }
 
-func newModel(modelFile string, cfg Config, options ...func(m *model) error) (*model, error) {
+func newModel(modelFile string, cfg ModelConfig, options ...func(m *model) error) (*model, error) {
 	mdl, err := llama.ModelLoadFromFile(modelFile, llama.ModelDefaultParams())
 	if err != nil {
 		return nil, fmt.Errorf("ModelLoadFromFile: %w", err)
 	}
+
+	cfg = adjustConfig(cfg, mdl)
 
 	vocab := llama.ModelGetVocab(mdl)
 
@@ -38,9 +45,10 @@ func newModel(modelFile string, cfg Config, options ...func(m *model) error) (*m
 	// -------------------------------------------------------------------------
 
 	m := model{
+		cfg:       cfg,
 		model:     mdl,
 		vocab:     vocab,
-		ctxParams: cfg.ctxParams(),
+		ctxParams: modelCtxParams(cfg),
 		template:  template,
 	}
 
@@ -92,5 +100,93 @@ func (m *model) modelInfo() ModelInfo {
 		IsRecurrent: recurrent,
 		IsHybrid:    hybrid,
 		Metadata:    metadata,
+	}
+}
+
+func (m *model) processTokens(ctx context.Context, mode string, prompt string, lctx llama.Context, sampler llama.Sampler, ch chan<- ChatResponse) {
+	var inputTokens int
+	var outputTokens int
+	var contextTokens int
+	var totalOutTokens int
+
+	var tokens []llama.Token
+	var batch llama.Batch
+
+	tokens = llama.Tokenize(m.vocab, prompt, true, true)
+	batch = llama.BatchGetOne(tokens)
+
+	inputTokens = int(batch.NTokens)
+	inputTokens += inputTokens
+	contextTokens += inputTokens
+
+	switch mode {
+	case modeVision:
+		tokens = []llama.Token{llama.SamplerSample(sampler, lctx, -1)}
+		batch = llama.BatchGetOne(tokens)
+
+		outputTokens = int(batch.NTokens)
+		totalOutTokens += outputTokens
+		contextTokens += outputTokens
+	}
+
+	const bufferSize = 32 * 1024
+	buf := make([]byte, bufferSize)
+
+	for totalOutTokens <= m.cfg.MaxTokens {
+		select {
+		case <-ctx.Done():
+			ch <- ChatResponse{
+				Err: ctx.Err(),
+				Tokens: Tokens{
+					Input:   inputTokens,
+					Output:  outputTokens,
+					Context: contextTokens,
+				},
+			}
+			return
+		default:
+		}
+
+		llama.Decode(lctx, batch)
+		token := llama.SamplerSample(sampler, lctx, -1)
+
+		if llama.VocabIsEOG(m.vocab, token) {
+			break
+		}
+
+		l := llama.TokenToPiece(m.vocab, token, buf, 0, false)
+
+		resp := string(buf[:l])
+		if resp == "" {
+			break
+		}
+
+		select {
+		case <-ctx.Done():
+			ch <- ChatResponse{
+				Err: ctx.Err(),
+				Tokens: Tokens{
+					Input:   inputTokens,
+					Output:  outputTokens,
+					Context: contextTokens,
+				},
+			}
+			return
+
+		case ch <- ChatResponse{
+			Response: resp,
+			Tokens: Tokens{
+				Input:   inputTokens,
+				Output:  outputTokens,
+				Context: contextTokens,
+			}}:
+		}
+
+		tokens = []llama.Token{token}
+		batch = llama.BatchGetOne(tokens)
+
+		outputTokens = int(batch.NTokens)
+		totalOutTokens += outputTokens
+		contextTokens += outputTokens
 	}
 }

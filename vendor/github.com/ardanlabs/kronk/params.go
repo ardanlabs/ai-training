@@ -4,9 +4,10 @@ import "github.com/hybridgroup/yzma/pkg/llama"
 
 // Params represents the different sample options when using a model.
 type Params struct {
-	TopK int32
-	TopP float32
-	Temp float32
+	TopK      int32
+	TopP      float32
+	Temp      float32
+	MaxTokens int
 }
 
 func toSampler(p Params) llama.Sampler {

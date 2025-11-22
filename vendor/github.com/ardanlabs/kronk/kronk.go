@@ -55,6 +55,7 @@ func Init(libPath string, logLevel LogLevel) error {
 
 // Kronk provides a concurrently safe api for using llamacpp to access models.
 type Kronk struct {
+	cfg       ModelConfig
 	modelName string
 	models    chan *model
 	wg        sync.WaitGroup
@@ -62,7 +63,7 @@ type Kronk struct {
 }
 
 // New provides the ability to use models in a concurrently safe way.
-func New(concurrency int, modelFile string, cfg Config, options ...func(llg *model) error) (*Kronk, error) {
+func New(concurrency int, modelFile string, cfg ModelConfig, options ...func(llg *model) error) (*Kronk, error) {
 	if libraryLocation == "" {
 		return nil, fmt.Errorf("the Init() function has not been called")
 	}
@@ -72,9 +73,10 @@ func New(concurrency int, modelFile string, cfg Config, options ...func(llg *mod
 	}
 
 	models := make(chan *model, concurrency)
+	var firstModel *model
 
 	for range concurrency {
-		model, err := newModel(modelFile, cfg, options...)
+		m, err := newModel(modelFile, cfg, options...)
 		if err != nil {
 			close(models)
 			for model := range models {
@@ -84,10 +86,15 @@ func New(concurrency int, modelFile string, cfg Config, options ...func(llg *mod
 			return nil, err
 		}
 
-		models <- model
+		models <- m
+
+		if firstModel == nil {
+			firstModel = m
+		}
 	}
 
 	krn := Kronk{
+		cfg:       firstModel.cfg,
 		modelName: strings.TrimSuffix(filepath.Base(modelFile), filepath.Ext(modelFile)),
 		models:    models,
 	}
@@ -105,6 +112,13 @@ func WithProjection(projFile string) func(m *model) error {
 
 		return nil
 	}
+}
+
+// ModelConfig returns a copy of the configuration being used. This may be
+// different from the configuration passed to New() if the model has
+// overridden any of the settings.
+func (krn *Kronk) ModelConfig() ModelConfig {
+	return krn.cfg
 }
 
 // ModelName returns the model name.
@@ -129,47 +143,67 @@ func (krn *Kronk) Unload() {
 
 // ModelInfo provides support to extract the model card information.
 func (krn *Kronk) ModelInfo(ctx context.Context) (ModelInfo, error) {
-	return nonStreaming(ctx, krn, &krn.closed, func(model *model) (ModelInfo, error) {
-		return model.modelInfo(), nil
-	})
+	f := func(m *model) (ModelInfo, error) {
+		return m.modelInfo(), nil
+	}
+
+	return nonStreaming(ctx, krn, &krn.closed, f)
 }
 
 // Chat provides support to interact with an inference model.
 func (krn *Kronk) Chat(ctx context.Context, messages []ChatMessage, params Params) (string, error) {
-	return nonStreaming(ctx, krn, &krn.closed, func(model *model) (string, error) {
-		return model.chat(ctx, messages, params)
-	})
+	f := func(m *model) (string, error) {
+		return m.chat(ctx, messages, params)
+	}
+
+	return nonStreaming(ctx, krn, &krn.closed, f)
 }
 
 // ChatStreaming provides support to interact with an inference model.
 // It will block until a model becomes available or the context times out.
 func (krn *Kronk) ChatStreaming(ctx context.Context, messages []ChatMessage, params Params) (<-chan ChatResponse, error) {
-	return streaming(ctx, krn, &krn.closed, func(model *model) <-chan ChatResponse {
-		return model.chatStreaming(ctx, messages, params)
-	})
+	f := func(m *model) <-chan ChatResponse {
+		return m.chatStreaming(ctx, messages, params)
+	}
+
+	ef := func(err error) ChatResponse {
+		return ChatResponse{Err: err}
+	}
+
+	return streaming(ctx, krn, &krn.closed, f, ef)
 }
 
 // Vision provides support to interact with a vision inference model.
 func (krn *Kronk) Vision(ctx context.Context, message ChatMessage, imageFile string, params Params) (string, error) {
-	return nonStreaming(ctx, krn, &krn.closed, func(model *model) (string, error) {
-		return model.vision(ctx, message, imageFile, params)
-	})
+	f := func(m *model) (string, error) {
+		return m.vision(ctx, message, imageFile, params)
+	}
+
+	return nonStreaming(ctx, krn, &krn.closed, f)
 }
 
 // VisionStreaming provides support to interact with a vision language model.
 // It will block until a model becomes available or the context times out.
 func (krn *Kronk) VisionStreaming(ctx context.Context, message ChatMessage, imageFile string, params Params) (<-chan ChatResponse, error) {
-	return streaming(ctx, krn, &krn.closed, func(model *model) <-chan ChatResponse {
-		return model.visionStreaming(ctx, message, imageFile, params)
-	})
+	f := func(m *model) <-chan ChatResponse {
+		return m.visionStreaming(ctx, message, imageFile, params)
+	}
+
+	ef := func(err error) ChatResponse {
+		return ChatResponse{Err: err}
+	}
+
+	return streaming(ctx, krn, &krn.closed, f, ef)
 }
 
 // Embed provides support to interact with an embedding model. It will block
 // until a model becomes available or the context times out.
 func (krn *Kronk) Embed(ctx context.Context, text string) ([]float32, error) {
-	return nonStreaming(ctx, krn, &krn.closed, func(model *model) ([]float32, error) {
-		return model.embed(ctx, text)
-	})
+	f := func(m *model) ([]float32, error) {
+		return m.embed(ctx, text)
+	}
+
+	return nonStreaming(ctx, krn, &krn.closed, f)
 }
 
 // Rerank provides support to rerank a set of embeddings.

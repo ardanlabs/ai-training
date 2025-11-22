@@ -83,22 +83,23 @@ func run() error {
 
 	const concurrency = 5
 
-	krnEmbed, err := kronk.New(concurrency, modelEmbedFile, kronk.Config{
-		ContextWindow: 1024 * 32,
-		Embeddings:    true,
+	krnEmbed, err := kronk.New(concurrency, modelEmbedFile, kronk.ModelConfig{
+		Embeddings: true,
 	})
 	if err != nil {
 		return fmt.Errorf("unable to create embedding model: %w", err)
 	}
 	defer krnEmbed.Unload()
 
-	krnChat, err := kronk.New(concurrency, modelChatFile, kronk.Config{
-		ContextWindow: 1024 * 32,
-	})
+	krnChat, err := kronk.New(concurrency, modelChatFile, kronk.ModelConfig{})
 	if err != nil {
 		return fmt.Errorf("unable to create chat model: %w", err)
 	}
 	defer krnChat.Unload()
+
+	fmt.Println("- contextWindow:", krnChat.ModelConfig().ContextWindow)
+	fmt.Println("- maxTokens    :", krnChat.ModelConfig().MaxTokens)
+	fmt.Println("- embeddings   :", krnChat.ModelConfig().Embeddings)
 
 	// -------------------------------------------------------------------------
 

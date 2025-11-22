@@ -17,10 +17,17 @@ type ChatMessage struct {
 	Content string
 }
 
+type Tokens struct {
+	Input   int
+	Output  int
+	Context int
+}
+
 // ChatResponse represents output for chat and vision models.
 type ChatResponse struct {
 	Response string
 	Err      error
+	Tokens   Tokens
 }
 
 // RankingDocument represents input for reranking.

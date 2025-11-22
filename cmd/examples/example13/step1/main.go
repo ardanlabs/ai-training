@@ -28,7 +28,7 @@ const (
 
 func main() {
 	if err := run(); err != nil {
-		fmt.Println(err)
+		fmt.Printf("\nERROR: %s\n", err)
 		os.Exit(1)
 	}
 }
@@ -51,13 +51,19 @@ func run() error {
 
 	const concurrency = 1
 
-	krn, err := kronk.New(concurrency, modelFile, kronk.Config{
-		ContextWindow: 1024 * 32,
+	krn, err := kronk.New(concurrency, modelFile, kronk.ModelConfig{
+		ContextWindow: 0,
+		MaxTokens:     0,
+		Embeddings:    false,
 	})
 	if err != nil {
 		return fmt.Errorf("unable to create inference model: %w", err)
 	}
 	defer krn.Unload()
+
+	fmt.Println("- contextWindow:", krn.ModelConfig().ContextWindow)
+	fmt.Println("- maxTokens    :", krn.ModelConfig().MaxTokens)
+	fmt.Println("- embeddings   :", krn.ModelConfig().Embeddings)
 
 	// -------------------------------------------------------------------------
 
@@ -79,7 +85,7 @@ func run() error {
 			Content: userInput,
 		})
 
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 		defer cancel()
 
 		params := kronk.Params{
@@ -96,6 +102,11 @@ func run() error {
 		fmt.Print("\nMODEL> ")
 
 		var finalResponse strings.Builder
+
+		var contextTokens int
+		var inputTokens int
+		var outputTokens int
+
 		for msg := range ch {
 			if msg.Err != nil {
 				return fmt.Errorf("error from model: %w", msg.Err)
@@ -103,7 +114,18 @@ func run() error {
 
 			fmt.Print(msg.Response)
 			finalResponse.WriteString(msg.Response)
+
+			contextTokens = msg.Tokens.Context
+			inputTokens = msg.Tokens.Input
+			outputTokens += msg.Tokens.Output
 		}
+
+		contextWindow := krn.ModelConfig().ContextWindow
+		percentage := (float64(contextTokens) / float64(contextWindow)) * 100
+		of := float32(contextWindow) / float32(1024)
+
+		fmt.Printf("\n\n\u001b[90mInput: %d  Output: %d  Context: %d (%.0f%% of %.0fK)\u001b[0m",
+			inputTokens, outputTokens, contextTokens, percentage, of)
 
 		messages = append(messages, kronk.ChatMessage{
 			Role:    "assistant",

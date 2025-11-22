@@ -28,7 +28,13 @@ func (m *model) chatStreaming(ctx context.Context, messages []ChatMessage, param
 	ch := make(chan ChatResponse)
 
 	go func() {
-		defer close(ch)
+		defer func() {
+			if rec := recover(); rec != nil {
+				ch <- ChatResponse{Err: fmt.Errorf("%s", rec)}
+			}
+
+			close(ch)
+		}()
 
 		lctx, err := llama.InitFromModel(m.model, m.ctxParams)
 		if err != nil {
@@ -42,7 +48,7 @@ func (m *model) chatStreaming(ctx context.Context, messages []ChatMessage, param
 		}()
 
 		prompt := m.applyChatTemplate(messages)
-		m.processChatStreaming(ctx, lctx, prompt, toSampler(params), ch)
+		m.processTokens(ctx, modeChat, prompt, lctx, toSampler(params), ch)
 	}()
 
 	return ch
@@ -54,48 +60,8 @@ func (m *model) applyChatTemplate(messages []ChatMessage) string {
 		msgs[i] = llama.NewChatMessage(msg.Role, msg.Content)
 	}
 
-	buf := make([]byte, 1024*32)
+	buf := make([]byte, m.cfg.ContextWindow)
 	l := llama.ChatApplyTemplate(m.template, msgs, true, buf)
 
 	return string(buf[:l])
-}
-
-func (m *model) processChatStreaming(ctx context.Context, lctx llama.Context, prompt string, sampler llama.Sampler, ch chan<- ChatResponse) {
-	tokens := llama.Tokenize(m.vocab, prompt, true, true)
-	buf := make([]byte, 1024*32)
-
-	for range llama.MaxToken {
-		select {
-		case <-ctx.Done():
-			ch <- ChatResponse{Err: ctx.Err()}
-			return
-		default:
-		}
-
-		batch := llama.BatchGetOne(tokens)
-		llama.Decode(lctx, batch)
-
-		token := llama.SamplerSample(sampler, lctx, -1)
-
-		if llama.VocabIsEOG(m.vocab, token) {
-			break
-		}
-
-		l := llama.TokenToPiece(m.vocab, token, buf, 0, false)
-
-		resp := string(buf[:l])
-		if resp == "" {
-			break
-		}
-
-		select {
-		case <-ctx.Done():
-			ch <- ChatResponse{Err: ctx.Err()}
-			return
-
-		case ch <- ChatResponse{Response: resp}:
-		}
-
-		tokens = []llama.Token{token}
-	}
 }

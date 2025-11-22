@@ -3,8 +3,8 @@ package kronk
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
-	"unsafe"
 
 	"github.com/hybridgroup/yzma/pkg/llama"
 	"github.com/hybridgroup/yzma/pkg/mtmd"
@@ -30,7 +30,12 @@ func (m *model) visionStreaming(ctx context.Context, message ChatMessage, imageF
 	ch := make(chan ChatResponse)
 
 	go func() {
-		defer close(ch)
+		defer func() {
+			if rec := recover(); rec != nil {
+				ch <- ChatResponse{Err: fmt.Errorf("%v", rec)}
+			}
+			close(ch)
+		}()
 
 		if m.projFile == "" {
 			ch <- ChatResponse{Err: fmt.Errorf("projection file not set")}
@@ -68,7 +73,7 @@ func (m *model) visionStreaming(ctx context.Context, message ChatMessage, imageF
 		}
 		defer mtmd.BitmapFree(bitmap)
 
-		m.processVisionStreaming(ctx, lctx, toSampler(params), ch)
+		m.processTokens(ctx, modeVision, prompt, lctx, toSampler(params), ch)
 	}()
 
 	return ch
@@ -80,73 +85,25 @@ func (m *model) applyVisionTemplate(message ChatMessage) string {
 		llama.NewChatMessage("user", mtmd.DefaultMarker()),
 	}
 
-	buf := make([]byte, 1024*32)
+	buf := make([]byte, m.cfg.ContextWindow)
 	l := llama.ChatApplyTemplate(m.template, msgs, true, buf)
 
 	return string(buf[:l])
 }
 
 func (m *model) processBitmap(lctx llama.Context, mtmdCtx mtmd.Context, imageFile string, prompt string) (mtmd.Bitmap, error) {
+	if _, err := os.Stat(imageFile); err != nil {
+		return 0, fmt.Errorf("error accessing file %q: %w", imageFile, err)
+	}
+
 	bitmap := mtmd.BitmapInitFromFile(mtmdCtx, imageFile)
 	output := mtmd.InputChunksInit()
 	input := mtmd.NewInputText(prompt, true, true)
 
 	mtmd.Tokenize(mtmdCtx, output, input, []mtmd.Bitmap{bitmap})
 
-	// Docs indicate this function is NOT thread-safe.
-	func() {
-		m.muHEC.Lock()
-		defer m.muHEC.Unlock()
-		var n llama.Pos
-		mtmd.HelperEvalChunks(mtmdCtx, lctx, output, 0, 0, int32(m.ctxParams.NBatch), true, &n)
-	}()
+	var n llama.Pos
+	mtmd.HelperEvalChunks(mtmdCtx, lctx, output, 0, 0, int32(m.ctxParams.NBatch), true, &n)
 
 	return bitmap, nil
-}
-
-func (m *model) processVisionStreaming(ctx context.Context, lctx llama.Context, sampler llama.Sampler, ch chan<- ChatResponse) {
-	batch := llama.BatchInit(1, 0, 1)
-	defer llama.BatchFree(batch)
-
-	var sz int32 = 1
-	batch.NSeqId = &sz
-	batch.NTokens = 1
-	seqs := unsafe.SliceData([]llama.SeqId{0})
-	batch.SeqId = &seqs
-
-	buf := make([]byte, 1024*32)
-
-	for range llama.MaxToken {
-		select {
-		case <-ctx.Done():
-			ch <- ChatResponse{Err: ctx.Err()}
-			return
-		default:
-		}
-
-		llama.Decode(lctx, batch)
-
-		token := llama.SamplerSample(sampler, lctx, -1)
-
-		if llama.VocabIsEOG(m.vocab, token) {
-			break
-		}
-
-		l := llama.TokenToPiece(m.vocab, token, buf, 0, false)
-
-		resp := string(buf[:l])
-		if resp == "" {
-			break
-		}
-
-		select {
-		case <-ctx.Done():
-			ch <- ChatResponse{Err: ctx.Err()}
-			return
-
-		case ch <- ChatResponse{Response: resp}:
-		}
-
-		batch = llama.BatchGetOne([]llama.Token{token})
-	}
 }

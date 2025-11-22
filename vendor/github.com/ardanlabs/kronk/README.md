@@ -57,7 +57,7 @@ const (
 
 func main() {
 	if err := run(); err != nil {
-		fmt.Println(err)
+		fmt.Printf("\nERROR: %s\n", err)
 		os.Exit(1)
 	}
 }
@@ -80,13 +80,19 @@ func run() error {
 
 	const concurrency = 1
 
-	llm, err := kronk.New(concurrency, modelFile, kronk.Config{
-		ContextWindow: 1024 * 32,
+	krn, err := kronk.New(concurrency, modelFile, kronk.ModelConfig{
+		ContextWindow: 0,
+		MaxTokens:     0,
+		Embeddings:    false,
 	})
 	if err != nil {
 		return fmt.Errorf("unable to create inference model: %w", err)
 	}
-	defer llm.Unload()
+	defer krn.Unload()
+
+	fmt.Println("- contextWindow:", krn.ModelConfig().ContextWindow)
+	fmt.Println("- maxTokens    :", krn.ModelConfig().MaxTokens)
+	fmt.Println("- embeddings   :", krn.ModelConfig().Embeddings)
 
 	// -------------------------------------------------------------------------
 
@@ -108,7 +114,7 @@ func run() error {
 			Content: userInput,
 		})
 
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 		defer cancel()
 
 		params := kronk.Params{
@@ -117,14 +123,19 @@ func run() error {
 			Temp: 0.7,
 		}
 
-		ch, err := llm.ChatCompletions(ctx, messages, params)
+		ch, err := krn.ChatStreaming(ctx, messages, params)
 		if err != nil {
-			return fmt.Errorf("chat completions: %w", err)
+			return fmt.Errorf("chat streaming: %w", err)
 		}
 
 		fmt.Print("\nMODEL> ")
 
 		var finalResponse strings.Builder
+
+		var contextTokens int
+		var inputTokens int
+		var outputTokens int
+
 		for msg := range ch {
 			if msg.Err != nil {
 				return fmt.Errorf("error from model: %w", msg.Err)
@@ -132,7 +143,18 @@ func run() error {
 
 			fmt.Print(msg.Response)
 			finalResponse.WriteString(msg.Response)
+
+			contextTokens = msg.Tokens.Context
+			inputTokens = msg.Tokens.Input
+			outputTokens += msg.Tokens.Output
 		}
+
+		contextWindow := krn.ModelConfig().ContextWindow
+		percentage := (float64(contextTokens) / float64(contextWindow)) * 100
+		of := float32(contextWindow) / float32(1024)
+
+		fmt.Printf("\n\n\u001b[90mInput: %d  Output: %d  Context: %d (%.0f%% of %.0fK)\u001b[0m",
+			inputTokens, outputTokens, contextTokens, percentage, of)
 
 		messages = append(messages, kronk.ChatMessage{
 			Role:    "assistant",
@@ -148,48 +170,38 @@ This example can produce the following output:
 
 ````
 $ export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:zarf/llamacpp
-$ go run cmd/examples/example13/step1/*.go 2>/dev/null
+$ go run cmd/examples/example13/step1/*.go
 
 Output:
 
 - check llamacpp installation: ✓
 - check "qwen2.5-0.5b-instruct-q8_0" installation: ✓
+- contextWindow: 32768
+- maxTokens    : 512
+- embeddings   : false
 
 USER> hello model
 
 MODEL> Hello! How can I assist you today?
 
-USER> can you write a hello world program in Go?
+Input: 22  Output: 8  Context: 30 (0% of 32K)
 
-MODEL> Sure! Here's a simple "Hello, World!" program written in Go:
+USER> write a hello world program in Go and only show the code
 
-```go
+MODEL> ```go
 package main
 
 import "fmt"
 
 func main() {
-    fmt.Println("Hello, World!")
+    fmt.Println("Hello, world!")
 }
-```
+````
 
-To run this program, you can use a Go compiler like `go build`:
-
-```sh
-go build
-```
-
-Then, you can run the compiled program:
-
-```sh
-./hello_world
-```
-
-This will output:
-
-```
-Hello, World!
-```
+Input: 86 Output: 23 Context: 109 (0% of 32K)
 
 USER>
-````
+
+```
+
+```

@@ -37,7 +37,7 @@ func main() {
 	log.Default().SetOutput(os.Stdout)
 
 	if err := run(); err != nil {
-		fmt.Println(err)
+		fmt.Printf("\nERROR: %s\n", err)
 		os.Exit(1)
 	}
 }
@@ -65,22 +65,27 @@ func run() error {
 
 	const concurrency = 1
 
-	krnEmbed, err := kronk.New(concurrency, modelEmbedFile, kronk.Config{
-		ContextWindow: 1024 * 32,
-		Embeddings:    true,
+	krnEmbed, err := kronk.New(concurrency, modelEmbedFile, kronk.ModelConfig{
+		Embeddings: true,
 	})
 	if err != nil {
 		return fmt.Errorf("unable to create embedding model: %w", err)
 	}
 	defer krnEmbed.Unload()
 
-	krnChat, err := kronk.New(concurrency, modelChatFile, kronk.Config{
-		ContextWindow: 1024 * 32,
-	})
+	fmt.Println("- embed contextWindow:", krnEmbed.ModelConfig().ContextWindow)
+	fmt.Println("- embed maxTokens    :", krnEmbed.ModelConfig().MaxTokens)
+	fmt.Println("- embed embeddings   :", krnEmbed.ModelConfig().Embeddings)
+
+	krnChat, err := kronk.New(concurrency, modelChatFile, kronk.ModelConfig{})
 	if err != nil {
 		return fmt.Errorf("unable to create chat model: %w", err)
 	}
 	defer krnChat.Unload()
+
+	fmt.Println("- chat contextWindow :", krnChat.ModelConfig().ContextWindow)
+	fmt.Println("- chat maxTokens     :", krnChat.ModelConfig().MaxTokens)
+	fmt.Println("- chat embeddings    :", krnChat.ModelConfig().Embeddings)
 
 	// -------------------------------------------------------------------------
 
@@ -191,12 +196,29 @@ func run() error {
 				return fmt.Errorf("chat streaming: %w", err)
 			}
 
+			var contextTokens int
+			var inputTokens int
+			var outputTokens int
+
 			for msg := range ch {
 				if msg.Err != nil {
 					return fmt.Errorf("error from model: %w", msg.Err)
 				}
+
 				fmt.Print(msg.Response)
+
+				contextTokens = msg.Tokens.Context
+				inputTokens = msg.Tokens.Input
+				outputTokens += msg.Tokens.Output
 			}
+
+			contextWindow := krnChat.ModelConfig().ContextWindow
+			percentage := (float64(contextTokens) / float64(contextWindow)) * 100
+			of := float32(contextWindow) / float32(1024)
+
+			fmt.Printf("\n\n\u001b[90mInput: %d  Output: %d  Context: %d (%.0f%% of %.0fK)\u001b[0m",
+				inputTokens, outputTokens, contextTokens, percentage, of)
+
 			return nil
 		}()
 		if err != nil {

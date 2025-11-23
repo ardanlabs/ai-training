@@ -35,72 +35,111 @@ func main() {
 }
 
 func run() error {
+	modelFile, projFile, err := installSystem()
+	if err != nil {
+		return fmt.Errorf("unable to install system: %w", err)
+	}
+
+	krn, err := newKronk(modelFile, projFile)
+	if err != nil {
+		return fmt.Errorf("unable to init kronk: %w", err)
+	}
+	defer krn.Unload()
+
+	// -------------------------------------------------------------------------
+
+	question := "What is in this picture?"
+
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+
+	ch, err := performChat(ctx, krn, question, imageFile)
+	if err != nil {
+		return fmt.Errorf("perform chat: %w", err)
+	}
+
+	if err := modelResponse(krn, ch); err != nil {
+		return fmt.Errorf("model response: %w", err)
+	}
+
+	return nil
+}
+
+func installSystem() (string, string, error) {
 	if err := install.LlamaCPP(libPath, download.CPU, true); err != nil {
-		return fmt.Errorf("unable to install llamacpp: %w", err)
+		return "", "", fmt.Errorf("unable to install llamacpp: %w", err)
 	}
 
 	modelFile, err := install.Model(modelURL, modelPath)
 	if err != nil {
-		return fmt.Errorf("unable to install model: %w", err)
+		return "", "", fmt.Errorf("unable to install model: %w", err)
 	}
 
 	projFile, err := install.Model(projURL, modelPath)
 	if err != nil {
-		return fmt.Errorf("unable to install model: %w", err)
+		return "", "", fmt.Errorf("unable to install model: %w", err)
 	}
 
-	// -------------------------------------------------------------------------
+	return modelFile, projFile, nil
+}
 
+func newKronk(modelFile string, projFile string) (*kronk.Kronk, error) {
 	if err := kronk.Init(libPath, kronk.LogSilent); err != nil {
-		return fmt.Errorf("unable to init kronk: %w", err)
+		return nil, fmt.Errorf("unable to init kronk: %w", err)
 	}
 
 	const concurrency = 1
 
-	krn, err := kronk.New(concurrency, modelFile, projFile, kronk.ModelConfig{})
+	krn, err := kronk.New(concurrency, modelFile, projFile, kronk.ModelConfig{
+		ContextWindow: 0,
+		MaxTokens:     0,
+		Embeddings:    false,
+	})
 	if err != nil {
-		return fmt.Errorf("unable to create inference model: %w", err)
+		return nil, fmt.Errorf("unable to create inference model: %w", err)
 	}
-	defer krn.Unload()
 
 	fmt.Println("- contextWindow:", krn.ModelConfig().ContextWindow)
 	fmt.Println("- maxTokens    :", krn.ModelConfig().MaxTokens)
 	fmt.Println("- embeddings   :", krn.ModelConfig().Embeddings)
 
-	// -------------------------------------------------------------------------
+	return krn, nil
+}
 
-	fmt.Println()
-
-	question := "What is in this picture?"
-	fmt.Printf("Question: %s\n\n", question)
+func performChat(ctx context.Context, krn *kronk.Kronk, question string, imageFile string) (<-chan kronk.ChatResponse, error) {
+	fmt.Printf("\nQuestion: %s\n\n", question)
 
 	message := kronk.ChatMessage{
 		Role:    "user",
 		Content: question,
 	}
 
-	params := kronk.Params{
+	ch, err := krn.VisionStreaming(ctx, message, imageFile, kronk.Params{
 		TopK: 1.0,
 		TopP: 0.9,
 		Temp: 0.7,
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
-	defer cancel()
-
-	ch, err := krn.VisionStreaming(ctx, message, imageFile, params)
+	})
 	if err != nil {
-		return fmt.Errorf("vision streaming: %w", err)
+		return nil, fmt.Errorf("vision streaming: %w", err)
 	}
+
+	return ch, nil
+}
+
+func modelResponse(krn *kronk.Kronk, ch <-chan kronk.ChatResponse) error {
+	fmt.Print("MODEL> ")
 
 	var contextTokens int
 	var inputTokens int
 	var outputTokens int
 
+	now := time.Now()
+
 	for msg := range ch {
 		if msg.Err != nil {
 			return fmt.Errorf("error from model: %w", msg.Err)
 		}
+
 		fmt.Print(msg.Response)
 
 		contextTokens = msg.Tokens.Context
@@ -108,12 +147,17 @@ func run() error {
 		outputTokens += msg.Tokens.Output
 	}
 
+	// ---------------------------------------------------------------------
+
+	elapsedSeconds := time.Since(now).Seconds()
+	tokensPerSecond := float64(outputTokens) / elapsedSeconds
+
 	contextWindow := krn.ModelConfig().ContextWindow
 	percentage := (float64(contextTokens) / float64(contextWindow)) * 100
 	of := float32(contextWindow) / float32(1024)
 
-	fmt.Printf("\n\n\u001b[90mInput: %d  Output: %d  Context: %d (%.0f%% of %.0fK)\u001b[0m",
-		inputTokens, outputTokens, contextTokens, percentage, of)
+	fmt.Printf("\n\n\u001b[90mInput: %d  Output: %d  Context: %d (%.0f%% of %.0fK) TPS: %.2f\u001b[0m\n",
+		inputTokens, outputTokens, contextTokens, percentage, of, tokensPerSecond)
 
 	return nil
 }

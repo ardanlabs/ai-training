@@ -249,7 +249,7 @@ example13-step1:
 
 example13-step2:
 	export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:zarf/llamacpp && \
-	CGO_ENABLED=0 go run cmd/examples/example13/step2/*.go
+	CGO_ENABLED=0 go run cmd/examples/example13/step2/*.go 2> /dev/null
 
 example13-step3:
 	export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:zarf/llamacpp && \

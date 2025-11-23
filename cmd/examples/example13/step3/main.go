@@ -11,8 +11,8 @@ package main
 import (
 	"bufio"
 	"context"
+	"database/sql"
 	"fmt"
-	"log"
 	"os"
 	"strings"
 	"time"
@@ -34,8 +34,6 @@ const (
 )
 
 func main() {
-	log.Default().SetOutput(os.Stdout)
-
 	if err := run(); err != nil {
 		fmt.Printf("\nERROR: %s\n", err)
 		os.Exit(1)
@@ -43,49 +41,28 @@ func main() {
 }
 
 func run() error {
-	if err := install.LlamaCPP(libPath, download.CPU, true); err != nil {
-		return fmt.Errorf("unable to install llamacpp: %w", err)
-	}
-
-	modelEmbedFile, err := install.Model(modelEmbedURL, modelPath)
+	modelEmbedFile, modelChatFile, err := installSystem()
 	if err != nil {
-		return fmt.Errorf("unable to install embedding model: %w", err)
+		return fmt.Errorf("unable to install system: %w", err)
 	}
 
-	modelChatFile, err := install.Model(modelChatURL, modelPath)
-	if err != nil {
-		return fmt.Errorf("unable to install chat model: %w", err)
-	}
+	contextWindow := 32 * 1024
+	embedding := true
 
-	// -------------------------------------------------------------------------
-
-	if err := kronk.Init(libPath, kronk.LogSilent); err != nil {
-		return fmt.Errorf("unable to init kronk: %w", err)
-	}
-
-	const concurrency = 1
-
-	krnEmbed, err := kronk.New(concurrency, modelEmbedFile, "", kronk.ModelConfig{
-		Embeddings: true,
-	})
+	krnEmbed, err := newKronk(modelEmbedFile, contextWindow, embedding)
 	if err != nil {
 		return fmt.Errorf("unable to create embedding model: %w", err)
 	}
 	defer krnEmbed.Unload()
 
-	fmt.Println("- embed contextWindow:", krnEmbed.ModelConfig().ContextWindow)
-	fmt.Println("- embed maxTokens    :", krnEmbed.ModelConfig().MaxTokens)
-	fmt.Println("- embed embeddings   :", krnEmbed.ModelConfig().Embeddings)
+	contextWindow = 0
+	embedding = false
 
-	krnChat, err := kronk.New(concurrency, modelChatFile, "", kronk.ModelConfig{})
+	krnChat, err := newKronk(modelChatFile, contextWindow, embedding)
 	if err != nil {
 		return fmt.Errorf("unable to create chat model: %w", err)
 	}
 	defer krnChat.Unload()
-
-	fmt.Println("- chat contextWindow :", krnChat.ModelConfig().ContextWindow)
-	fmt.Println("- chat maxTokens     :", krnChat.ModelConfig().MaxTokens)
-	fmt.Println("- chat embeddings    :", krnChat.ModelConfig().Embeddings)
 
 	// -------------------------------------------------------------------------
 
@@ -97,68 +74,171 @@ func run() error {
 
 	// -------------------------------------------------------------------------
 
+	var messages []kronk.ChatMessage
+
 	for {
-		fmt.Print("\nQuestion> ")
-
-		reader := bufio.NewReader(os.Stdin)
-
-		question, err := reader.ReadString('\n')
+		messages, err = userInput(messages)
 		if err != nil {
-			fmt.Println("unable to read user input", err.Error())
-			os.Exit(1)
+			return fmt.Errorf("unable to get user input: %w", err)
 		}
 
 		// ---------------------------------------------------------------------
 
-		fmt.Print("\n-- Similarity ---\n\n")
+		docs, err := func() ([]duck.Document, error) {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
 
-		queryVector, err := func() ([]float32, error) {
+			docs, err := vectorSearch(ctx, krnEmbed, db, messages)
+			if err != nil {
+				return nil, fmt.Errorf("unable to get vector search results: %w", err)
+			}
+
+			return docs, nil
+		}()
+
+		if err != nil {
+			return fmt.Errorf("unable to get vector search results: %w", err)
+		}
+
+		// ---------------------------------------------------------------------
+
+		rankings, err := rerank(krnChat, docs)
+		if err != nil {
+			return fmt.Errorf("unable to rerank: %w", err)
+		}
+
+		// ---------------------------------------------------------------------
+
+		messages, err = func() ([]kronk.ChatMessage, error) {
 			ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 			defer cancel()
 
-			queryVector, err := krnEmbed.Embed(ctx, question)
+			ch, err := performChat(ctx, krnChat, addContextPrompt(rankings, messages))
 			if err != nil {
-				return nil, fmt.Errorf("embed: %w", err)
+				return nil, fmt.Errorf("unable to perform chat: %w", err)
 			}
 
-			return queryVector, nil
+			messages, err = modelResponse(krnChat, messages, ch)
+			if err != nil {
+				return nil, fmt.Errorf("unable to get model response: %w", err)
+			}
+
+			return messages, nil
 		}()
+
 		if err != nil {
-			return err
+			return fmt.Errorf("unable to perform chat: %w", err)
 		}
+	}
+}
 
-		docs, err := duck.Search(db, queryVector, 5)
-		if err != nil {
-			return fmt.Errorf("error searching database: %w", err)
-		}
+func installSystem() (string, string, error) {
+	if err := install.LlamaCPP(libPath, download.CPU, true); err != nil {
+		return "", "", fmt.Errorf("unable to install llamacpp: %w", err)
+	}
 
-		for _, doc := range docs {
-			fmt.Printf("Doc: %f: %s\n", doc.Similarity, strings.ReplaceAll(doc.Text, "\n", " ")[:100])
-		}
+	modelEmbedFile, err := install.Model(modelEmbedURL, modelPath)
+	if err != nil {
+		return "", "", fmt.Errorf("unable to install embedding model: %w", err)
+	}
 
-		// ---------------------------------------------------------------------
+	modelChatFile, err := install.Model(modelChatURL, modelPath)
+	if err != nil {
+		return "", "", fmt.Errorf("unable to install chat model: %w", err)
+	}
 
-		fmt.Print("\n-- Rerank ---\n\n")
+	return modelEmbedFile, modelChatFile, nil
+}
 
-		documents := make([]kronk.RankingDocument, len(docs))
-		for i, doc := range docs {
-			documents[i] = kronk.RankingDocument{Document: doc.Text, Embedding: doc.Embedding}
-		}
+func newKronk(modelFile string, contextWindow int, embeddings bool) (*kronk.Kronk, error) {
+	if err := kronk.Init(libPath, kronk.LogSilent); err != nil {
+		return nil, fmt.Errorf("unable to init kronk: %w", err)
+	}
 
-		rankings, err := krnEmbed.Rerank(documents)
-		if err != nil {
-			return fmt.Errorf("rerank: %w", err)
-		}
+	const concurrency = 1
 
-		for _, ranking := range rankings {
-			fmt.Printf("Doc: %f: %s\n", ranking.Score, strings.ReplaceAll(ranking.Document, "\n", " ")[:100])
-		}
+	krn, err := kronk.New(concurrency, modelFile, "", kronk.ModelConfig{
+		ContextWindow: contextWindow,
+		MaxTokens:     0,
+		Embeddings:    embeddings,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("unable to create inference model: %w", err)
+	}
 
-		// ---------------------------------------------------------------------
+	fmt.Println("- contextWindow:", krn.ModelConfig().ContextWindow)
+	fmt.Println("- maxTokens    :", krn.ModelConfig().MaxTokens)
+	fmt.Println("- embeddings   :", krn.ModelConfig().Embeddings)
 
-		fmt.Print("\n-- Response ---\n\n")
+	return krn, nil
+}
 
-		const prompt = `
+func userInput(messages []kronk.ChatMessage) ([]kronk.ChatMessage, error) {
+	fmt.Print("\nUSER> ")
+
+	reader := bufio.NewReader(os.Stdin)
+
+	userInput, err := reader.ReadString('\n')
+	if err != nil {
+		return messages, fmt.Errorf("unable to read user input: %w", err)
+	}
+
+	messages = append(messages, kronk.ChatMessage{
+		Role:    "user",
+		Content: userInput,
+	})
+
+	return messages, nil
+}
+
+func vectorSearch(ctx context.Context, krnEmbed *kronk.Kronk, db *sql.DB, messages []kronk.ChatMessage) ([]duck.Document, error) {
+	fmt.Print("\n--- Vector Search ---\n\n")
+
+	lastUserInput := messages[len(messages)-1].Content
+
+	queryVector, err := krnEmbed.Embed(ctx, lastUserInput)
+	if err != nil {
+		return nil, fmt.Errorf("embed: %w", err)
+	}
+
+	if len(queryVector) == 0 {
+		return nil, fmt.Errorf("empty query vector")
+	}
+
+	docs, err := duck.Search(db, queryVector, 5)
+	if err != nil {
+		return nil, fmt.Errorf("error searching database: %w", err)
+	}
+
+	for _, doc := range docs {
+		fmt.Printf("Doc: %f: %s\n", doc.Similarity, strings.ReplaceAll(doc.Text, "\n", " ")[:100])
+	}
+
+	return docs, nil
+}
+
+func rerank(krnEmbed *kronk.Kronk, docs []duck.Document) ([]kronk.Ranking, error) {
+	fmt.Print("\n--- Rerank ---\n\n")
+
+	documents := make([]kronk.RankingDocument, len(docs))
+	for i, doc := range docs {
+		documents[i] = kronk.RankingDocument{Document: doc.Text, Embedding: doc.Embedding}
+	}
+
+	rankings, err := krnEmbed.Rerank(documents)
+	if err != nil {
+		return nil, fmt.Errorf("rerank: %w", err)
+	}
+
+	for _, ranking := range rankings {
+		fmt.Printf("Doc: %f: %s\n", ranking.Score, strings.ReplaceAll(ranking.Document, "\n", " ")[:100])
+	}
+
+	return rankings, nil
+}
+
+func addContextPrompt(rankings []kronk.Ranking, messages []kronk.ChatMessage) []kronk.ChatMessage {
+	const prompt = `
 		- Use the following Context to answer the user's question.
 		- If you don't know the answer, say that you don't know.
 		- Responses should be properly formatted to be easily read.
@@ -172,59 +252,74 @@ func run() error {
 		Question: %s
 		`
 
-		var content string
-		for _, ranking := range rankings[:2] {
-			content = fmt.Sprintf("%s\n%s\n", content, ranking.Document)
-		}
-
-		finalPrompt := fmt.Sprintf(prompt, content, question)
-
-		msgs := []kronk.ChatMessage{
-			{Role: "user", Content: finalPrompt},
-		}
-
-		err = func() error {
-			ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
-			defer cancel()
-
-			ch, err := krnChat.ChatStreaming(ctx, msgs, kronk.Params{
-				TopK: 1.0,
-				TopP: 0.9,
-				Temp: 0.7,
-			})
-			if err != nil {
-				return fmt.Errorf("chat streaming: %w", err)
-			}
-
-			var contextTokens int
-			var inputTokens int
-			var outputTokens int
-
-			for msg := range ch {
-				if msg.Err != nil {
-					return fmt.Errorf("error from model: %w", msg.Err)
-				}
-
-				fmt.Print(msg.Response)
-
-				contextTokens = msg.Tokens.Context
-				inputTokens = msg.Tokens.Input
-				outputTokens += msg.Tokens.Output
-			}
-
-			contextWindow := krnChat.ModelConfig().ContextWindow
-			percentage := (float64(contextTokens) / float64(contextWindow)) * 100
-			of := float32(contextWindow) / float32(1024)
-
-			fmt.Printf("\n\n\u001b[90mInput: %d  Output: %d  Context: %d (%.0f%% of %.0fK)\u001b[0m",
-				inputTokens, outputTokens, contextTokens, percentage, of)
-
-			return nil
-		}()
-		if err != nil {
-			return err
-		}
-
-		fmt.Println()
+	var content strings.Builder
+	for _, ranking := range rankings[:2] {
+		content.WriteString(fmt.Sprintf("%s\n%s\n", ranking.Document, ranking.Document))
 	}
+
+	lastUserInput := messages[len(messages)-1].Content
+	finalPrompt := fmt.Sprintf(prompt, content.String(), lastUserInput)
+
+	messages = append(messages, kronk.ChatMessage{
+		Role:    "user",
+		Content: finalPrompt,
+	})
+
+	return messages
+}
+
+func performChat(ctx context.Context, krn *kronk.Kronk, messages []kronk.ChatMessage) (<-chan kronk.ChatResponse, error) {
+	ch, err := krn.ChatStreaming(ctx, messages, kronk.Params{
+		TopK: 1.0,
+		TopP: 0.9,
+		Temp: 0.7,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("chat streaming: %w", err)
+	}
+
+	return ch, nil
+}
+
+func modelResponse(krn *kronk.Kronk, messages []kronk.ChatMessage, ch <-chan kronk.ChatResponse) ([]kronk.ChatMessage, error) {
+	fmt.Print("\nMODEL> ")
+
+	var finalResponse strings.Builder
+	var contextTokens int
+	var inputTokens int
+	var outputTokens int
+
+	now := time.Now()
+
+	for msg := range ch {
+		if msg.Err != nil {
+			return messages, fmt.Errorf("error from model: %w", msg.Err)
+		}
+
+		fmt.Print(msg.Response)
+		finalResponse.WriteString(msg.Response)
+
+		contextTokens = msg.Tokens.Context
+		inputTokens = msg.Tokens.Input
+		outputTokens += msg.Tokens.Output
+	}
+
+	// ---------------------------------------------------------------------
+
+	elapsedSeconds := time.Since(now).Seconds()
+	tokensPerSecond := float64(outputTokens) / elapsedSeconds
+
+	contextWindow := krn.ModelConfig().ContextWindow
+	percentage := (float64(contextTokens) / float64(contextWindow)) * 100
+	of := float32(contextWindow) / float32(1024)
+
+	fmt.Printf("\n\n\u001b[90mInput: %d  Output: %d  Context: %d (%.0f%% of %.0fK) TPS: %.2f\u001b[0m\n",
+		inputTokens, outputTokens, contextTokens, percentage, of, tokensPerSecond)
+
+	messages = append(messages, kronk.ChatMessage{
+		Role:    "assistant",
+		Content: finalResponse.String(),
+	})
+
+	return messages, nil
 }

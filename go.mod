@@ -15,7 +15,7 @@ require (
 	golang.org/x/sync v0.18.0
 )
 
-// replace github.com/ardanlabs/kronk => ../kronk
+replace github.com/ardanlabs/kronk => ../kronk
 
 require (
 	github.com/apache/arrow-go/v18 v18.4.1 // indirect

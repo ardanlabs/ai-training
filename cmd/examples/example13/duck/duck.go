@@ -139,6 +139,10 @@ func loadChunks(db *sql.DB, krn *kronk.Kronk, chunksFile string) error {
 				return nil, fmt.Errorf("embed: %w", err)
 			}
 
+			if len(vec) == 0 {
+				return nil, fmt.Errorf("empty vector")
+			}
+
 			return vec, nil
 		}()
 		if err != nil {

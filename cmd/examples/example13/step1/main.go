@@ -57,28 +57,26 @@ func run() error {
 			return fmt.Errorf("user input: %w", err)
 		}
 
-		// ---------------------------------------------------------------------
+		messages, err = func() ([]kronk.ChatMessage, error) {
+			ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+			defer cancel()
 
-		ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
-		defer cancel()
+			ch, err := performChat(ctx, krn, messages)
+			if err != nil {
+				return nil, fmt.Errorf("unable to perform chat: %w", err)
+			}
 
-		ch, err := krn.ChatStreaming(ctx, messages, kronk.Params{
-			TopK: 1.0,
-			TopP: 0.9,
-			Temp: 0.7,
-		})
+			messages, err = modelResponse(krn, messages, ch)
+			if err != nil {
+				return nil, fmt.Errorf("model response: %w", err)
+			}
+
+			return messages, nil
+		}()
+
 		if err != nil {
-			return fmt.Errorf("chat streaming: %w", err)
+			return fmt.Errorf("unable to perform chat: %w", err)
 		}
-
-		// ---------------------------------------------------------------------
-
-		messages, err = modelResponse(krn, messages, ch)
-		if err != nil {
-			return fmt.Errorf("model output: %w", err)
-		}
-
-		fmt.Println()
 	}
 }
 
@@ -136,6 +134,19 @@ func userInput(messages []kronk.ChatMessage) ([]kronk.ChatMessage, error) {
 	return messages, nil
 }
 
+func performChat(ctx context.Context, krn *kronk.Kronk, messages []kronk.ChatMessage) (<-chan kronk.ChatResponse, error) {
+	ch, err := krn.ChatStreaming(ctx, messages, kronk.Params{
+		TopK: 1.0,
+		TopP: 0.9,
+		Temp: 0.7,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("chat streaming: %w", err)
+	}
+
+	return ch, nil
+}
+
 func modelResponse(krn *kronk.Kronk, messages []kronk.ChatMessage, ch <-chan kronk.ChatResponse) ([]kronk.ChatMessage, error) {
 	fmt.Print("\nMODEL> ")
 
@@ -159,7 +170,7 @@ func modelResponse(krn *kronk.Kronk, messages []kronk.ChatMessage, ch <-chan kro
 		outputTokens += msg.Tokens.Output
 	}
 
-	// ---------------------------------------------------------------------
+	// -------------------------------------------------------------------------
 
 	elapsedSeconds := time.Since(now).Seconds()
 	tokensPerSecond := float64(outputTokens) / elapsedSeconds
@@ -168,7 +179,7 @@ func modelResponse(krn *kronk.Kronk, messages []kronk.ChatMessage, ch <-chan kro
 	percentage := (float64(contextTokens) / float64(contextWindow)) * 100
 	of := float32(contextWindow) / float32(1024)
 
-	fmt.Printf("\n\n\u001b[90mInput: %d  Output: %d  Context: %d (%.0f%% of %.0fK) TPS: %.2f\u001b[0m",
+	fmt.Printf("\n\n\u001b[90mInput: %d  Output: %d  Context: %d (%.0f%% of %.0fK) TPS: %.2f\u001b[0m\n",
 		inputTokens, outputTokens, contextTokens, percentage, of, tokensPerSecond)
 
 	messages = append(messages, kronk.ChatMessage{

@@ -5,7 +5,9 @@ package install
 import (
 	"fmt"
 	"net/url"
+	"os"
 	"path"
+	"path/filepath"
 	"strings"
 
 	"github.com/ardanlabs/kronk"
@@ -13,14 +15,42 @@ import (
 )
 
 func LlamaCPP(libPath string, processor download.Processor, allowUpgrade bool) error {
+	vi, err := kronk.RetrieveVersionInfo(libPath)
+	if err != nil {
+		return fmt.Errorf("error retrieving version info: %w", err)
+	}
+
+	fmt.Println()
 	fmt.Print("- check llamacpp installation: ")
 
-	if err := kronk.InstallLlama(libPath, processor, allowUpgrade); err != nil {
-		fmt.Println("X")
-		return fmt.Errorf("unable to install llamacpp: %w", err)
+	if vi.Current == vi.Latest {
+		fmt.Println("✓")
+		fmt.Printf("  - latest version : %s\n  - current version: %s\n", vi.Latest, vi.Current)
+		return nil
+	}
+
+	vi, err = kronk.InstallLlama(libPath, download.CPU, true)
+	if err != nil {
+		fmt.Println("x")
+		return fmt.Errorf("failed to install llama: %q: error: %w", libPath, err)
+	}
+
+	f := func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		fmt.Println("lib:", path)
+		return nil
+	}
+
+	if err := filepath.Walk(libPath, f); err != nil {
+		fmt.Println("x")
+		return fmt.Errorf("error walking model path: %v", err)
 	}
 
 	fmt.Println("✓")
+	fmt.Printf("  - latest version : %s\n  - current version: %s\n", vi.Latest, vi.Current)
 
 	return nil
 }

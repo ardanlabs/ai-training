@@ -53,7 +53,7 @@ func run() error {
 
 	const concurrency = 1
 
-	krn, err := kronk.New(concurrency, modelFile, kronk.ModelConfig{
+	krn, err := kronk.New(concurrency, modelFile, "", kronk.ModelConfig{
 		ContextWindow: 0,
 		MaxTokens:     0,
 		Embeddings:    false,

@@ -57,7 +57,7 @@ func run() error {
 
 	const concurrency = 1
 
-	krn, err := kronk.New(concurrency, modelFile, kronk.ModelConfig{}, kronk.WithProjection(projFile))
+	krn, err := kronk.New(concurrency, modelFile, projFile, kronk.ModelConfig{})
 	if err != nil {
 		return fmt.Errorf("unable to create inference model: %w", err)
 	}

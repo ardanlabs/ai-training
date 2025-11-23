@@ -83,7 +83,7 @@ func run() error {
 
 	const concurrency = 5
 
-	krnEmbed, err := kronk.New(concurrency, modelEmbedFile, kronk.ModelConfig{
+	krnEmbed, err := kronk.New(concurrency, modelEmbedFile, "", kronk.ModelConfig{
 		Embeddings: true,
 	})
 	if err != nil {
@@ -91,7 +91,7 @@ func run() error {
 	}
 	defer krnEmbed.Unload()
 
-	krnChat, err := kronk.New(concurrency, modelChatFile, kronk.ModelConfig{})
+	krnChat, err := kronk.New(concurrency, modelChatFile, "", kronk.ModelConfig{})
 	if err != nil {
 		return fmt.Errorf("unable to create chat model: %w", err)
 	}

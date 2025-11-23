@@ -109,6 +109,8 @@ func run() error {
 		var inputTokens int
 		var outputTokens int
 
+		now := time.Now()
+
 		for msg := range ch {
 			if msg.Err != nil {
 				return fmt.Errorf("error from model: %w", msg.Err)
@@ -122,12 +124,17 @@ func run() error {
 			outputTokens += msg.Tokens.Output
 		}
 
+		// ---------------------------------------------------------------------
+
+		elapsedSeconds := time.Since(now).Seconds()
+		tokensPerSecond := float64(outputTokens) / elapsedSeconds
+
 		contextWindow := krn.ModelConfig().ContextWindow
 		percentage := (float64(contextTokens) / float64(contextWindow)) * 100
 		of := float32(contextWindow) / float32(1024)
 
-		fmt.Printf("\n\n\u001b[90mInput: %d  Output: %d  Context: %d (%.0f%% of %.0fK)\u001b[0m",
-			inputTokens, outputTokens, contextTokens, percentage, of)
+		fmt.Printf("\n\n\u001b[90mInput: %d  Output: %d  Context: %d (%.0f%% of %.0fK) TPS: %.2f\u001b[0m",
+			inputTokens, outputTokens, contextTokens, percentage, of, tokensPerSecond)
 
 		messages = append(messages, kronk.ChatMessage{
 			Role:    "assistant",

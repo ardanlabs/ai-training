@@ -36,19 +36,68 @@ func main() {
 }
 
 func run() error {
+	modelFile, err := installSystem()
+	if err != nil {
+		return fmt.Errorf("unable to installation system: %w", err)
+	}
+
+	krn, err := newKronk(modelFile)
+	if err != nil {
+		return fmt.Errorf("unable to init kronk: %w", err)
+	}
+	defer krn.Unload()
+
+	// -------------------------------------------------------------------------
+
+	var messages []kronk.ChatMessage
+
+	for {
+		messages, err = userInput(messages)
+		if err != nil {
+			return fmt.Errorf("user input: %w", err)
+		}
+
+		// ---------------------------------------------------------------------
+
+		ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+		defer cancel()
+
+		ch, err := krn.ChatStreaming(ctx, messages, kronk.Params{
+			TopK: 1.0,
+			TopP: 0.9,
+			Temp: 0.7,
+		})
+		if err != nil {
+			return fmt.Errorf("chat streaming: %w", err)
+		}
+
+		// ---------------------------------------------------------------------
+
+		messages, err = modelResponse(krn, messages, ch)
+		if err != nil {
+			return fmt.Errorf("model output: %w", err)
+		}
+
+		fmt.Println()
+	}
+}
+
+func installSystem() (string, error) {
 	if err := install.LlamaCPP(libPath, download.CPU, true); err != nil {
-		return fmt.Errorf("unable to install llamacpp: %w", err)
+		return "", fmt.Errorf("unable to install llamacpp: %w", err)
 	}
 
 	modelFile, err := install.Model(modelURL, modelPath)
 	if err != nil {
-		return fmt.Errorf("unable to install model: %w", err)
+		return "", fmt.Errorf("unable to install model: %w", err)
 	}
 
-	// -------------------------------------------------------------------------
+	return modelFile, nil
+}
 
+func newKronk(modelFile string) (*kronk.Kronk, error) {
 	if err := kronk.Init(libPath, kronk.LogSilent); err != nil {
-		return fmt.Errorf("unable to init kronk: %w", err)
+		return nil, fmt.Errorf("unable to init kronk: %w", err)
 	}
 
 	const concurrency = 1
@@ -59,88 +108,73 @@ func run() error {
 		Embeddings:    false,
 	})
 	if err != nil {
-		return fmt.Errorf("unable to create inference model: %w", err)
+		return nil, fmt.Errorf("unable to create inference model: %w", err)
 	}
-	defer krn.Unload()
 
 	fmt.Println("- contextWindow:", krn.ModelConfig().ContextWindow)
 	fmt.Println("- maxTokens    :", krn.ModelConfig().MaxTokens)
 	fmt.Println("- embeddings   :", krn.ModelConfig().Embeddings)
 
-	// -------------------------------------------------------------------------
+	return krn, nil
+}
 
-	var messages []kronk.ChatMessage
+func userInput(messages []kronk.ChatMessage) ([]kronk.ChatMessage, error) {
+	fmt.Print("\nUSER> ")
 
-	for {
-		fmt.Print("\nUSER> ")
+	reader := bufio.NewReader(os.Stdin)
 
-		reader := bufio.NewReader(os.Stdin)
-
-		userInput, err := reader.ReadString('\n')
-		if err != nil {
-			fmt.Println("unable to read user input", err.Error())
-			os.Exit(1)
-		}
-
-		messages = append(messages, kronk.ChatMessage{
-			Role:    "user",
-			Content: userInput,
-		})
-
-		ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
-		defer cancel()
-
-		params := kronk.Params{
-			TopK: 1.0,
-			TopP: 0.9,
-			Temp: 0.7,
-		}
-
-		ch, err := krn.ChatStreaming(ctx, messages, params)
-		if err != nil {
-			return fmt.Errorf("chat streaming: %w", err)
-		}
-
-		fmt.Print("\nMODEL> ")
-
-		var finalResponse strings.Builder
-
-		var contextTokens int
-		var inputTokens int
-		var outputTokens int
-
-		now := time.Now()
-
-		for msg := range ch {
-			if msg.Err != nil {
-				return fmt.Errorf("error from model: %w", msg.Err)
-			}
-
-			fmt.Print(msg.Response)
-			finalResponse.WriteString(msg.Response)
-
-			contextTokens = msg.Tokens.Context
-			inputTokens = msg.Tokens.Input
-			outputTokens += msg.Tokens.Output
-		}
-
-		// ---------------------------------------------------------------------
-
-		elapsedSeconds := time.Since(now).Seconds()
-		tokensPerSecond := float64(outputTokens) / elapsedSeconds
-
-		contextWindow := krn.ModelConfig().ContextWindow
-		percentage := (float64(contextTokens) / float64(contextWindow)) * 100
-		of := float32(contextWindow) / float32(1024)
-
-		fmt.Printf("\n\n\u001b[90mInput: %d  Output: %d  Context: %d (%.0f%% of %.0fK) TPS: %.2f\u001b[0m",
-			inputTokens, outputTokens, contextTokens, percentage, of, tokensPerSecond)
-
-		messages = append(messages, kronk.ChatMessage{
-			Role:    "assistant",
-			Content: finalResponse.String(),
-		})
-
-		fmt.Println()
+	userInput, err := reader.ReadString('\n')
+	if err != nil {
+		return messages, fmt.Errorf("unable to read user input: %w", err)
 	}
+
+	messages = append(messages, kronk.ChatMessage{
+		Role:    "user",
+		Content: userInput,
+	})
+
+	return messages, nil
+}
+
+func modelResponse(krn *kronk.Kronk, messages []kronk.ChatMessage, ch <-chan kronk.ChatResponse) ([]kronk.ChatMessage, error) {
+	fmt.Print("\nMODEL> ")
+
+	var finalResponse strings.Builder
+	var contextTokens int
+	var inputTokens int
+	var outputTokens int
+
+	now := time.Now()
+
+	for msg := range ch {
+		if msg.Err != nil {
+			return messages, fmt.Errorf("error from model: %w", msg.Err)
+		}
+
+		fmt.Print(msg.Response)
+		finalResponse.WriteString(msg.Response)
+
+		contextTokens = msg.Tokens.Context
+		inputTokens = msg.Tokens.Input
+		outputTokens += msg.Tokens.Output
+	}
+
+	// ---------------------------------------------------------------------
+
+	elapsedSeconds := time.Since(now).Seconds()
+	tokensPerSecond := float64(outputTokens) / elapsedSeconds
+
+	contextWindow := krn.ModelConfig().ContextWindow
+	percentage := (float64(contextTokens) / float64(contextWindow)) * 100
+	of := float32(contextWindow) / float32(1024)
+
+	fmt.Printf("\n\n\u001b[90mInput: %d  Output: %d  Context: %d (%.0f%% of %.0fK) TPS: %.2f\u001b[0m",
+		inputTokens, outputTokens, contextTokens, percentage, of, tokensPerSecond)
+
+	messages = append(messages, kronk.ChatMessage{
+		Role:    "assistant",
+		Content: finalResponse.String(),
+	})
+
+	return messages, nil
 }

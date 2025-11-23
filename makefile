@@ -404,6 +404,12 @@ jupyter-run:
 	uv run jupyter lab
 
 # ==============================================================================
+# Llamacpp support
+
+llama-bench:
+	zarf/llamacpp/llama-bench --list-devices
+
+# ==============================================================================
 # Go Modules support
 
 tidy:

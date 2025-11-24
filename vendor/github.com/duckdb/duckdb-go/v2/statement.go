@@ -548,6 +548,9 @@ func (s *Stmt) execute(ctx context.Context, args []driver.NamedValue) (*mapping.
 }
 
 func (s *Stmt) executeBound(ctx context.Context) (*mapping.Result, error) {
+	cleanupCtx := s.conn.setContext(ctx)
+	defer cleanupCtx()
+
 	var pendingRes mapping.PendingResult
 	if mapping.PendingPrepared(*s.preparedStmt, &pendingRes) == mapping.StateError {
 		dbErr := getDuckDBError(mapping.PendingError(pendingRes))

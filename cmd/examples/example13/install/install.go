@@ -29,6 +29,8 @@ func LlamaCPP(libPath string, processor download.Processor, allowUpgrade bool) e
 		return nil
 	}
 
+	fmt.Println("✓")
+
 	vi, err = kronk.InstallLlama(libPath, download.CPU, true)
 	if err != nil {
 		fmt.Println("x")
@@ -49,6 +51,7 @@ func LlamaCPP(libPath string, processor download.Processor, allowUpgrade bool) e
 		return fmt.Errorf("error walking model path: %v", err)
 	}
 
+	fmt.Print("- updated llamacpp installation: ")
 	fmt.Println("✓")
 	fmt.Printf("  - latest version : %s\n  - current version: %s\n", vi.Latest, vi.Current)
 

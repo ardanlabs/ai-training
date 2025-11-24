@@ -11,6 +11,7 @@ interface ChatRequest {
   temperature?: number
   top_p?: number
   top_k?: number
+  max_tokens?: number
 }
 
 interface Response {
@@ -29,6 +30,7 @@ function App() {
   const [temperature, setTemperature] = useState(1.0)
   const [topP, setTopP] = useState(0.95)
   const [topK, setTopK] = useState(50)
+  const [maxTokens, setMaxTokens] = useState(1000)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   const scrollToBottom = () => {
@@ -63,7 +65,8 @@ function App() {
         messages: updatedMessages,
         temperature,
         top_p: topP,
-        top_k: topK
+        top_k: topK,
+        max_tokens: maxTokens
       }
 
       const response = await fetch('http://localhost:8080/chat', {
@@ -189,6 +192,18 @@ function App() {
               step="1"
               value={topK}
               onChange={(e) => setTopK(parseInt(e.target.value))}
+              disabled={isLoading}
+            />
+          </div>
+          <div className="param">
+            <label>Max Tokens: {maxTokens}</label>
+            <input
+              type="range"
+              min="10"
+              max="4000"
+              step="10"
+              value={maxTokens}
+              onChange={(e) => setMaxTokens(parseInt(e.target.value))}
               disabled={isLoading}
             />
           </div>

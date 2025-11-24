@@ -92,7 +92,6 @@ func newKronk(modelFile string, projFile string) (*kronk.Kronk, error) {
 
 	krn, err := kronk.New(concurrency, modelFile, projFile, kronk.ModelConfig{
 		ContextWindow: 0,
-		MaxTokens:     0,
 		Embeddings:    false,
 	})
 	if err != nil {
@@ -100,7 +99,6 @@ func newKronk(modelFile string, projFile string) (*kronk.Kronk, error) {
 	}
 
 	fmt.Println("- contextWindow:", krn.ModelConfig().ContextWindow)
-	fmt.Println("- maxTokens    :", krn.ModelConfig().MaxTokens)
 	fmt.Println("- embeddings   :", krn.ModelConfig().Embeddings)
 
 	return krn, nil
@@ -115,9 +113,10 @@ func performChat(ctx context.Context, krn *kronk.Kronk, question string, imageFi
 	}
 
 	ch, err := krn.VisionStreaming(ctx, message, imageFile, kronk.Params{
-		TopK: 1.0,
-		TopP: 0.9,
-		Temp: 0.7,
+		TopK:      1.0,
+		TopP:      0.9,
+		Temp:      0.7,
+		MaxTokens: 2048,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("vision streaming: %w", err)

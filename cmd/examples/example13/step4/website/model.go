@@ -18,31 +18,39 @@ type Request struct {
 	TopK        *int32    `json:"top_k"`
 	TopP        *float32  `json:"top_p"`
 	Temperature *float32  `json:"temperature"`
+	MaxTokens   *int      `json:"max_tokens"`
 }
 
 func getParams(traceID string, req Request) kronk.Params {
-	topK := int32(50)
+	var topK int32
 	if req.TopK != nil {
 		fmt.Printf("traceID: %s: getParams: topK: %#v\n", traceID, *req.TopK)
 		topK = *req.TopK
 	}
 
-	topP := float32(0.95)
+	var topP float32
 	if req.TopP != nil {
 		fmt.Printf("traceID: %s: getParams: topP: %#v\n", traceID, *req.TopP)
 		topP = *req.TopP
 	}
 
-	temp := float32(1.0)
+	var temp float32
 	if req.Temperature != nil {
 		fmt.Printf("traceID: %s: getParams: temp: %#v\n", traceID, *req.Temperature)
 		temp = *req.Temperature
 	}
 
+	var maxTokens int
+	if req.MaxTokens != nil {
+		fmt.Printf("traceID: %s: getParams: maxTokens: %#v\n", traceID, *req.MaxTokens)
+		maxTokens = *req.MaxTokens
+	}
+
 	params := kronk.Params{
-		TopK: topK,
-		TopP: topP,
-		Temp: temp,
+		TopK:      topK,
+		TopP:      topP,
+		Temp:      temp,
+		MaxTokens: maxTokens,
 	}
 
 	return params
@@ -52,7 +60,7 @@ type Response struct {
 	ID      string  `json:"id,omitempty"`
 	Created int64   `json:"created,omitempty"`
 	Model   string  `json:"model,omitempty"`
-	Delta   Message `json:"delta,omitempty"`
+	Delta   Message `json:"delta"`
 	Final   string  `json:"final,omitempty"`
 	Error   string  `json:"error,omitempty"`
 }

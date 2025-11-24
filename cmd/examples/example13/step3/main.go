@@ -159,7 +159,6 @@ func newKronk(modelFile string, contextWindow int, embeddings bool) (*kronk.Kron
 
 	krn, err := kronk.New(concurrency, modelFile, "", kronk.ModelConfig{
 		ContextWindow: contextWindow,
-		MaxTokens:     0,
 		Embeddings:    embeddings,
 	})
 	if err != nil {
@@ -167,7 +166,6 @@ func newKronk(modelFile string, contextWindow int, embeddings bool) (*kronk.Kron
 	}
 
 	fmt.Println("- contextWindow:", krn.ModelConfig().ContextWindow)
-	fmt.Println("- maxTokens    :", krn.ModelConfig().MaxTokens)
 	fmt.Println("- embeddings   :", krn.ModelConfig().Embeddings)
 
 	return krn, nil
@@ -270,9 +268,10 @@ func addContextPrompt(rankings []kronk.Ranking, messages []kronk.ChatMessage) []
 
 func performChat(ctx context.Context, krn *kronk.Kronk, messages []kronk.ChatMessage) (<-chan kronk.ChatResponse, error) {
 	ch, err := krn.ChatStreaming(ctx, messages, kronk.Params{
-		TopK: 1.0,
-		TopP: 0.9,
-		Temp: 0.7,
+		TopK:      1.0,
+		TopP:      0.9,
+		Temp:      0.7,
+		MaxTokens: 2048,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("chat streaming: %w", err)

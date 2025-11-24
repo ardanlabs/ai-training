@@ -277,6 +277,12 @@ func (h *handlers) streamResponse(ctx context.Context, traceID string, w http.Re
 	id := uuid.NewString()
 	var finalResponse strings.Builder
 
+	var contextTokens int
+	var inputTokens int
+	var outputTokens int
+
+	now := time.Now()
+
 	for msg := range ch {
 		if err := ctx.Err(); err != nil {
 			if errors.Is(err, context.Canceled) {
@@ -294,7 +300,21 @@ func (h *handlers) streamResponse(ctx context.Context, traceID string, w http.Re
 		finalResponse.WriteString(msg.Response)
 		fmt.Fprintf(w, "data: %s\n", newResponse(id, h.krnChat.ModelName(), msg.Response, "", nil))
 		f.Flush()
+
+		contextTokens = msg.Tokens.Context
+		inputTokens = msg.Tokens.Input
+		outputTokens += msg.Tokens.Output
 	}
+
+	elapsedSeconds := time.Since(now).Seconds()
+	tokensPerSecond := float64(outputTokens) / elapsedSeconds
+
+	contextWindow := h.krnChat.ModelConfig().ContextWindow
+	percentage := (float64(contextTokens) / float64(contextWindow)) * 100
+	of := float32(contextWindow) / float32(1024)
+
+	fmt.Printf("traceID: %s: chat: Input: %d  Output: %d  Context: %d (%.0f%% of %.0fK) TPS: %.2f\n",
+		traceID, inputTokens, outputTokens, contextTokens, percentage, of, tokensPerSecond)
 
 	fr := finalResponse.String()
 	if len(fr) > 0 {

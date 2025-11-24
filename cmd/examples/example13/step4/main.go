@@ -98,7 +98,6 @@ func run() error {
 	defer krnChat.Unload()
 
 	fmt.Println("- contextWindow:", krnChat.ModelConfig().ContextWindow)
-	fmt.Println("- maxTokens    :", krnChat.ModelConfig().MaxTokens)
 	fmt.Println("- embeddings   :", krnChat.ModelConfig().Embeddings)
 
 	// -------------------------------------------------------------------------

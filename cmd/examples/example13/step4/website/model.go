@@ -47,10 +47,10 @@ func getParams(traceID string, req Request) kronk.Params {
 	}
 
 	params := kronk.Params{
-		TopK:      topK,
-		TopP:      topP,
-		Temp:      temp,
-		MaxTokens: maxTokens,
+		TopK:        topK,
+		TopP:        topP,
+		Temperature: temp,
+		MaxTokens:   maxTokens,
 	}
 
 	return params

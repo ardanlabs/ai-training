@@ -4,6 +4,7 @@ import './App.css'
 interface Message {
   role: string
   content: string
+  reasoning?: string
   usage?: Usage
 }
 
@@ -28,6 +29,7 @@ interface Choice {
   delta: {
     role?: string
     content?: string
+    reasoning?: string
   }
   finish_reason?: string
   generated_text?: string
@@ -109,6 +111,7 @@ function App() {
       }
 
       let accumulatedContent = ''
+      let accumulatedReasoning = ''
 
       while (true) {
         const { done, value } = await reader.read()
@@ -138,11 +141,13 @@ function App() {
                   const errorText = choice.GeneratedText || choice.generated_text || 'Unknown Error'
                   accumulatedContent += `\n[Error: ${errorText}]`
                 } else {
-                  if (choice.delta?.content) {
-                    accumulatedContent += choice.delta.content
-                  }
-                  if (choice.finish_reason === 'stop') {
-                    // Done displaying text
+                  if (choice.finish_reason !== 'stop') {
+                    if (choice.delta?.content) {
+                      accumulatedContent += choice.delta.content
+                    }
+                    if (choice.delta?.reasoning) {
+                      accumulatedReasoning += choice.delta.reasoning
+                    }
                   }
                 }
               }
@@ -153,6 +158,7 @@ function App() {
                 newMessages[newMessages.length - 1] = {
                   role: 'assistant',
                   content: accumulatedContent,
+                  reasoning: accumulatedReasoning,
                   usage: parsed.usage || currentMsg.usage
                 }
                 return newMessages
@@ -250,6 +256,11 @@ function App() {
             <div key={idx} className={`message ${msg.role}`}>
               <div className="role">{msg.role === 'user' ? 'You' : 'Assistant'}</div>
               <div className="content">
+                {msg.reasoning && (
+                  <div style={{ color: 'red', whiteSpace: 'pre-wrap', marginBottom: '10px' }}>
+                    {msg.reasoning}
+                  </div>
+                )}
                 {msg.content}
                 {msg.usage && (
                   <div className="usage-info" style={{ fontSize: '0.8em', color: '#888', marginTop: '8px', paddingTop: '8px', borderTop: '1px solid #eee' }}>

@@ -48,13 +48,13 @@ func (h *handlers) chat(w http.ResponseWriter, r *http.Request) {
 
 	fmt.Printf("traceID: %s: chat: msgs: %#v\n", traceID, req.Messages)
 
-	rankings, err := h.findContext(traceID, req)
+	documents, err := h.findContext(traceID, req)
 	if err != nil {
 		sendError(w, traceID, "findContext", err)
 		return
 	}
 
-	msgs := h.compileChatMessages(traceID, req, rankings)
+	msgs := h.compileChatMessages(traceID, req, documents)
 	params := getParams(traceID, req)
 
 	ctx, cancel := context.WithTimeout(context.Background(), h.timeout)
@@ -105,30 +105,21 @@ func (h *handlers) fileServerReact() func(w http.ResponseWriter, r *http.Request
 
 // =============================================================================
 
-func (h *handlers) findContext(traceID string, req Request) ([]kronk.Ranking, error) {
+func (h *handlers) findContext(traceID string, req Request) ([]duck.Document, error) {
 	yesSearch, err := h.needVectorSearch(traceID, req)
 	if err != nil {
 		return nil, fmt.Errorf("needVectorSearch: %w", err)
 	}
-
-	var rankings []kronk.Ranking
 
 	if yesSearch {
 		docs, err := h.vectorSearch(traceID, req)
 		if err != nil {
 			return nil, fmt.Errorf("vectorSearch: %w", err)
 		}
-
-		if len(docs) > 0 {
-			const threshold = 0.60
-			rankings, err = h.rerank(traceID, docs, threshold)
-			if err != nil {
-				return nil, fmt.Errorf("rerank: %w", err)
-			}
-		}
+		return docs, nil
 	}
 
-	return rankings, nil
+	return nil, nil
 }
 
 func (h *handlers) needVectorSearch(traceID string, req Request) (bool, error) {
@@ -155,7 +146,7 @@ func (h *handlers) needVectorSearch(traceID string, req Request) (bool, error) {
 		return false, err
 	}
 
-	resp := strings.ToLower(response.Choice[0].GeneratedText)
+	resp := strings.ToLower(response.Choice[0].Delta.Content)
 
 	if strings.Contains(resp, "yes") {
 		fmt.Printf("traceID: %s: needVectorSearch: response: YES: %s\n", traceID, resp)
@@ -189,30 +180,8 @@ func (h *handlers) vectorSearch(traceID string, req Request) ([]duck.Document, e
 	return docs, nil
 }
 
-func (h *handlers) rerank(traceID string, docs []duck.Document, threshold float64) ([]kronk.Ranking, error) {
-	fmt.Printf("traceID: %s: rerank: started: docs: %d\n", traceID, len(docs))
-
-	documents := make([]kronk.RankingDocument, 0, len(docs))
-	for _, doc := range docs {
-		fmt.Printf("traceID: %s: rerank: doc: %.2f: ", traceID, doc.Similarity)
-		if doc.Similarity >= threshold {
-			fmt.Println("keeping")
-			documents = append(documents, kronk.RankingDocument{Document: doc.Text, Embedding: doc.Embedding})
-			continue
-		}
-		fmt.Println("discarding")
-	}
-
-	rankings, err := h.krnChat.Rerank(documents)
-	if err != nil {
-		return nil, fmt.Errorf("rerank: %w", err)
-	}
-
-	return rankings, nil
-}
-
-func (h *handlers) compileChatMessages(traceID string, req Request, rankings []kronk.Ranking) []kronk.ChatMessage {
-	fmt.Printf("traceID: %s: compileChatMessages: started: msgs: %d: rankings: %d\n", traceID, len(req.Messages), len(rankings))
+func (h *handlers) compileChatMessages(traceID string, req Request, documents []duck.Document) []kronk.ChatMessage {
+	fmt.Printf("traceID: %s: compileChatMessages: started: msgs: %d: documents: %d\n", traceID, len(req.Messages), len(documents))
 
 	const systemPrompt = `
 		- Use any provided Context to answer the user's question.
@@ -234,21 +203,23 @@ func (h *handlers) compileChatMessages(traceID string, req Request, rankings []k
 	}
 
 	// Add the top 2 extra context if it exists.
-	if len(rankings) > 0 {
-		var content string
-		for i, ranking := range rankings {
-			content = fmt.Sprintf("%s\n%s\n", content, ranking.Document)
-			if i == 1 {
-				break
-			}
+	var count int
+	var content string
+	for _, doc := range documents {
+		content = fmt.Sprintf("%s\n%s\n", content, doc.Text)
+		count++
+		if count >= 2 {
+			break
 		}
+	}
 
-		msgs = append(msgs, kronk.ChatMessage{Role: "user", Content: fmt.Sprintf("Context:\n%s", content)})
+	if count > 0 {
+		msgs = append(msgs, kronk.ChatMessage{Role: "user", Content: fmt.Sprintf("Context:\n%s\n\n", content)})
 	}
 
 	// Add the final message from the history. We expect this to be a question.
 	question := req.Messages[len(req.Messages)-1].Content
-	msgs = append(msgs, kronk.ChatMessage{Role: "user", Content: question})
+	msgs = append(msgs, kronk.ChatMessage{Role: "user", Content: fmt.Sprintf("Question:\n%s\n\n", question)})
 
 	fmt.Printf("traceID: %s: compileChatMessages: ended: msgs: %d\n", traceID, len(msgs))
 
@@ -269,6 +240,7 @@ func (h *handlers) streamResponse(ctx context.Context, traceID string, w http.Re
 	f.Flush()
 
 	var lr kronk.ChatResponse
+
 	for resp := range ch {
 		if err := ctx.Err(); err != nil {
 			if errors.Is(err, context.Canceled) {
@@ -282,7 +254,7 @@ func (h *handlers) streamResponse(ctx context.Context, traceID string, w http.Re
 		}
 
 		if resp.Choice[0].FinishReason == kronk.FinishReasonError {
-			fmt.Printf("traceID: %s: chat: ERROR: %s\n", traceID, resp.Choice[0].GeneratedText)
+			fmt.Printf("traceID: %s: chat: ERROR: %s\n", traceID, resp.Choice[0].Delta.Content)
 			fmt.Fprintf(w, "data: %s\n", d)
 			f.Flush()
 			break

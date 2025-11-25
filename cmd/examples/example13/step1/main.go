@@ -21,8 +21,8 @@ import (
 
 const (
 	// modelURL  = "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q8_0.gguf?download=true"
-	// modelURL  = "https://huggingface.co/unsloth/gpt-oss-20b-GGUF/resolve/main/gpt-oss-20b-Q8_0.gguf?download=true"
-	modelURL  = "https://huggingface.co/Qwen/Qwen3-8B-GGUF/resolve/main/Qwen3-8B-Q8_0.gguf?download=true"
+	// modelURL = "https://huggingface.co/Qwen/Qwen3-8B-GGUF/resolve/main/Qwen3-8B-Q8_0.gguf?download=true"
+	modelURL  = "https://huggingface.co/unsloth/gpt-oss-20b-GGUF/resolve/main/gpt-oss-20b-Q8_0.gguf?download=true"
 	libPath   = "zarf/llamacpp"
 	modelPath = "zarf/models"
 )
@@ -142,19 +142,37 @@ func performChat(ctx context.Context, krn *kronk.Kronk, messages []kronk.ChatMes
 func modelResponse(krn *kronk.Kronk, messages []kronk.ChatMessage, ch <-chan kronk.ChatResponse) ([]kronk.ChatMessage, error) {
 	fmt.Print("\nMODEL> ")
 
+	var reasoning bool
 	var lr kronk.ChatResponse
+
+loop:
 	for resp := range ch {
-		if resp.Choice[0].FinishReason == kronk.FinishReasonError {
-			return messages, fmt.Errorf("error from model: %s", resp.Choice[0].GeneratedText)
+		switch resp.Choice[0].FinishReason {
+		case kronk.FinishReasonStop:
+			break loop
+
+		case kronk.FinishReasonError:
+			return messages, fmt.Errorf("error from model: %s", resp.Choice[0].Delta.Content)
 		}
 
-		fmt.Print(resp.Choice[0].Delta.Content)
+		if resp.Choice[0].Delta.Reasoning != "" {
+			fmt.Printf("\u001b[91m%s\u001b[0m", resp.Choice[0].Delta.Reasoning)
+			reasoning = true
+			continue
+		}
+
+		if reasoning {
+			reasoning = false
+			fmt.Print("\n\n")
+		}
+
+		fmt.Printf("%s", resp.Choice[0].Delta.Content)
 		lr = resp
 	}
 
 	messages = append(messages, kronk.ChatMessage{
 		Role:    "assistant",
-		Content: lr.Choice[0].GeneratedText,
+		Content: lr.Choice[0].Delta.Content,
 	})
 
 	// -------------------------------------------------------------------------
@@ -164,8 +182,8 @@ func modelResponse(krn *kronk.Kronk, messages []kronk.ChatMessage, ch <-chan kro
 	percentage := (float64(contextTokens) / float64(contextWindow)) * 100
 	of := float32(contextWindow) / float32(1024)
 
-	fmt.Printf("\n\n\u001b[90mInput: %d  Output: %d  Context: %d (%.0f%% of %.0fK) TPS: %.2f\u001b[0m\n",
-		lr.Usage.InputTokens, lr.Usage.OutputTokens, contextTokens, percentage, of, lr.Usage.TokensPerSecond)
+	fmt.Printf("\n\n\u001b[90mInput: %d  Reasoning: %d  Completion: %d  Output: %d  Window: %d (%.0f%% of %.0fK) TPS: %.2f\u001b[0m\n",
+		lr.Usage.InputTokens, lr.Usage.ReasoningTokens, lr.Usage.CompletionTokens, lr.Usage.OutputTokens, contextTokens, percentage, of, lr.Usage.TokensPerSecond)
 
 	return messages, nil
 }

@@ -37,7 +37,7 @@ import (
 )
 
 const (
-	modelChatURL       = "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q8_0.gguf?download=true"
+	modelChatURL       = "https://huggingface.co/unsloth/gpt-oss-20b-GGUF/resolve/main/gpt-oss-20b-Q8_0.gguf?download=true"
 	modelEmbedURL      = "https://huggingface.co/ggml-org/embeddinggemma-300m-qat-q8_0-GGUF/resolve/main/embeddinggemma-300m-qat-Q8_0.gguf?download=true"
 	libPath            = "zarf/llamacpp"
 	modelPath          = "zarf/models"
@@ -91,7 +91,9 @@ func run() error {
 	}
 	defer krnEmbed.Unload()
 
-	krnChat, err := kronk.New(concurrency, modelChatFile, "", kronk.ModelConfig{})
+	krnChat, err := kronk.New(concurrency, modelChatFile, "", kronk.ModelConfig{
+		NBatch: 32 * 1024,
+	})
 	if err != nil {
 		return fmt.Errorf("unable to create chat model: %w", err)
 	}

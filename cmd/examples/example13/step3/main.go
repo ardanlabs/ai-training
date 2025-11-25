@@ -24,7 +24,7 @@ import (
 )
 
 const (
-	modelChatURL  = "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q8_0.gguf?download=true"
+	modelChatURL  = "https://huggingface.co/unsloth/gpt-oss-20b-GGUF/resolve/main/gpt-oss-20b-Q8_0.gguf?download=true"
 	modelEmbedURL = "https://huggingface.co/ggml-org/embeddinggemma-300m-qat-q8_0-GGUF/resolve/main/embeddinggemma-300m-qat-Q8_0.gguf?download=true"
 	libPath       = "zarf/llamacpp"
 	modelPath     = "zarf/models"
@@ -46,19 +46,18 @@ func run() error {
 		return fmt.Errorf("unable to install system: %w", err)
 	}
 
-	contextWindow := 32 * 1024
 	embedding := true
 
-	krnEmbed, err := newKronk(modelEmbedFile, contextWindow, embedding)
+	krnEmbed, err := newKronk(modelEmbedFile, 0, embedding)
 	if err != nil {
 		return fmt.Errorf("unable to create embedding model: %w", err)
 	}
 	defer krnEmbed.Unload()
 
-	contextWindow = 0
 	embedding = false
 
-	krnChat, err := newKronk(modelChatFile, contextWindow, embedding)
+	const nBatch = 32 * 1024
+	krnChat, err := newKronk(modelChatFile, nBatch, embedding)
 	if err != nil {
 		return fmt.Errorf("unable to create chat model: %w", err)
 	}
@@ -102,18 +101,11 @@ func run() error {
 
 		// ---------------------------------------------------------------------
 
-		rankings, err := rerank(krnChat, docs)
-		if err != nil {
-			return fmt.Errorf("unable to rerank: %w", err)
-		}
-
-		// ---------------------------------------------------------------------
-
 		messages, err = func() ([]kronk.ChatMessage, error) {
 			ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 			defer cancel()
 
-			ch, err := performChat(ctx, krnChat, addContextPrompt(rankings, messages))
+			ch, err := performChat(ctx, krnChat, addContextPrompt(docs, messages))
 			if err != nil {
 				return nil, fmt.Errorf("unable to perform chat: %w", err)
 			}
@@ -150,7 +142,7 @@ func installSystem() (string, string, error) {
 	return modelEmbedFile, modelChatFile, nil
 }
 
-func newKronk(modelFile string, contextWindow int, embeddings bool) (*kronk.Kronk, error) {
+func newKronk(modelFile string, nBatch int, embeddings bool) (*kronk.Kronk, error) {
 	if err := kronk.Init(libPath, kronk.LogSilent); err != nil {
 		return nil, fmt.Errorf("unable to init kronk: %w", err)
 	}
@@ -158,15 +150,16 @@ func newKronk(modelFile string, contextWindow int, embeddings bool) (*kronk.Kron
 	const concurrency = 1
 
 	krn, err := kronk.New(concurrency, modelFile, "", kronk.ModelConfig{
-		ContextWindow: contextWindow,
-		Embeddings:    embeddings,
+		NBatch:     nBatch,
+		Embeddings: embeddings,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("unable to create inference model: %w", err)
 	}
 
-	fmt.Println("- contextWindow:", krn.ModelConfig().ContextWindow)
-	fmt.Println("- embeddings   :", krn.ModelConfig().Embeddings)
+	fmt.Println("- modelFile      :", krn.ModelName())
+	fmt.Println("  - contextWindow:", krn.ModelConfig().ContextWindow)
+	fmt.Println("  - embeddings   :", krn.ModelConfig().Embeddings)
 
 	return krn, nil
 }
@@ -215,27 +208,7 @@ func vectorSearch(ctx context.Context, krnEmbed *kronk.Kronk, db *sql.DB, messag
 	return docs, nil
 }
 
-func rerank(krnEmbed *kronk.Kronk, docs []duck.Document) ([]kronk.Ranking, error) {
-	fmt.Print("\n--- Rerank ---\n\n")
-
-	documents := make([]kronk.RankingDocument, len(docs))
-	for i, doc := range docs {
-		documents[i] = kronk.RankingDocument{Document: doc.Text, Embedding: doc.Embedding}
-	}
-
-	rankings, err := krnEmbed.Rerank(documents)
-	if err != nil {
-		return nil, fmt.Errorf("rerank: %w", err)
-	}
-
-	for _, ranking := range rankings {
-		fmt.Printf("Doc: %f: %s\n", ranking.Score, strings.ReplaceAll(ranking.Document, "\n", " ")[:100])
-	}
-
-	return rankings, nil
-}
-
-func addContextPrompt(rankings []kronk.Ranking, messages []kronk.ChatMessage) []kronk.ChatMessage {
+func addContextPrompt(documents []duck.Document, messages []kronk.ChatMessage) []kronk.ChatMessage {
 	const prompt = `
 		- Use the following Context to answer the user's question.
 		- If you don't know the answer, say that you don't know.
@@ -250,9 +223,14 @@ func addContextPrompt(rankings []kronk.Ranking, messages []kronk.ChatMessage) []
 		Question: %s
 		`
 
+	var count int
 	var content strings.Builder
-	for _, ranking := range rankings[:2] {
-		content.WriteString(fmt.Sprintf("%s\n%s\n", ranking.Document, ranking.Document))
+	for _, doc := range documents {
+		content.WriteString(fmt.Sprintf("%s\n%s\n", doc.Text, doc.Text))
+		count++
+		if count == 2 {
+			break
+		}
 	}
 
 	lastUserInput := messages[len(messages)-1].Content
@@ -280,19 +258,37 @@ func performChat(ctx context.Context, krn *kronk.Kronk, messages []kronk.ChatMes
 func modelResponse(krn *kronk.Kronk, messages []kronk.ChatMessage, ch <-chan kronk.ChatResponse) ([]kronk.ChatMessage, error) {
 	fmt.Print("\nMODEL> ")
 
+	var reasoning bool
 	var lr kronk.ChatResponse
+
+loop:
 	for resp := range ch {
-		if resp.Choice[0].FinishReason == kronk.FinishReasonError {
-			return messages, fmt.Errorf("error from model: %s", resp.Choice[0].GeneratedText)
+		switch resp.Choice[0].FinishReason {
+		case kronk.FinishReasonStop:
+			break loop
+
+		case kronk.FinishReasonError:
+			return messages, fmt.Errorf("error from model: %s", resp.Choice[0].Delta.Content)
 		}
 
-		fmt.Print(resp.Choice[0].Delta.Content)
+		if resp.Choice[0].Delta.Reasoning != "" {
+			fmt.Printf("\u001b[91m%s\u001b[0m", resp.Choice[0].Delta.Reasoning)
+			reasoning = true
+			continue
+		}
+
+		if reasoning {
+			reasoning = false
+			fmt.Print("\n\n")
+		}
+
+		fmt.Printf("%s", resp.Choice[0].Delta.Content)
 		lr = resp
 	}
 
 	messages = append(messages, kronk.ChatMessage{
 		Role:    "assistant",
-		Content: lr.Choice[0].GeneratedText,
+		Content: lr.Choice[0].Delta.Content,
 	})
 
 	// -------------------------------------------------------------------------
@@ -302,8 +298,8 @@ func modelResponse(krn *kronk.Kronk, messages []kronk.ChatMessage, ch <-chan kro
 	percentage := (float64(contextTokens) / float64(contextWindow)) * 100
 	of := float32(contextWindow) / float32(1024)
 
-	fmt.Printf("\n\n\u001b[90mInput: %d  Output: %d  Context: %d (%.0f%% of %.0fK) TPS: %.2f\u001b[0m\n",
-		lr.Usage.InputTokens, lr.Usage.OutputTokens, contextTokens, percentage, of, lr.Usage.TokensPerSecond)
+	fmt.Printf("\n\n\u001b[90mInput: %d  Reasoning: %d  Completion: %d  Output: %d  Window: %d (%.0f%% of %.0fK) TPS: %.2f\u001b[0m\n",
+		lr.Usage.InputTokens, lr.Usage.ReasoningTokens, lr.Usage.CompletionTokens, lr.Usage.OutputTokens, contextTokens, percentage, of, lr.Usage.TokensPerSecond)
 
 	return messages, nil
 }

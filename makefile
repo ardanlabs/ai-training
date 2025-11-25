@@ -269,7 +269,7 @@ example13-step4-npm-run:
 	cd cmd/examples/example13/step4/react/app && npm run dev
 
 example13-step4-curl:
-	curl -i -X POST http://0.0.0.0:3000/chat \
+	curl -i -X POST http://0.0.0.0:8080/chat \
      -H "Content-Type: application/json" \
      -d '{ \
 		"messages": [ \

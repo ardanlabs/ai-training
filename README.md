@@ -83,13 +83,13 @@ The makefile has everything you need to get up and running quickly.
 
 **- Example 12**: This example shows you how to query the Docling API to extract data from a PDF and have it processed by an LLM.
 
-**- Example 13**:
+**- Example 13**: Kronk
 
-- **Step 1**: This example shows you how to create a simple chat application against an inference model using llamacpp directly via yzma and a native Go application.
+- **Step 1**: This example shows you how to use Kronk to create a simple chat application against an inference model using llamacpp directly via yzma and a native Go application.
 
-- **Step 2**: This example shows you how to use yzma to execute a simple prompt against a vision model using llamacpp directly via yzma and a native Go application.
+- **Step 2**: This example shows you how to use Kronk to execute a simple prompt against a vision model using llamacpp directly via yzma and a native Go application.
 
-- **Step 3**: This example shows you a complete RAG application using DuckDB as an embedding DB and an embedding model to generate embeddings, and a chat model for answering a question using llamacpp directly via yzma and a native Go application.
+- **Step 3**: This example shows you a complete RAG application using DuckDB as an embedding DB and an embedding model to generate embeddings, and a chat model for answering a question using Kronk directly via yzma and a native Go application.
 
 - **Step 4**: This example shows you a web service that provides a chat endpoint for asking questions about the Go notebook. It uses the code from step3 for the RAG aspects of the application. The code also provides an embedded react app that can be used to interact with the chat endpoint. The react app is built using vite and the code is in the app directory.
 

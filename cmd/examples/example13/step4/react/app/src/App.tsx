@@ -14,12 +14,22 @@ interface ChatRequest {
   max_tokens?: number
 }
 
+interface Choice {
+  index: number
+  delta: {
+    role?: string
+    content?: string
+  }
+  finish_reason?: string
+  generated_text?: string
+  GeneratedText?: string
+}
+
 interface Response {
   id?: string
   created?: number
   model?: string
-  delta?: Message
-  final?: string
+  choices?: Choice[]
   error?: string
 }
 
@@ -111,8 +121,20 @@ function App() {
               if (parsed.error) {
                 console.error('Error from server:', parsed.error)
                 accumulatedContent += `\n[Error: ${parsed.error}]`
-              } else if (parsed.delta?.content) {
-                accumulatedContent += parsed.delta.content
+              } else if (parsed.choices && parsed.choices.length > 0) {
+                const choice = parsed.choices[0]
+
+                if (choice.finish_reason === 'error') {
+                  const errorText = choice.GeneratedText || choice.generated_text || 'Unknown Error'
+                  accumulatedContent += `\n[Error: ${errorText}]`
+                } else {
+                  if (choice.delta?.content) {
+                    accumulatedContent += choice.delta.content
+                  }
+                  if (choice.finish_reason === 'stop') {
+                    // Done displaying text
+                  }
+                }
               }
 
               setMessages(prev => {

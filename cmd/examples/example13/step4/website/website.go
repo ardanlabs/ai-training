@@ -155,7 +155,7 @@ func (h *handlers) needVectorSearch(traceID string, req Request) (bool, error) {
 		return false, err
 	}
 
-	resp := strings.ToLower(response)
+	resp := strings.ToLower(response.Choice[0].GeneratedText)
 
 	if strings.Contains(resp, "yes") {
 		fmt.Printf("traceID: %s: needVectorSearch: response: YES: %s\n", traceID, resp)
@@ -268,56 +268,44 @@ func (h *handlers) streamResponse(ctx context.Context, traceID string, w http.Re
 	w.WriteHeader(http.StatusOK)
 	f.Flush()
 
-	id := uuid.NewString()
-	var finalResponse strings.Builder
-
-	var contextTokens int
-	var inputTokens int
-	var outputTokens int
-
-	now := time.Now()
-
-	for msg := range ch {
+	var lr kronk.ChatResponse
+	for resp := range ch {
 		if err := ctx.Err(); err != nil {
 			if errors.Is(err, context.Canceled) {
 				return errors.New("client disconnected, do not send response")
 			}
 		}
 
-		if msg.Err != nil {
-			fmt.Printf("traceID: %s: chat: ERROR: %s\n", traceID, msg.Err)
-			fmt.Fprintf(w, "data: %s\n", newResponse(id, h.krnChat.ModelName(), "", "", msg.Err))
+		d, err := json.Marshal(resp)
+		if err != nil {
+			return fmt.Errorf("json.Marshal: %w", err)
+		}
+
+		if resp.Choice[0].FinishReason == kronk.FinishReasonError {
+			fmt.Printf("traceID: %s: chat: ERROR: %s\n", traceID, resp.Choice[0].GeneratedText)
+			fmt.Fprintf(w, "data: %s\n", d)
 			f.Flush()
 			break
 		}
 
-		finalResponse.WriteString(msg.Response)
-		fmt.Fprintf(w, "data: %s\n", newResponse(id, h.krnChat.ModelName(), msg.Response, "", nil))
+		fmt.Fprintf(w, "data: %s\n", d)
 		f.Flush()
 
-		contextTokens = msg.Tokens.Context
-		inputTokens = msg.Tokens.Input
-		outputTokens += msg.Tokens.Output
+		lr = resp
 	}
 
-	elapsedSeconds := time.Since(now).Seconds()
-	tokensPerSecond := float64(outputTokens) / elapsedSeconds
+	w.Write([]byte("data: [DONE]\n"))
+	f.Flush()
 
+	// -------------------------------------------------------------------------
+
+	contextTokens := lr.Usage.InputTokens + lr.Usage.CompletionTokens
 	contextWindow := h.krnChat.ModelConfig().ContextWindow
 	percentage := (float64(contextTokens) / float64(contextWindow)) * 100
 	of := float32(contextWindow) / float32(1024)
 
 	fmt.Printf("traceID: %s: chat: Input: %d  Output: %d  Context: %d (%.0f%% of %.0fK) TPS: %.2f\n",
-		traceID, inputTokens, outputTokens, contextTokens, percentage, of, tokensPerSecond)
-
-	fr := finalResponse.String()
-	if len(fr) > 0 {
-		fmt.Fprintf(w, "data: %s\n", newResponse(id, h.krnChat.ModelName(), "", fr, nil))
-		f.Flush()
-	}
-
-	w.Write([]byte("data: [DONE]\n"))
-	f.Flush()
+		traceID, lr.Usage.InputTokens, lr.Usage.OutputTokens, contextTokens, percentage, of, lr.Usage.TokensPerSecond)
 
 	return nil
 }

@@ -102,7 +102,7 @@ func newKronk(modelFile string, projFile string) (*kronk.Kronk, error) {
 }
 
 func performChat(ctx context.Context, krn *kronk.Kronk, question string, imageFile string) (<-chan kronk.ChatResponse, error) {
-	fmt.Printf("\nQuestion: %s\n\n", question)
+	fmt.Printf("\nQuestion: %s\n", question)
 
 	message := kronk.ChatMessage{
 		Role:    "user",
@@ -120,37 +120,27 @@ func performChat(ctx context.Context, krn *kronk.Kronk, question string, imageFi
 }
 
 func modelResponse(krn *kronk.Kronk, ch <-chan kronk.ChatResponse) error {
-	fmt.Print("MODEL> ")
+	fmt.Print("\nMODEL> ")
 
-	var contextTokens int
-	var inputTokens int
-	var outputTokens int
-
-	now := time.Now()
-
-	for msg := range ch {
-		if msg.Err != nil {
-			return fmt.Errorf("error from model: %w", msg.Err)
+	var lr kronk.ChatResponse
+	for resp := range ch {
+		if resp.Choice[0].FinishReason == kronk.FinishReasonError {
+			return fmt.Errorf("error from model: %s", resp.Choice[0].GeneratedText)
 		}
 
-		fmt.Print(msg.Response)
-
-		contextTokens = msg.Tokens.Context
-		inputTokens = msg.Tokens.Input
-		outputTokens += msg.Tokens.Output
+		fmt.Print(resp.Choice[0].Delta.Content)
+		lr = resp
 	}
 
-	// ---------------------------------------------------------------------
+	// -------------------------------------------------------------------------
 
-	elapsedSeconds := time.Since(now).Seconds()
-	tokensPerSecond := float64(outputTokens) / elapsedSeconds
-
+	contextTokens := lr.Usage.InputTokens + lr.Usage.CompletionTokens
 	contextWindow := krn.ModelConfig().ContextWindow
 	percentage := (float64(contextTokens) / float64(contextWindow)) * 100
 	of := float32(contextWindow) / float32(1024)
 
 	fmt.Printf("\n\n\u001b[90mInput: %d  Output: %d  Context: %d (%.0f%% of %.0fK) TPS: %.2f\u001b[0m\n",
-		inputTokens, outputTokens, contextTokens, percentage, of, tokensPerSecond)
+		lr.Usage.InputTokens, lr.Usage.OutputTokens, contextTokens, percentage, of, lr.Usage.TokensPerSecond)
 
 	return nil
 }

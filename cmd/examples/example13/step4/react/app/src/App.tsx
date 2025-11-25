@@ -4,6 +4,15 @@ import './App.css'
 interface Message {
   role: string
   content: string
+  usage?: Usage
+}
+
+interface Usage {
+  input_tokens: number
+  reasoning_tokens: number
+  completion_tokens: number
+  output_tokens: number
+  tokens_per_second: number
 }
 
 interface ChatRequest {
@@ -31,6 +40,7 @@ interface Response {
   model?: string
   choices?: Choice[]
   error?: string
+  usage?: Usage
 }
 
 function App() {
@@ -139,9 +149,11 @@ function App() {
 
               setMessages(prev => {
                 const newMessages = [...prev]
+                const currentMsg = newMessages[newMessages.length - 1]
                 newMessages[newMessages.length - 1] = {
                   role: 'assistant',
-                  content: accumulatedContent
+                  content: accumulatedContent,
+                  usage: parsed.usage || currentMsg.usage
                 }
                 return newMessages
               })
@@ -237,7 +249,14 @@ function App() {
           {messages.map((msg, idx) => (
             <div key={idx} className={`message ${msg.role}`}>
               <div className="role">{msg.role === 'user' ? 'You' : 'Assistant'}</div>
-              <div className="content">{msg.content}</div>
+              <div className="content">
+                {msg.content}
+                {msg.usage && (
+                  <div className="usage-info" style={{ fontSize: '0.8em', color: '#888', marginTop: '8px', paddingTop: '8px', borderTop: '1px solid #eee' }}>
+                    Input: {msg.usage.input_tokens} | Output: {msg.usage.output_tokens} | Speed: {msg.usage.tokens_per_second.toFixed(2)} t/s
+                  </div>
+                )}
+              </div>
             </div>
           ))}
           <div ref={messagesEndRef} />

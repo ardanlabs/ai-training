@@ -15,7 +15,7 @@ import (
 )
 
 func LlamaCPP(libPath string, processor download.Processor, allowUpgrade bool) error {
-	vi, err := kronk.RetrieveVersionInfo(libPath)
+	orgVI, err := kronk.RetrieveVersionInfo(libPath)
 	if err != nil {
 		return fmt.Errorf("error retrieving version info: %w", err)
 	}
@@ -23,15 +23,15 @@ func LlamaCPP(libPath string, processor download.Processor, allowUpgrade bool) e
 	fmt.Println()
 	fmt.Print("- check llamacpp installation: ")
 
-	if vi.Current == vi.Latest {
+	if orgVI.Current == orgVI.Latest {
 		fmt.Println("✓")
-		fmt.Printf("  - latest version : %s\n  - current version: %s\n", vi.Latest, vi.Current)
+		fmt.Printf("  - latest version : %s\n  - current version: %s\n", orgVI.Latest, orgVI.Current)
 		return nil
 	}
 
 	fmt.Println("✓")
 
-	vi, err = kronk.InstallLlama(libPath, download.CPU, true)
+	vi, err := kronk.InstallLlama(libPath, download.CPU, true)
 	if err != nil {
 		fmt.Println("x")
 		return fmt.Errorf("failed to install llama: %q: error: %w", libPath, err)
@@ -53,8 +53,7 @@ func LlamaCPP(libPath string, processor download.Processor, allowUpgrade bool) e
 
 	fmt.Print("- updated llamacpp installation: ")
 	fmt.Println("✓")
-	fmt.Printf("  - latest version : %s\n  - current version: %s\n", vi.Latest, vi.Current)
-
+	fmt.Printf("  - old version    : %s\n  - current version: %s\n", orgVI.Current, vi.Current)
 	return nil
 }
 

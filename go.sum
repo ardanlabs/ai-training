@@ -36,8 +36,8 @@ github.com/apache/arrow-go/v18 v18.4.1 h1:q/jVkBWCJOB9reDgaIZIdruLQUb1kbkvOnOFez
 github.com/apache/arrow-go/v18 v18.4.1/go.mod h1:tLyFubsAl17bvFdUAy24bsSvA/6ww95Iqi67fTpGu3E=
 github.com/apache/thrift v0.22.0 h1:r7mTJdj51TMDe6RtcmNdQxgn9XcyfGDOzegMDRg47uc=
 github.com/apache/thrift v0.22.0/go.mod h1:1e7J/O1Ae6ZQMTYdy9xa3w9k+XHWPfRvdPyJeynQ+/g=
-github.com/ardanlabs/kronk v0.9.1 h1:nm8RDC7mQgyToEjU7uIinQlr8O+4kc2rNmtDNxAKBSg=
-github.com/ardanlabs/kronk v0.9.1/go.mod h1:5q+gkFK4H7Hwunnez66OIxzl40NlfYal0pyChJqSFvI=
+github.com/ardanlabs/kronk v0.10.0 h1:+mdMXOyrE7X3/nVbnrA1ivIQVgA8zxCHEh9YEdpHHC0=
+github.com/ardanlabs/kronk v0.10.0/go.mod h1:5q+gkFK4H7Hwunnez66OIxzl40NlfYal0pyChJqSFvI=
 github.com/aws/aws-sdk-go-v2 v1.40.0 h1:/WMUA0kjhZExjOQN2z3oLALDREea1A7TobfuiBrKlwc=
 github.com/aws/aws-sdk-go-v2 v1.40.0/go.mod h1:c9pm7VwuW0UPxAEYGyTmyurVcNrbF6Rt/wixFqDhcjE=
 github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.3 h1:DHctwEM8P8iTXFxC/QK0MRjwEpWQeM9yzidCRjldUz0=

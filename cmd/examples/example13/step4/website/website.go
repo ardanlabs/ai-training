@@ -147,16 +147,10 @@ func (h *handlers) needVectorSearch(traceID string, req Request) (bool, error) {
 		},
 	}
 
-	params := kronk.Params{
-		TopK: 1.0,
-		TopP: 0.9,
-		Temp: 0.7,
-	}
-
 	ctx, cancel := context.WithTimeout(context.Background(), h.timeout)
 	defer cancel()
 
-	response, err := h.krnChat.Chat(ctx, msgs, params)
+	response, err := h.krnChat.Chat(ctx, msgs, kronk.Params{})
 	if err != nil {
 		return false, err
 	}

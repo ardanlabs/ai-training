@@ -90,10 +90,7 @@ func newKronk(modelFile string, projFile string) (*kronk.Kronk, error) {
 
 	const concurrency = 1
 
-	krn, err := kronk.New(concurrency, modelFile, projFile, kronk.ModelConfig{
-		ContextWindow: 0,
-		Embeddings:    false,
-	})
+	krn, err := kronk.New(concurrency, modelFile, projFile, kronk.ModelConfig{})
 	if err != nil {
 		return nil, fmt.Errorf("unable to create inference model: %w", err)
 	}
@@ -113,9 +110,6 @@ func performChat(ctx context.Context, krn *kronk.Kronk, question string, imageFi
 	}
 
 	ch, err := krn.VisionStreaming(ctx, message, imageFile, kronk.Params{
-		TopK:      1.0,
-		TopP:      0.9,
-		Temp:      0.7,
 		MaxTokens: 2048,
 	})
 	if err != nil {

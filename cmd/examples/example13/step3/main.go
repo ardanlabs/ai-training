@@ -268,9 +268,6 @@ func addContextPrompt(rankings []kronk.Ranking, messages []kronk.ChatMessage) []
 
 func performChat(ctx context.Context, krn *kronk.Kronk, messages []kronk.ChatMessage) (<-chan kronk.ChatResponse, error) {
 	ch, err := krn.ChatStreaming(ctx, messages, kronk.Params{
-		TopK:      1.0,
-		TopP:      0.9,
-		Temp:      0.7,
 		MaxTokens: 2048,
 	})
 	if err != nil {

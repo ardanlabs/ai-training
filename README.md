@@ -21,31 +21,45 @@ Twitter: dlsniper
 
 ## Description
 
-**THIS IS A WORK IN PROGRESS**
+This class provides you a strong foundation for understanding all the semantics and mechanincs behind adding AI technologies to your Go applications.
 
-These examples provide a foundation for understanding the semantics behind vector embeddings and the basics behind writing LLM based applications to allow people to interact with your own content. Each example builds on the next, providing you a strong understanding of how LLM based AI applications work.
+## Licensing
 
-You will find in the source code file for each example notes to help you understand the example and how to run it.
+```
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
 
-The makefile has everything you need to get up and running quickly.
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+```
 
 ## Examples
 
-**- Example 01**: This example shows you what a vector and embedding is by hand crafting a relationship of data. It also shows you how cosine similarity works between different vectors.
+**- Example 01-06**: Vectors, Embeddings, RAG
 
-**- Example 02**: This example shows you how to use an LLM to create vector embeddings and get the same results from the hand crafted solution.
+- **Example 01**: This example shows you what a vector and embedding is by hand crafting a relationship of data. It also shows you how cosine similarity works between different vectors.
 
-**- Example 03**: This example shows you how to use MongoDB as a vector database to perform a nearest neighbor vector search. The example will create a vector search index, store 2 documents, and perform a vector search.
+- **Example 02**: This example shows you how to use an LLM to create vector embeddings and get the same results from the hand crafted solution.
 
-**- Example 04**: This example shows you how to use Ollama to create a reasonable response to a question with provided content.
+- **Example 03**: This example shows you how to use MongoDB as a vector database to perform a nearest neighbor vector search. The example will create a vector search index, store 2 documents, and perform a vector search.
 
-**- Example 05**: This example shows you how to use MongoDB and Ollama to create a proper vector embedding database for the Ultimate Go Notebook. With this vector database, you will be able to query for content that has a strong similarity to your question.
+- **Example 04**: This example shows you how to use Ollama to create a reasonable response to a question with provided content.
 
-**- Example 06**: This example shows you how to use MongoDB and Ollama to perform a vector search for a user question. The search will return the top 5 chunks from the database. Then these chunks are sent to the Llama model to create a coherent response. You must run example05 first.
+- **Example 05**: This example shows you how to use MongoDB and Ollama to create a proper vector embedding database for the Ultimate Go Notebook. With this vector database, you will be able to query for content that has a strong similarity to your question.
 
-**- Example 07**: This example shows you how to get a model to generate SQL queries.
+- **Example 06**: This example shows you how to use MongoDB and Ollama to perform a vector search for a user question. The search will return the top 5 chunks from the database. Then these chunks are sent to the Llama model to create a coherent response. You must run example05 first.
 
-**- Example 08**:
+**- Example 07**: SQL Code Generation
+
+- This example shows you how to get a model to generate SQL queries.
+
+**- Example 08**: Vision Models
 
 - **Step 1**: This example shows you how to use a vision model to generate an image description.
 
@@ -57,7 +71,7 @@ The makefile has everything you need to get up and running quickly.
 
 - **Step 5**: This example takes step4 and shows you how to process a set of images from a location on disk and provide search capabilities by text or similar image.
 
-**- Example 09**:
+**- Example 09**: AI Agents
 
 - **Step 1**: This example shows you how to create a terminal based chat agent using the Ollama service.
 
@@ -69,21 +83,23 @@ The makefile has everything you need to get up and running quickly.
 
 - **Step 5**: This example shows you how introduce "real" tooling into the coding agent from step4. We will add support for reading, listing, creating, and editing files. We also enhance the agent's UI.
 
-**- Example 10**:
+**- Example 10**: AI Agents with MCP
 
 - **Step 1**: This example shows you how to create a basic MCP interaction where the Server runs as a service and extends the set of tools as endpoints. The Client makes a call to the Server via the MCP SSE protocol. The makefile shows you the raw CURL calls that are used to make the client/server interaction.
 
 - **Step 2**: This example shows you how to use the program from cmd/examples/example10/step4/main.go and move the tooling to a MCP service that is called by the tooling.
 
-**- Example 11**:
+**- Example 11**: Video Transcription and Text Extraction
 
 - **Step 1**: This example provides a proof of concept for extracting transcriptions and, code examples from videos using the Ollama and a vision model. It then stores the extracted data in a MongoDB database for vector search and RAG functionality.
 
 - **Step 2**: This example provides a chat interface for the video that was processed in step1.
 
-**- Example 12**: This example shows you how to query the Docling API to extract data from a PDF and have it processed by an LLM.
+**- Example 12**: PDF Processing with Docling
 
-**- Example 13**: Kronk
+- This example shows you how to query the Docling API to extract data from a PDF and have it processed by an LLM.
+
+**- Example 13**: Kronk (API Based Model Server)
 
 - **Step 1**: This example shows you how to use Kronk to create a simple chat application against an inference model using llamacpp directly via yzma and a native Go application.
 
@@ -93,8 +109,21 @@ The makefile has everything you need to get up and running quickly.
 
 - **Step 4**: This example shows you a web service that provides a chat endpoint for asking questions about the Go notebook. It uses the code from step3 for the RAG aspects of the application. The code also provides an embedded react app that can be used to interact with the chat endpoint. The react app is built using vite and the code is in the app directory.
 
-**- Example 14**: This example shows you how to use GoMLX and GoNB projects so we can run a Jupyter notebook that can
-execute Go code.
+**- Example 14**: Jupyter Notebook using Go
+
+- This example shows you how to use GoMLX and GoNB projects so we can run a Jupyter notebook that can execute Go code.
+
+## Kronk
+
+<a href="https://github.com/ardanlabs/kronk" target="_blank">
+<img src="https://github.com/ardanlabs/kronk/blob/main/images/project/kronk_logo1.png?raw=true" width="150" alt="Kronk logo" align="left" style="margin-right: 10px">
+</a>
+
+[Kronk](https://github.com/ardanlabs/kronk) lets you use Go for hardware accelerated local inference with llama.cpp directly integrated into your applications via the [yzma](https://github.com/ardanlabs/yzma) module. Kronk provides a high-level API that feels similar to using an OpenAI compatible API.
+
+Examples for Kronk can be found under Example13.
+
+<br />
 
 ## Installing Software
 
@@ -122,22 +151,6 @@ Now you need to pull down the models you will be using. Open a new terminal wind
 
 ```
 make ollama-pull
-```
-
-## Licensing
-
-```
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
 ```
 
 ## Learn More

@@ -6,7 +6,6 @@ import (
 	"database/sql"
 	"embed"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io/fs"
 	"net/http"
@@ -16,6 +15,7 @@ import (
 
 	"github.com/ardanlabs/ai-training/cmd/examples/example13/duck"
 	"github.com/ardanlabs/kronk"
+	"github.com/ardanlabs/kronk/model"
 	"github.com/google/uuid"
 )
 
@@ -54,19 +54,19 @@ func (h *handlers) chat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	msgs := h.compileChatMessages(traceID, req, documents)
-	params := getParams(traceID, req)
-
 	ctx, cancel := context.WithTimeout(context.Background(), h.timeout)
 	defer cancel()
 
-	ch, err := h.krnChat.ChatStreaming(ctx, msgs, params)
-	if err != nil {
-		sendError(w, traceID, "performChat", err)
-		return
+	log := func(ctx context.Context, format string, a ...any) {
+		fmt.Printf("traceID: %s: chat: log: %s\n", traceID, fmt.Sprintf(format, a...))
 	}
 
-	if err := h.streamResponse(r.Context(), traceID, w, ch); err != nil {
+	cr := model.ChatRequest{
+		Messages: h.compileChatMessages(traceID, req, documents),
+		Params:   getParams(traceID, req),
+	}
+
+	if err := h.krnChat.ChatStreamingHTTP(ctx, log, w, cr); err != nil {
 		sendError(w, traceID, "streamResponse", err)
 		return
 	}
@@ -131,17 +131,14 @@ func (h *handlers) needVectorSearch(traceID string, req Request) (bool, error) {
 		%s
 	`
 
-	msgs := []kronk.ChatMessage{
-		{
-			Role:    "user",
-			Content: fmt.Sprintf(prompt, req.Messages[len(req.Messages)-1].Content),
-		},
-	}
-
 	ctx, cancel := context.WithTimeout(context.Background(), h.timeout)
 	defer cancel()
 
-	response, err := h.krnChat.Chat(ctx, msgs, kronk.Params{})
+	response, err := h.krnChat.Chat(ctx, model.ChatRequest{
+		Messages: []model.ChatMessage{
+			{Role: "user", Content: fmt.Sprintf(prompt, req.Messages[len(req.Messages)-1].Content)},
+		},
+	})
 	if err != nil {
 		return false, err
 	}
@@ -180,7 +177,7 @@ func (h *handlers) vectorSearch(traceID string, req Request) ([]duck.Document, e
 	return docs, nil
 }
 
-func (h *handlers) compileChatMessages(traceID string, req Request, documents []duck.Document) []kronk.ChatMessage {
+func (h *handlers) compileChatMessages(traceID string, req Request, documents []duck.Document) []model.ChatMessage {
 	fmt.Printf("traceID: %s: compileChatMessages: started: msgs: %d: documents: %d\n", traceID, len(req.Messages), len(documents))
 
 	const systemPrompt = `
@@ -192,14 +189,14 @@ func (h *handlers) compileChatMessages(traceID string, req Request, documents []
 	`
 
 	// Add 2 more elements for the system prompt and any context.
-	msgs := make([]kronk.ChatMessage, 0, len(req.Messages)+2)
+	msgs := make([]model.ChatMessage, 0, len(req.Messages)+2)
 
 	// Add the system prompt.
-	msgs = append(msgs, kronk.ChatMessage{Role: "system", Content: systemPrompt})
+	msgs = append(msgs, model.ChatMessage{Role: "system", Content: systemPrompt})
 
 	// Add all but the very last message in the history.
 	for _, msg := range req.Messages[:len(req.Messages)-1] {
-		msgs = append(msgs, kronk.ChatMessage{Role: "user", Content: msg.Content})
+		msgs = append(msgs, model.ChatMessage{Role: "user", Content: msg.Content})
 	}
 
 	// Add the top 2 extra context if it exists.
@@ -214,70 +211,14 @@ func (h *handlers) compileChatMessages(traceID string, req Request, documents []
 	}
 
 	if count > 0 {
-		msgs = append(msgs, kronk.ChatMessage{Role: "user", Content: fmt.Sprintf("Context:\n%s\n\n", content)})
+		msgs = append(msgs, model.ChatMessage{Role: "user", Content: fmt.Sprintf("Context:\n%s\n\n", content)})
 	}
 
 	// Add the final message from the history. We expect this to be a question.
 	question := req.Messages[len(req.Messages)-1].Content
-	msgs = append(msgs, kronk.ChatMessage{Role: "user", Content: fmt.Sprintf("Question:\n%s\n\n", question)})
+	msgs = append(msgs, model.ChatMessage{Role: "user", Content: fmt.Sprintf("Question:\n%s\n\n", question)})
 
 	fmt.Printf("traceID: %s: compileChatMessages: ended: msgs: %d\n", traceID, len(msgs))
 
 	return msgs
-}
-
-func (h *handlers) streamResponse(ctx context.Context, traceID string, w http.ResponseWriter, ch <-chan kronk.ChatResponse) error {
-	fmt.Printf("traceID: %s: streamResponse: started\n", traceID)
-
-	f, ok := w.(http.Flusher)
-	if !ok {
-		return fmt.Errorf("streaming not supported")
-	}
-
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Transfer-Encoding", "chunked")
-	w.WriteHeader(http.StatusOK)
-	f.Flush()
-
-	var lr kronk.ChatResponse
-
-	for resp := range ch {
-		if err := ctx.Err(); err != nil {
-			if errors.Is(err, context.Canceled) {
-				return errors.New("client disconnected, do not send response")
-			}
-		}
-
-		d, err := json.Marshal(resp)
-		if err != nil {
-			return fmt.Errorf("json.Marshal: %w", err)
-		}
-
-		if resp.Choice[0].FinishReason == kronk.FinishReasonError {
-			fmt.Printf("traceID: %s: chat: ERROR: %s\n", traceID, resp.Choice[0].Delta.Content)
-			fmt.Fprintf(w, "data: %s\n", d)
-			f.Flush()
-			break
-		}
-
-		fmt.Fprintf(w, "data: %s\n", d)
-		f.Flush()
-
-		lr = resp
-	}
-
-	w.Write([]byte("data: [DONE]\n"))
-	f.Flush()
-
-	// -------------------------------------------------------------------------
-
-	contextTokens := lr.Usage.InputTokens + lr.Usage.CompletionTokens
-	contextWindow := h.krnChat.ModelConfig().ContextWindow
-	percentage := (float64(contextTokens) / float64(contextWindow)) * 100
-	of := float32(contextWindow) / float32(1024)
-
-	fmt.Printf("traceID: %s: chat: Input: %d  Output: %d  Context: %d (%.0f%% of %.0fK) TPS: %.2f\n",
-		traceID, lr.Usage.InputTokens, lr.Usage.OutputTokens, contextTokens, percentage, of, lr.Usage.TokensPerSecond)
-
-	return nil
 }

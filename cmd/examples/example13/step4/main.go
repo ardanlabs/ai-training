@@ -33,6 +33,7 @@ import (
 	"github.com/ardanlabs/ai-training/cmd/examples/example13/install"
 	"github.com/ardanlabs/ai-training/cmd/examples/example13/step4/website"
 	"github.com/ardanlabs/kronk"
+	"github.com/ardanlabs/kronk/model"
 	"github.com/hybridgroup/yzma/pkg/download"
 )
 
@@ -83,7 +84,7 @@ func run() error {
 
 	const concurrency = 5
 
-	krnEmbed, err := kronk.New(concurrency, modelEmbedFile, "", kronk.ModelConfig{
+	krnEmbed, err := kronk.New(concurrency, modelEmbedFile, "", model.Config{
 		Embeddings: true,
 	})
 	if err != nil {
@@ -91,7 +92,7 @@ func run() error {
 	}
 	defer krnEmbed.Unload()
 
-	krnChat, err := kronk.New(concurrency, modelChatFile, "", kronk.ModelConfig{
+	krnChat, err := kronk.New(concurrency, modelChatFile, "", model.Config{
 		NBatch: 32 * 1024,
 	})
 	if err != nil {

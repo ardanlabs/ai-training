@@ -20,6 +20,7 @@ import (
 	"github.com/ardanlabs/ai-training/cmd/examples/example13/duck"
 	"github.com/ardanlabs/ai-training/cmd/examples/example13/install"
 	"github.com/ardanlabs/kronk"
+	"github.com/ardanlabs/kronk/model"
 	"github.com/hybridgroup/yzma/pkg/download"
 )
 
@@ -73,7 +74,7 @@ func run() error {
 
 	// -------------------------------------------------------------------------
 
-	var messages []kronk.ChatMessage
+	var messages []model.ChatMessage
 
 	for {
 		messages, err = userInput(messages)
@@ -101,7 +102,7 @@ func run() error {
 
 		// ---------------------------------------------------------------------
 
-		messages, err = func() ([]kronk.ChatMessage, error) {
+		messages, err = func() ([]model.ChatMessage, error) {
 			ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 			defer cancel()
 
@@ -149,7 +150,7 @@ func newKronk(modelFile string, nBatch int, embeddings bool) (*kronk.Kronk, erro
 
 	const concurrency = 1
 
-	krn, err := kronk.New(concurrency, modelFile, "", kronk.ModelConfig{
+	krn, err := kronk.New(concurrency, modelFile, "", model.Config{
 		NBatch:     nBatch,
 		Embeddings: embeddings,
 	})
@@ -164,7 +165,7 @@ func newKronk(modelFile string, nBatch int, embeddings bool) (*kronk.Kronk, erro
 	return krn, nil
 }
 
-func userInput(messages []kronk.ChatMessage) ([]kronk.ChatMessage, error) {
+func userInput(messages []model.ChatMessage) ([]model.ChatMessage, error) {
 	fmt.Print("\nUSER> ")
 
 	reader := bufio.NewReader(os.Stdin)
@@ -174,7 +175,7 @@ func userInput(messages []kronk.ChatMessage) ([]kronk.ChatMessage, error) {
 		return messages, fmt.Errorf("unable to read user input: %w", err)
 	}
 
-	messages = append(messages, kronk.ChatMessage{
+	messages = append(messages, model.ChatMessage{
 		Role:    "user",
 		Content: userInput,
 	})
@@ -182,7 +183,7 @@ func userInput(messages []kronk.ChatMessage) ([]kronk.ChatMessage, error) {
 	return messages, nil
 }
 
-func vectorSearch(ctx context.Context, krnEmbed *kronk.Kronk, db *sql.DB, messages []kronk.ChatMessage) ([]duck.Document, error) {
+func vectorSearch(ctx context.Context, krnEmbed *kronk.Kronk, db *sql.DB, messages []model.ChatMessage) ([]duck.Document, error) {
 	fmt.Print("\n--- Vector Search ---\n\n")
 
 	lastUserInput := messages[len(messages)-1].Content
@@ -208,7 +209,7 @@ func vectorSearch(ctx context.Context, krnEmbed *kronk.Kronk, db *sql.DB, messag
 	return docs, nil
 }
 
-func addContextPrompt(documents []duck.Document, messages []kronk.ChatMessage) []kronk.ChatMessage {
+func addContextPrompt(documents []duck.Document, messages []model.ChatMessage) []model.ChatMessage {
 	const prompt = `
 		- Use the following Context to answer the user's question.
 		- If you don't know the answer, say that you don't know.
@@ -236,7 +237,7 @@ func addContextPrompt(documents []duck.Document, messages []kronk.ChatMessage) [
 	lastUserInput := messages[len(messages)-1].Content
 	finalPrompt := fmt.Sprintf(prompt, content.String(), lastUserInput)
 
-	messages = append(messages, kronk.ChatMessage{
+	messages = append(messages, model.ChatMessage{
 		Role:    "user",
 		Content: finalPrompt,
 	})
@@ -244,10 +245,14 @@ func addContextPrompt(documents []duck.Document, messages []kronk.ChatMessage) [
 	return messages
 }
 
-func performChat(ctx context.Context, krn *kronk.Kronk, messages []kronk.ChatMessage) (<-chan kronk.ChatResponse, error) {
-	ch, err := krn.ChatStreaming(ctx, messages, kronk.Params{
-		MaxTokens: 2048,
+func performChat(ctx context.Context, krn *kronk.Kronk, messages []model.ChatMessage) (<-chan model.ChatResponse, error) {
+	ch, err := krn.ChatStreaming(ctx, model.ChatRequest{
+		Messages: messages,
+		Params: model.Params{
+			MaxTokens: 2048,
+		},
 	})
+
 	if err != nil {
 		return nil, fmt.Errorf("chat streaming: %w", err)
 	}
@@ -255,19 +260,19 @@ func performChat(ctx context.Context, krn *kronk.Kronk, messages []kronk.ChatMes
 	return ch, nil
 }
 
-func modelResponse(krn *kronk.Kronk, messages []kronk.ChatMessage, ch <-chan kronk.ChatResponse) ([]kronk.ChatMessage, error) {
+func modelResponse(krn *kronk.Kronk, messages []model.ChatMessage, ch <-chan model.ChatResponse) ([]model.ChatMessage, error) {
 	fmt.Print("\nMODEL> ")
 
 	var reasoning bool
-	var lr kronk.ChatResponse
+	var lr model.ChatResponse
 
 loop:
 	for resp := range ch {
 		switch resp.Choice[0].FinishReason {
-		case kronk.FinishReasonStop:
+		case model.FinishReasonStop:
 			break loop
 
-		case kronk.FinishReasonError:
+		case model.FinishReasonError:
 			return messages, fmt.Errorf("error from model: %s", resp.Choice[0].Delta.Content)
 		}
 
@@ -286,7 +291,7 @@ loop:
 		lr = resp
 	}
 
-	messages = append(messages, kronk.ChatMessage{
+	messages = append(messages, model.ChatMessage{
 		Role:    "assistant",
 		Content: lr.Choice[0].Delta.Content,
 	})

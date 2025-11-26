@@ -10,12 +10,12 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/ardanlabs/kronk"
+	"github.com/ardanlabs/kronk/install"
 	"github.com/hybridgroup/yzma/pkg/download"
 )
 
 func LlamaCPP(libPath string, processor download.Processor, allowUpgrade bool) error {
-	orgVI, err := kronk.RetrieveVersionInfo(libPath)
+	orgVI, err := install.VersionInformation(libPath)
 	if err != nil {
 		return fmt.Errorf("error retrieving version info: %w", err)
 	}
@@ -31,7 +31,7 @@ func LlamaCPP(libPath string, processor download.Processor, allowUpgrade bool) e
 
 	fmt.Println("✓")
 
-	vi, err := kronk.InstallLlama(libPath, download.CPU, true)
+	vi, err := install.Llama(libPath, download.CPU, true)
 	if err != nil {
 		fmt.Println("x")
 		return fmt.Errorf("failed to install llama: %q: error: %w", libPath, err)
@@ -63,7 +63,7 @@ func Model(modelURL string, modelPath string) (string, error) {
 	name := strings.TrimSuffix(filename, path.Ext(filename))
 	fmt.Printf("- check %q installation: ", name)
 
-	localPath, err := kronk.InstallModel(modelURL, modelPath)
+	localPath, err := install.Model(modelURL, modelPath)
 	if err != nil {
 		fmt.Println("X")
 		return "", fmt.Errorf("unable to download model: %w", err)

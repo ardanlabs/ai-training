@@ -3,7 +3,7 @@ package website
 import (
 	"fmt"
 
-	"github.com/ardanlabs/kronk"
+	"github.com/ardanlabs/kronk/model"
 )
 
 type Message struct {
@@ -19,7 +19,7 @@ type Request struct {
 	MaxTokens   *int      `json:"max_tokens"`
 }
 
-func getParams(traceID string, req Request) kronk.Params {
+func getParams(traceID string, req Request) model.Params {
 	var topK int32
 	if req.TopK != nil {
 		fmt.Printf("traceID: %s: getParams: topK: %#v\n", traceID, *req.TopK)
@@ -44,7 +44,7 @@ func getParams(traceID string, req Request) kronk.Params {
 		maxTokens = *req.MaxTokens
 	}
 
-	params := kronk.Params{
+	params := model.Params{
 		TopK:        topK,
 		TopP:        topP,
 		Temperature: temp,

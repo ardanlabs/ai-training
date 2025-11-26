@@ -16,6 +16,7 @@ import (
 
 	"github.com/ardanlabs/ai-training/cmd/examples/example13/install"
 	"github.com/ardanlabs/kronk"
+	"github.com/ardanlabs/kronk/model"
 	"github.com/hybridgroup/yzma/pkg/download"
 )
 
@@ -90,7 +91,7 @@ func newKronk(modelFile string, projFile string) (*kronk.Kronk, error) {
 
 	const concurrency = 1
 
-	krn, err := kronk.New(concurrency, modelFile, projFile, kronk.ModelConfig{})
+	krn, err := kronk.New(concurrency, modelFile, projFile, model.Config{})
 	if err != nil {
 		return nil, fmt.Errorf("unable to create inference model: %w", err)
 	}
@@ -101,17 +102,19 @@ func newKronk(modelFile string, projFile string) (*kronk.Kronk, error) {
 	return krn, nil
 }
 
-func performChat(ctx context.Context, krn *kronk.Kronk, question string, imageFile string) (<-chan kronk.ChatResponse, error) {
+func performChat(ctx context.Context, krn *kronk.Kronk, question string, imageFile string) (<-chan model.ChatResponse, error) {
 	fmt.Printf("\nQuestion: %s\n", question)
 
-	message := kronk.ChatMessage{
-		Role:    "user",
-		Content: question,
-	}
-
-	ch, err := krn.VisionStreaming(ctx, message, imageFile, kronk.Params{
-		MaxTokens: 2048,
+	ch, err := krn.VisionStreaming(ctx, model.VisionRequest{
+		ImageFile: imageFile,
+		Message: model.ChatMessage{
+			Role: "user", Content: question,
+		},
+		Params: model.Params{
+			MaxTokens: 2048,
+		},
 	})
+
 	if err != nil {
 		return nil, fmt.Errorf("vision streaming: %w", err)
 	}
@@ -119,19 +122,19 @@ func performChat(ctx context.Context, krn *kronk.Kronk, question string, imageFi
 	return ch, nil
 }
 
-func modelResponse(krn *kronk.Kronk, ch <-chan kronk.ChatResponse) error {
+func modelResponse(krn *kronk.Kronk, ch <-chan model.ChatResponse) error {
 	fmt.Print("\nMODEL> ")
 
 	var reasoning bool
-	var lr kronk.ChatResponse
+	var lr model.ChatResponse
 
 loop:
 	for resp := range ch {
 		switch resp.Choice[0].FinishReason {
-		case kronk.FinishReasonStop:
+		case model.FinishReasonStop:
 			break loop
 
-		case kronk.FinishReasonError:
+		case model.FinishReasonError:
 			return fmt.Errorf("error from model: %s", resp.Choice[0].Delta.Content)
 		}
 

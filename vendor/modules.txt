@@ -83,9 +83,11 @@ github.com/apache/arrow-go/v18/internal/bitutils
 github.com/apache/arrow-go/v18/internal/hashing
 github.com/apache/arrow-go/v18/internal/json
 github.com/apache/arrow-go/v18/internal/utils
-# github.com/ardanlabs/kronk v0.12.0
+# github.com/ardanlabs/kronk v0.14.0
 ## explicit; go 1.25.3
 github.com/ardanlabs/kronk
+github.com/ardanlabs/kronk/install
+github.com/ardanlabs/kronk/model
 # github.com/aws/aws-sdk-go-v2 v1.40.0
 ## explicit; go 1.23
 github.com/aws/aws-sdk-go-v2/aws

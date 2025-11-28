@@ -64,6 +64,17 @@ func (h *handlers) chat(w http.ResponseWriter, r *http.Request) {
 	cr := model.ChatRequest{
 		Messages: h.compileChatMessages(traceID, req, documents),
 		Params:   getParams(traceID, req),
+		Tools: []model.Tool{
+			model.NewToolFunction(
+				"get_weather",
+				"Get the weather for a place",
+				model.ToolParameter{
+					Name:        "location",
+					Type:        "string",
+					Description: "The location to get the weather for, e.g. San Francisco, CA",
+				},
+			),
+		},
 	}
 
 	if err := h.krnChat.ChatStreamingHTTP(ctx, log, w, cr); err != nil {

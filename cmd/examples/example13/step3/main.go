@@ -286,11 +286,18 @@ loop:
 
 		case model.FinishReasonTool:
 			fmt.Println()
-			fmt.Printf("\u001b[92m%s\u001b[0m", lr.Choice[0].Delta.Tooling)
+			fmt.Printf("\u001b[92mModel Asking For Tool Call:\nToolID[%s]: %s(%s)\u001b[0m\n",
+				resp.Choice[0].Delta.ToolCalls[0].ID,
+				resp.Choice[0].Delta.ToolCalls[0].Name,
+				resp.Choice[0].Delta.ToolCalls[0].Arguments,
+			)
 
 			messages = append(messages, model.ChatMessage{
-				Role:    "tool",
-				Content: resp.Choice[0].Delta.Tooling,
+				Role: "tool",
+				Content: fmt.Sprintf("Tool call %s: %s(%v)",
+					resp.Choice[0].Delta.ToolCalls[0].ID,
+					resp.Choice[0].Delta.ToolCalls[0].Name,
+					resp.Choice[0].Delta.ToolCalls[0].Arguments),
 			})
 			break loop
 
@@ -317,7 +324,7 @@ loop:
 	percentage := (float64(contextTokens) / float64(contextWindow)) * 100
 	of := float32(contextWindow) / float32(1024)
 
-	fmt.Printf("\n\n\u001b[90mInput: %d  Reasoning: %d  Completion: %d  Output: %d  Window: %d (%.0f%% of %.0fK) TPS: %.2f\u001b[0m\n",
+	fmt.Printf("\n\u001b[90mInput: %d  Reasoning: %d  Completion: %d  Output: %d  Window: %d (%.0f%% of %.0fK) TPS: %.2f\u001b[0m\n",
 		lr.Usage.InputTokens, lr.Usage.ReasoningTokens, lr.Usage.CompletionTokens, lr.Usage.OutputTokens, contextTokens, percentage, of, lr.Usage.TokensPerSecond)
 
 	return messages, nil

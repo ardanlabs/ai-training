@@ -21,7 +21,6 @@ import (
 )
 
 const (
-	// modelURL = "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q8_0.gguf?download=true"
 	modelURL = "https://huggingface.co/Qwen/Qwen3-8B-GGUF/resolve/main/Qwen3-8B-Q8_0.gguf?download=true"
 	// modelURL  = "https://huggingface.co/unsloth/gpt-oss-20b-GGUF/resolve/main/gpt-oss-20b-Q8_0.gguf?download=true"
 	libPath   = "zarf/llamacpp"
@@ -136,7 +135,7 @@ func userInput(messages []model.ChatMessage) ([]model.ChatMessage, error) {
 }
 
 func tools() []model.Tool {
-	tool := model.NewFunctionTool(
+	tool := model.NewToolFunction(
 		"get_weather",
 		"Get the weather for a place",
 		model.ToolParameter{
@@ -188,11 +187,18 @@ loop:
 
 		case model.FinishReasonTool:
 			fmt.Println()
-			fmt.Printf("\u001b[92m%s\u001b[0m", lr.Choice[0].Delta.Tooling)
+			fmt.Printf("\u001b[92mModel Asking For Tool Call:\nToolID[%s]: %s(%s)\u001b[0m\n",
+				resp.Choice[0].Delta.ToolCalls[0].ID,
+				resp.Choice[0].Delta.ToolCalls[0].Name,
+				resp.Choice[0].Delta.ToolCalls[0].Arguments,
+			)
 
 			messages = append(messages, model.ChatMessage{
-				Role:    "tool",
-				Content: resp.Choice[0].Delta.Tooling,
+				Role: "tool",
+				Content: fmt.Sprintf("Tool call %s: %s(%v)",
+					resp.Choice[0].Delta.ToolCalls[0].ID,
+					resp.Choice[0].Delta.ToolCalls[0].Name,
+					resp.Choice[0].Delta.ToolCalls[0].Arguments),
 			})
 			break loop
 
@@ -219,7 +225,7 @@ loop:
 	percentage := (float64(contextTokens) / float64(contextWindow)) * 100
 	of := float32(contextWindow) / float32(1024)
 
-	fmt.Printf("\n\n\u001b[90mInput: %d  Reasoning: %d  Completion: %d  Output: %d  Window: %d (%.0f%% of %.0fK) TPS: %.2f\u001b[0m\n",
+	fmt.Printf("\n\u001b[90mInput: %d  Reasoning: %d  Completion: %d  Output: %d  Window: %d (%.0f%% of %.0fK) TPS: %.2f\u001b[0m\n",
 		lr.Usage.InputTokens, lr.Usage.ReasoningTokens, lr.Usage.CompletionTokens, lr.Usage.OutputTokens, contextTokens, percentage, of, lr.Usage.TokensPerSecond)
 
 	return messages, nil

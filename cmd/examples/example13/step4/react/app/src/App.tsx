@@ -1,10 +1,17 @@
 import { useState, useRef, useEffect } from 'react'
 import './App.css'
 
+interface ToolCall {
+  id: string
+  name: string
+  arguments: Record<string, unknown>
+}
+
 interface Message {
   role: string
   content: string
   reasoning?: string
+  toolCall?: ToolCall
   usage?: Usage
 }
 
@@ -30,6 +37,7 @@ interface Choice {
     role?: string
     content?: string
     reasoning?: string
+    tool_calls?: ToolCall[]
   }
   finish_reason?: string
   generated_text?: string
@@ -112,6 +120,7 @@ function App() {
 
       let accumulatedContent = ''
       let accumulatedReasoning = ''
+      let toolCall: ToolCall | undefined = undefined
 
       while (true) {
         const { done, value } = await reader.read()
@@ -140,6 +149,10 @@ function App() {
                 if (choice.finish_reason === 'error') {
                   const errorText = choice.GeneratedText || choice.generated_text || 'Unknown Error'
                   accumulatedContent += `\n[Error: ${errorText}]`
+                } else if (choice.finish_reason === 'tool') {
+                  if (choice.delta?.tool_calls && choice.delta.tool_calls.length > 0) {
+                    toolCall = choice.delta.tool_calls[0]
+                  }
                 } else {
                   if (choice.finish_reason !== 'stop') {
                     if (choice.delta?.content) {
@@ -159,6 +172,7 @@ function App() {
                   role: 'assistant',
                   content: accumulatedContent,
                   reasoning: accumulatedReasoning,
+                  toolCall: toolCall || currentMsg.toolCall,
                   usage: parsed.usage || currentMsg.usage
                 }
                 return newMessages
@@ -262,6 +276,12 @@ function App() {
                   </div>
                 )}
                 {msg.content}
+                {msg.toolCall && (
+                  <div style={{ color: '#006400', whiteSpace: 'pre-wrap', marginTop: '10px', fontFamily: 'monospace' }}>
+                    Model Asking For Tool Call:<br />
+                    ToolID[{msg.toolCall.id}]: {msg.toolCall.name}({JSON.stringify(msg.toolCall.arguments)})
+                  </div>
+                )}
                 {msg.usage && (
                   <div className="usage-info" style={{ fontSize: '0.8em', color: '#888', marginTop: '8px', paddingTop: '8px', borderTop: '1px solid #eee' }}>
                     Input: {msg.usage.input_tokens} | Output: {msg.usage.output_tokens} | Speed: {msg.usage.tokens_per_second.toFixed(2)} t/s

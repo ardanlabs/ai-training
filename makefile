@@ -272,7 +272,7 @@ example13-step4-npm-build:
 example13-step4-npm-run:
 	cd cmd/examples/example13/step4/react/app && npm run dev
 
-example13-step4-curl:
+example13-step4-curl1:
 	curl -i -X POST http://0.0.0.0:8080/chat \
      -H "Content-Type: application/json" \
      -d '{ \
@@ -280,6 +280,18 @@ example13-step4-curl:
 			{ \
 				"role": "user", \
 				"content": "How do you declare an interface in Go?" \
+			} \
+		] \
+    }'
+
+example13-step4-curl2:
+	curl -i -X POST http://0.0.0.0:8080/chat \
+     -H "Content-Type: application/json" \
+     -d '{ \
+		"messages": [ \
+			{ \
+				"role": "user", \
+				"content": "What is the weather in London, England?" \
 			} \
 		] \
     }'

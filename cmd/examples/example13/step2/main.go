@@ -91,13 +91,18 @@ func newKronk(modelFile string, projFile string) (*kronk.Kronk, error) {
 
 	const modelInstances = 1
 
-	krn, err := kronk.New(modelInstances, modelFile, projFile, model.Config{})
+	krn, err := kronk.New(modelInstances, model.Config{
+		ModelFile:      modelFile,
+		ProjectionFile: projFile,
+	})
+
 	if err != nil {
 		return nil, fmt.Errorf("unable to create inference model: %w", err)
 	}
 
 	fmt.Println("- contextWindow:", krn.ModelConfig().ContextWindow)
 	fmt.Println("- embeddings   :", krn.ModelConfig().Embeddings)
+	fmt.Println("- isGPT        :", krn.ModelInfo().IsGPT)
 
 	return krn, nil
 }
@@ -130,6 +135,8 @@ func modelResponse(krn *kronk.Kronk, ch <-chan model.ChatResponse) error {
 
 loop:
 	for resp := range ch {
+		lr = resp
+
 		switch resp.Choice[0].FinishReason {
 		case model.FinishReasonStop:
 			break loop
@@ -150,7 +157,6 @@ loop:
 		}
 
 		fmt.Printf("%s", resp.Choice[0].Delta.Content)
-		lr = resp
 	}
 
 	// -------------------------------------------------------------------------

@@ -83,7 +83,7 @@ github.com/apache/arrow-go/v18/internal/bitutils
 github.com/apache/arrow-go/v18/internal/hashing
 github.com/apache/arrow-go/v18/internal/json
 github.com/apache/arrow-go/v18/internal/utils
-# github.com/ardanlabs/kronk v0.15.0
+# github.com/ardanlabs/kronk v0.16.0
 ## explicit; go 1.25.3
 github.com/ardanlabs/kronk
 github.com/ardanlabs/kronk/install
@@ -267,6 +267,9 @@ github.com/duckdb/duckdb-go/mapping
 # github.com/duckdb/duckdb-go/v2 v2.5.3
 ## explicit; go 1.24
 github.com/duckdb/duckdb-go/v2
+# github.com/dustin/go-humanize v1.0.1
+## explicit; go 1.16
+github.com/dustin/go-humanize
 # github.com/ebitengine/purego v0.9.1
 ## explicit; go 1.18
 github.com/ebitengine/purego
@@ -445,6 +448,9 @@ github.com/jackc/puddle/v2/internal/genstack
 ## explicit; go 1.10
 github.com/jmoiron/sqlx
 github.com/jmoiron/sqlx/reflectx
+# github.com/json-iterator/go v1.1.12
+## explicit; go 1.12
+github.com/json-iterator/go
 # github.com/jupiterrider/ffi v0.5.1
 ## explicit; go 1.18
 github.com/jupiterrider/ffi
@@ -472,9 +478,34 @@ github.com/modelcontextprotocol/go-sdk/internal/util
 github.com/modelcontextprotocol/go-sdk/internal/xcontext
 github.com/modelcontextprotocol/go-sdk/jsonrpc
 github.com/modelcontextprotocol/go-sdk/mcp
+# github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd
+## explicit
+github.com/modern-go/concurrent
+# github.com/modern-go/reflect2 v1.0.2
+## explicit; go 1.12
+github.com/modern-go/reflect2
 # github.com/montanaflynn/stats v0.7.1
 ## explicit; go 1.13
 github.com/montanaflynn/stats
+# github.com/nikolalohinski/gonja/v2 v2.4.2
+## explicit; go 1.24.4
+github.com/nikolalohinski/gonja/v2
+github.com/nikolalohinski/gonja/v2/builtins
+github.com/nikolalohinski/gonja/v2/builtins/control_structures
+github.com/nikolalohinski/gonja/v2/builtins/methods
+github.com/nikolalohinski/gonja/v2/builtins/methods/pybool
+github.com/nikolalohinski/gonja/v2/builtins/methods/pyerrors
+github.com/nikolalohinski/gonja/v2/builtins/methods/pyfloat
+github.com/nikolalohinski/gonja/v2/builtins/methods/pyint
+github.com/nikolalohinski/gonja/v2/builtins/methods/pystring
+github.com/nikolalohinski/gonja/v2/config
+github.com/nikolalohinski/gonja/v2/docs
+github.com/nikolalohinski/gonja/v2/exec
+github.com/nikolalohinski/gonja/v2/loaders
+github.com/nikolalohinski/gonja/v2/nodes
+github.com/nikolalohinski/gonja/v2/parser
+github.com/nikolalohinski/gonja/v2/tokens
+github.com/nikolalohinski/gonja/v2/utils
 # github.com/pierrec/lz4/v4 v4.1.22
 ## explicit; go 1.14
 github.com/pierrec/lz4/v4
@@ -482,6 +513,9 @@ github.com/pierrec/lz4/v4/internal/lz4block
 github.com/pierrec/lz4/v4/internal/lz4errors
 github.com/pierrec/lz4/v4/internal/lz4stream
 github.com/pierrec/lz4/v4/internal/xxh32
+# github.com/pkg/errors v0.9.1
+## explicit
+github.com/pkg/errors
 # github.com/planetscale/vtprotobuf v0.6.1-0.20240319094008-0393e58bdf10
 ## explicit; go 1.20
 github.com/planetscale/vtprotobuf/protohelpers
@@ -491,6 +525,9 @@ github.com/planetscale/vtprotobuf/types/known/emptypb
 github.com/planetscale/vtprotobuf/types/known/structpb
 github.com/planetscale/vtprotobuf/types/known/timestamppb
 github.com/planetscale/vtprotobuf/types/known/wrapperspb
+# github.com/sirupsen/logrus v1.9.3
+## explicit; go 1.13
+github.com/sirupsen/logrus
 # github.com/spiffe/go-spiffe/v2 v2.6.0
 ## explicit; go 1.24.0
 github.com/spiffe/go-spiffe/v2/bundle/jwtbundle
@@ -643,6 +680,7 @@ golang.org/x/crypto/scrypt
 # golang.org/x/exp v0.0.0-20251125195548-87e1e737ad39
 ## explicit; go 1.24.0
 golang.org/x/exp/constraints
+golang.org/x/exp/utf8string
 # golang.org/x/mod v0.30.0
 ## explicit; go 1.24.0
 golang.org/x/mod/internal/lazyregexp
@@ -689,6 +727,10 @@ golang.org/x/telemetry/internal/telemetry
 # golang.org/x/text v0.31.0
 ## explicit; go 1.24.0
 golang.org/x/text/cases
+golang.org/x/text/encoding
+golang.org/x/text/encoding/charmap
+golang.org/x/text/encoding/internal
+golang.org/x/text/encoding/internal/identifier
 golang.org/x/text/internal
 golang.org/x/text/internal/language
 golang.org/x/text/internal/language/compact

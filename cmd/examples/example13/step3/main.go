@@ -25,7 +25,7 @@ import (
 )
 
 const (
-	modelChatURL  = "https://huggingface.co/unsloth/gpt-oss-20b-GGUF/resolve/main/gpt-oss-20b-Q8_0.gguf?download=true"
+	modelChatURL  = "https://huggingface.co/Qwen/Qwen3-8B-GGUF/resolve/main/Qwen3-8B-Q8_0.gguf?download=true"
 	modelEmbedURL = "https://huggingface.co/ggml-org/embeddinggemma-300m-qat-q8_0-GGUF/resolve/main/embeddinggemma-300m-qat-Q8_0.gguf?download=true"
 	libPath       = "zarf/llamacpp"
 	modelPath     = "zarf/models"
@@ -150,17 +150,20 @@ func newKronk(modelFile string, nBatch int, embeddings bool) (*kronk.Kronk, erro
 
 	const modelInstances = 1
 
-	krn, err := kronk.New(modelInstances, modelFile, "", model.Config{
+	krn, err := kronk.New(modelInstances, model.Config{
+		ModelFile:  modelFile,
 		NBatch:     nBatch,
 		Embeddings: embeddings,
 	})
+
 	if err != nil {
 		return nil, fmt.Errorf("unable to create inference model: %w", err)
 	}
 
-	fmt.Println("- modelFile      :", krn.ModelName())
+	fmt.Println("- modelFile      :", krn.ModelInfo().Name)
 	fmt.Println("  - contextWindow:", krn.ModelConfig().ContextWindow)
 	fmt.Println("  - embeddings   :", krn.ModelConfig().Embeddings)
+	fmt.Println("  - isGPT        :", krn.ModelInfo().IsGPT)
 
 	return krn, nil
 }
@@ -268,33 +271,44 @@ func modelResponse(krn *kronk.Kronk, messages []model.ChatMessage, ch <-chan mod
 
 loop:
 	for resp := range ch {
-		switch resp.Choice[0].FinishReason {
-		case model.FinishReasonStop:
-			break loop
+		lr = resp
 
+		switch resp.Choice[0].FinishReason {
 		case model.FinishReasonError:
 			return messages, fmt.Errorf("error from model: %s", resp.Choice[0].Delta.Content)
-		}
 
-		if resp.Choice[0].Delta.Reasoning != "" {
-			fmt.Printf("\u001b[91m%s\u001b[0m", resp.Choice[0].Delta.Reasoning)
-			reasoning = true
-			continue
-		}
+		case model.FinishReasonStop:
+			messages = append(messages, model.ChatMessage{
+				Role:    "assistant",
+				Content: resp.Choice[0].Delta.Content,
+			})
+			break loop
 
-		if reasoning {
-			reasoning = false
-			fmt.Print("\n\n")
-		}
+		case model.FinishReasonTool:
+			fmt.Println()
+			fmt.Printf("\u001b[92m%s\u001b[0m", lr.Choice[0].Delta.Tooling)
 
-		fmt.Printf("%s", resp.Choice[0].Delta.Content)
-		lr = resp
+			messages = append(messages, model.ChatMessage{
+				Role:    "tool",
+				Content: resp.Choice[0].Delta.Tooling,
+			})
+			break loop
+
+		default:
+			if resp.Choice[0].Delta.Reasoning != "" {
+				fmt.Printf("\u001b[91m%s\u001b[0m", resp.Choice[0].Delta.Reasoning)
+				reasoning = true
+				continue
+			}
+
+			if reasoning {
+				reasoning = false
+				fmt.Println()
+			}
+
+			fmt.Printf("%s", resp.Choice[0].Delta.Content)
+		}
 	}
-
-	messages = append(messages, model.ChatMessage{
-		Role:    "assistant",
-		Content: lr.Choice[0].Delta.Content,
-	})
 
 	// -------------------------------------------------------------------------
 

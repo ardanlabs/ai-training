@@ -38,7 +38,7 @@ import (
 )
 
 const (
-	modelChatURL       = "https://huggingface.co/unsloth/gpt-oss-20b-GGUF/resolve/main/gpt-oss-20b-Q8_0.gguf?download=true"
+	modelChatURL       = "https://huggingface.co/Qwen/Qwen3-8B-GGUF/resolve/main/Qwen3-8B-Q8_0.gguf?download=true"
 	modelEmbedURL      = "https://huggingface.co/ggml-org/embeddinggemma-300m-qat-q8_0-GGUF/resolve/main/embeddinggemma-300m-qat-Q8_0.gguf?download=true"
 	libPath            = "zarf/llamacpp"
 	modelPath          = "zarf/models"
@@ -84,7 +84,8 @@ func run() error {
 
 	const modelInstances = 1
 
-	krnEmbed, err := kronk.New(modelInstances, modelEmbedFile, "", model.Config{
+	krnEmbed, err := kronk.New(modelInstances, model.Config{
+		ModelFile:  modelEmbedFile,
 		Embeddings: true,
 	})
 	if err != nil {
@@ -92,8 +93,9 @@ func run() error {
 	}
 	defer krnEmbed.Unload()
 
-	krnChat, err := kronk.New(modelInstances, modelChatFile, "", model.Config{
-		NBatch: 32 * 1024,
+	krnChat, err := kronk.New(modelInstances, model.Config{
+		ModelFile: modelChatFile,
+		NBatch:    32 * 1024,
 	})
 	if err != nil {
 		return fmt.Errorf("unable to create chat model: %w", err)
@@ -102,6 +104,7 @@ func run() error {
 
 	fmt.Println("- contextWindow:", krnChat.ModelConfig().ContextWindow)
 	fmt.Println("- embeddings   :", krnChat.ModelConfig().Embeddings)
+	fmt.Println("- isGPT        :", krnChat.ModelInfo().IsGPT)
 
 	// -------------------------------------------------------------------------
 

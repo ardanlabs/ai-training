@@ -21,9 +21,9 @@ import (
 )
 
 const (
-	// modelURL  = "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q8_0.gguf?download=true"
-	// modelURL = "https://huggingface.co/Qwen/Qwen3-8B-GGUF/resolve/main/Qwen3-8B-Q8_0.gguf?download=true"
-	modelURL  = "https://huggingface.co/unsloth/gpt-oss-20b-GGUF/resolve/main/gpt-oss-20b-Q8_0.gguf?download=true"
+	// modelURL = "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q8_0.gguf?download=true"
+	modelURL = "https://huggingface.co/Qwen/Qwen3-8B-GGUF/resolve/main/Qwen3-8B-Q8_0.gguf?download=true"
+	// modelURL  = "https://huggingface.co/unsloth/gpt-oss-20b-GGUF/resolve/main/gpt-oss-20b-Q8_0.gguf?download=true"
 	libPath   = "zarf/llamacpp"
 	modelPath = "zarf/models"
 )
@@ -49,6 +49,8 @@ func run() error {
 
 	// -------------------------------------------------------------------------
 
+	tools := tools()
+
 	var messages []model.ChatMessage
 
 	for {
@@ -61,7 +63,7 @@ func run() error {
 			ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 			defer cancel()
 
-			ch, err := performChat(ctx, krn, messages)
+			ch, err := performChat(ctx, krn, messages, tools)
 			if err != nil {
 				return nil, fmt.Errorf("unable to perform chat: %w", err)
 			}
@@ -100,13 +102,17 @@ func newKronk(modelFile string) (*kronk.Kronk, error) {
 
 	const modelInstances = 1
 
-	krn, err := kronk.New(modelInstances, modelFile, "", model.Config{})
+	krn, err := kronk.New(modelInstances, model.Config{
+		ModelFile: modelFile,
+	})
+
 	if err != nil {
 		return nil, fmt.Errorf("unable to create inference model: %w", err)
 	}
 
 	fmt.Println("- contextWindow:", krn.ModelConfig().ContextWindow)
 	fmt.Println("- embeddings   :", krn.ModelConfig().Embeddings)
+	fmt.Println("- isGPT        :", krn.ModelInfo().IsGPT)
 
 	return krn, nil
 }
@@ -129,9 +135,24 @@ func userInput(messages []model.ChatMessage) ([]model.ChatMessage, error) {
 	return messages, nil
 }
 
-func performChat(ctx context.Context, krn *kronk.Kronk, messages []model.ChatMessage) (<-chan model.ChatResponse, error) {
+func tools() []model.Tool {
+	tool := model.NewFunctionTool(
+		"get_weather",
+		"Get the weather for a place",
+		model.ToolParameter{
+			Name:        "location",
+			Type:        "string",
+			Description: "The location to get the weather for, e.g. San Francisco, CA",
+		},
+	)
+
+	return []model.Tool{tool}
+}
+
+func performChat(ctx context.Context, krn *kronk.Kronk, messages []model.ChatMessage, tools []model.Tool) (<-chan model.ChatResponse, error) {
 	ch, err := krn.ChatStreaming(ctx, model.ChatRequest{
 		Messages: messages,
+		Tools:    tools,
 		Params: model.Params{
 			MaxTokens: 2048,
 		},
@@ -152,33 +173,44 @@ func modelResponse(krn *kronk.Kronk, messages []model.ChatMessage, ch <-chan mod
 
 loop:
 	for resp := range ch {
-		switch resp.Choice[0].FinishReason {
-		case model.FinishReasonStop:
-			break loop
+		lr = resp
 
+		switch resp.Choice[0].FinishReason {
 		case model.FinishReasonError:
 			return messages, fmt.Errorf("error from model: %s", resp.Choice[0].Delta.Content)
-		}
 
-		if resp.Choice[0].Delta.Reasoning != "" {
-			fmt.Printf("\u001b[91m%s\u001b[0m", resp.Choice[0].Delta.Reasoning)
-			reasoning = true
-			continue
-		}
+		case model.FinishReasonStop:
+			messages = append(messages, model.ChatMessage{
+				Role:    "assistant",
+				Content: resp.Choice[0].Delta.Content,
+			})
+			break loop
 
-		if reasoning {
-			reasoning = false
-			fmt.Print("\n\n")
-		}
+		case model.FinishReasonTool:
+			fmt.Println()
+			fmt.Printf("\u001b[92m%s\u001b[0m", lr.Choice[0].Delta.Tooling)
 
-		fmt.Printf("%s", resp.Choice[0].Delta.Content)
-		lr = resp
+			messages = append(messages, model.ChatMessage{
+				Role:    "tool",
+				Content: resp.Choice[0].Delta.Tooling,
+			})
+			break loop
+
+		default:
+			if resp.Choice[0].Delta.Reasoning != "" {
+				fmt.Printf("\u001b[91m%s\u001b[0m", resp.Choice[0].Delta.Reasoning)
+				reasoning = true
+				continue
+			}
+
+			if reasoning {
+				reasoning = false
+				fmt.Println()
+			}
+
+			fmt.Printf("%s", resp.Choice[0].Delta.Content)
+		}
 	}
-
-	messages = append(messages, model.ChatMessage{
-		Role:    "assistant",
-		Content: lr.Choice[0].Delta.Content,
-	})
 
 	// -------------------------------------------------------------------------
 

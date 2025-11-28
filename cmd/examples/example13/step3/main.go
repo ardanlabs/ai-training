@@ -148,9 +148,9 @@ func newKronk(modelFile string, nBatch int, embeddings bool) (*kronk.Kronk, erro
 		return nil, fmt.Errorf("unable to init kronk: %w", err)
 	}
 
-	const concurrency = 1
+	const modelInstances = 1
 
-	krn, err := kronk.New(concurrency, modelFile, "", model.Config{
+	krn, err := kronk.New(modelInstances, modelFile, "", model.Config{
 		NBatch:     nBatch,
 		Embeddings: embeddings,
 	})

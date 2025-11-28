@@ -82,9 +82,9 @@ func run() error {
 		return fmt.Errorf("unable to init kronk: %w", err)
 	}
 
-	const concurrency = 5
+	const modelInstances = 1
 
-	krnEmbed, err := kronk.New(concurrency, modelEmbedFile, "", model.Config{
+	krnEmbed, err := kronk.New(modelInstances, modelEmbedFile, "", model.Config{
 		Embeddings: true,
 	})
 	if err != nil {
@@ -92,7 +92,7 @@ func run() error {
 	}
 	defer krnEmbed.Unload()
 
-	krnChat, err := kronk.New(concurrency, modelChatFile, "", model.Config{
+	krnChat, err := kronk.New(modelInstances, modelChatFile, "", model.Config{
 		NBatch: 32 * 1024,
 	})
 	if err != nil {

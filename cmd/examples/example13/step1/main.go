@@ -98,9 +98,9 @@ func newKronk(modelFile string) (*kronk.Kronk, error) {
 		return nil, fmt.Errorf("unable to init kronk: %w", err)
 	}
 
-	const concurrency = 1
+	const modelInstances = 1
 
-	krn, err := kronk.New(concurrency, modelFile, "", model.Config{})
+	krn, err := kronk.New(modelInstances, modelFile, "", model.Config{})
 	if err != nil {
 		return nil, fmt.Errorf("unable to create inference model: %w", err)
 	}

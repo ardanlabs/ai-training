@@ -91,7 +91,11 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("unable to create embedding model: %w", err)
 	}
-	defer krnEmbed.Unload()
+	defer func() {
+		if err := krnEmbed.Unload(); err != nil {
+			fmt.Printf("failed to unload embedding model: %v", err)
+		}
+	}()
 
 	krnChat, err := kronk.New(modelInstances, model.Config{
 		ModelFile: modelChatFile,
@@ -100,7 +104,11 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("unable to create chat model: %w", err)
 	}
-	defer krnChat.Unload()
+	defer func() {
+		if err := krnChat.Unload(); err != nil {
+			fmt.Printf("failed to unload chat model: %v", err)
+		}
+	}()
 
 	fmt.Println("- contextWindow:", krnChat.ModelConfig().ContextWindow)
 	fmt.Println("- embeddings   :", krnChat.ModelConfig().Embeddings)

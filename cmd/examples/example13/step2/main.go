@@ -45,7 +45,11 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("unable to init kronk: %w", err)
 	}
-	defer krn.Unload()
+	defer func() {
+		if err := krn.Unload(); err != nil {
+			fmt.Printf("failed to unload model: %v", err)
+		}
+	}()
 
 	// -------------------------------------------------------------------------
 

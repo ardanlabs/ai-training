@@ -149,7 +149,7 @@ function App() {
                 if (choice.finish_reason === 'error') {
                   const errorText = choice.GeneratedText || choice.generated_text || 'Unknown Error'
                   accumulatedContent += `\n[Error: ${errorText}]`
-                } else if (choice.finish_reason === 'tool') {
+                } else if (choice.finish_reason === 'tool_calls') {
                   if (choice.delta?.tool_calls && choice.delta.tool_calls.length > 0) {
                     toolCall = choice.delta.tool_calls[0]
                   }

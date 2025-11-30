@@ -115,15 +115,17 @@ func newKronk(modelFile string, projFile string) (*kronk.Kronk, error) {
 func performChat(ctx context.Context, krn *kronk.Kronk, question string, imageFile string) (<-chan model.ChatResponse, error) {
 	fmt.Printf("\nQuestion: %s\n", question)
 
-	ch, err := krn.VisionStreaming(ctx, model.VisionRequest{
-		ImageFile: imageFile,
-		Message: model.ChatMessage{
-			Role: "user", Content: question,
-		},
-		Params: model.Params{
-			MaxTokens: 2048,
-		},
-	})
+	params := model.Params{
+		MaxTokens: 2048,
+	}
+
+	d := model.D{
+		"messages": model.DocumentArray(
+			model.ChatMessage("user", question),
+		),
+	}
+
+	ch, err := krn.VisionStreaming(ctx, imageFile, params, d)
 
 	if err != nil {
 		return nil, fmt.Errorf("vision streaming: %w", err)

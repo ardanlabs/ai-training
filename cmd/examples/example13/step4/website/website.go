@@ -61,23 +61,28 @@ func (h *handlers) chat(w http.ResponseWriter, r *http.Request) {
 		fmt.Printf("traceID: %s: chat: log: %s\n", traceID, fmt.Sprintf(format, a...))
 	}
 
-	cr := model.ChatRequest{
-		Messages: h.compileChatMessages(traceID, req, documents),
-		Params:   getParams(traceID, req),
-		Tools: []model.Tool{
-			model.NewToolFunction(
-				"get_weather",
-				"Get the weather for a place",
-				model.ToolParameter{
-					Name:        "location",
-					Type:        "string",
-					Description: "The location to get the weather for, e.g. San Francisco, CA",
+	params := getParams(traceID, req)
+
+	d := model.D{
+		"messages": h.compileChatMessages(traceID, req, documents),
+		"tools": []model.D{
+			{
+				"type": "function",
+				"function": model.D{
+					"name":        "get_weather",
+					"description": "Get the current weather for a location",
+					"arguments": model.D{
+						"location": model.D{
+							"type":        "string",
+							"description": "The location to get the weather for, e.g. San Francisco, CA",
+						},
+					},
 				},
-			),
+			},
 		},
 	}
 
-	if err := h.krnChat.ChatStreamingHTTP(ctx, log, w, cr); err != nil {
+	if err := h.krnChat.ChatStreamingHTTP(ctx, log, w, params, d); err != nil {
 		sendError(w, traceID, "streamResponse", err)
 		return
 	}
@@ -145,11 +150,13 @@ func (h *handlers) needVectorSearch(traceID string, req Request) (bool, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), h.timeout)
 	defer cancel()
 
-	response, err := h.krnChat.Chat(ctx, model.ChatRequest{
-		Messages: []model.ChatMessage{
-			{Role: "user", Content: fmt.Sprintf(prompt, req.Messages[len(req.Messages)-1].Content)},
-		},
-	})
+	d := model.D{
+		"messages": model.DocumentArray(
+			model.ChatMessage("user", fmt.Sprintf(prompt, req.Messages[len(req.Messages)-1].Content)),
+		),
+	}
+
+	response, err := h.krnChat.Chat(ctx, model.Params{}, d)
 	if err != nil {
 		return false, err
 	}
@@ -188,7 +195,7 @@ func (h *handlers) vectorSearch(traceID string, req Request) ([]duck.Document, e
 	return docs, nil
 }
 
-func (h *handlers) compileChatMessages(traceID string, req Request, documents []duck.Document) []model.ChatMessage {
+func (h *handlers) compileChatMessages(traceID string, req Request, documents []duck.Document) []model.D {
 	fmt.Printf("traceID: %s: compileChatMessages: started: msgs: %d: documents: %d\n", traceID, len(req.Messages), len(documents))
 
 	const systemPrompt = `
@@ -200,14 +207,14 @@ func (h *handlers) compileChatMessages(traceID string, req Request, documents []
 	`
 
 	// Add 2 more elements for the system prompt and any context.
-	msgs := make([]model.ChatMessage, 0, len(req.Messages)+2)
+	msgs := make([]model.D, 0, len(req.Messages)+2)
 
 	// Add the system prompt.
-	msgs = append(msgs, model.ChatMessage{Role: "system", Content: systemPrompt})
+	msgs = append(msgs, model.ChatMessage("system", systemPrompt))
 
 	// Add all but the very last message in the history.
 	for _, msg := range req.Messages[:len(req.Messages)-1] {
-		msgs = append(msgs, model.ChatMessage{Role: "user", Content: msg.Content})
+		msgs = append(msgs, model.ChatMessage(msg.Role, msg.Content))
 	}
 
 	// Add the top 2 extra context if it exists.
@@ -222,12 +229,12 @@ func (h *handlers) compileChatMessages(traceID string, req Request, documents []
 	}
 
 	if count > 0 {
-		msgs = append(msgs, model.ChatMessage{Role: "user", Content: fmt.Sprintf("Context:\n%s\n\n", content)})
+		msgs = append(msgs, model.ChatMessage("user", fmt.Sprintf("Context:\n%s\n\n", content)))
 	}
 
 	// Add the final message from the history. We expect this to be a question.
 	question := req.Messages[len(req.Messages)-1].Content
-	msgs = append(msgs, model.ChatMessage{Role: "user", Content: fmt.Sprintf("Question:\n%s\n\n", question)})
+	msgs = append(msgs, model.ChatMessage("user", fmt.Sprintf("Question:\n%s\n\n", question)))
 
 	fmt.Printf("traceID: %s: compileChatMessages: ended: msgs: %d\n", traceID, len(msgs))
 

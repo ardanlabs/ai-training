@@ -86,7 +86,7 @@ func run() error {
 
 	// -------------------------------------------------------------------------
 
-	var messages []model.ChatMessage
+	var messages []model.D
 
 	for {
 		messages, err = userInput(messages)
@@ -117,11 +117,15 @@ func run() error {
 
 		// ---------------------------------------------------------------------
 
-		messages, err = func() ([]model.ChatMessage, error) {
+		messages, err = func() ([]model.D, error) {
 			ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 			defer cancel()
 
-			ch, err := performChat(ctx, krnChat, addContextPrompt(docs, messages))
+			d := model.D{
+				"messages": addContextPrompt(docs, messages),
+			}
+
+			ch, err := performChat(ctx, krnChat, d)
 			if err != nil {
 				return nil, fmt.Errorf("unable to perform chat: %w", err)
 			}
@@ -183,7 +187,7 @@ func newKronk(modelFile string, nBatch int, embeddings bool) (*kronk.Kronk, erro
 	return krn, nil
 }
 
-func userInput(messages []model.ChatMessage) ([]model.ChatMessage, error) {
+func userInput(messages []model.D) ([]model.D, error) {
 	fmt.Print("\nUSER> ")
 
 	reader := bufio.NewReader(os.Stdin)
@@ -197,18 +201,15 @@ func userInput(messages []model.ChatMessage) ([]model.ChatMessage, error) {
 		return nil, io.EOF
 	}
 
-	messages = append(messages, model.ChatMessage{
-		Role:    "user",
-		Content: userInput,
-	})
+	messages = append(messages, model.ChatMessage("user", userInput))
 
 	return messages, nil
 }
 
-func vectorSearch(ctx context.Context, krnEmbed *kronk.Kronk, db *sql.DB, messages []model.ChatMessage) ([]duck.Document, error) {
+func vectorSearch(ctx context.Context, krnEmbed *kronk.Kronk, db *sql.DB, messages []model.D) ([]duck.Document, error) {
 	fmt.Print("\n--- Vector Search ---\n\n")
 
-	lastUserInput := messages[len(messages)-1].Content
+	lastUserInput := messages[len(messages)-1]["content"].(string)
 
 	queryVector, err := krnEmbed.Embed(ctx, lastUserInput)
 	if err != nil {
@@ -231,7 +232,7 @@ func vectorSearch(ctx context.Context, krnEmbed *kronk.Kronk, db *sql.DB, messag
 	return docs, nil
 }
 
-func addContextPrompt(documents []duck.Document, messages []model.ChatMessage) []model.ChatMessage {
+func addContextPrompt(documents []duck.Document, messages []model.D) []model.D {
 	const prompt = `
 		- Use the following Context to answer the user's question.
 		- If you don't know the answer, say that you don't know.
@@ -256,25 +257,20 @@ func addContextPrompt(documents []duck.Document, messages []model.ChatMessage) [
 		}
 	}
 
-	lastUserInput := messages[len(messages)-1].Content
+	lastUserInput := messages[len(messages)-1]["content"].(string)
 	finalPrompt := fmt.Sprintf(prompt, content.String(), lastUserInput)
 
-	messages = append(messages, model.ChatMessage{
-		Role:    "user",
-		Content: finalPrompt,
-	})
+	messages = append(messages, model.ChatMessage("user", finalPrompt))
 
 	return messages
 }
 
-func performChat(ctx context.Context, krn *kronk.Kronk, messages []model.ChatMessage) (<-chan model.ChatResponse, error) {
-	ch, err := krn.ChatStreaming(ctx, model.ChatRequest{
-		Messages: messages,
-		Params: model.Params{
-			MaxTokens: 2048,
-		},
-	})
+func performChat(ctx context.Context, krn *kronk.Kronk, d model.D) (<-chan model.ChatResponse, error) {
+	params := model.Params{
+		MaxTokens: 2048,
+	}
 
+	ch, err := krn.ChatStreaming(ctx, params, d)
 	if err != nil {
 		return nil, fmt.Errorf("chat streaming: %w", err)
 	}
@@ -282,7 +278,7 @@ func performChat(ctx context.Context, krn *kronk.Kronk, messages []model.ChatMes
 	return ch, nil
 }
 
-func modelResponse(krn *kronk.Kronk, messages []model.ChatMessage, ch <-chan model.ChatResponse) ([]model.ChatMessage, error) {
+func modelResponse(krn *kronk.Kronk, messages []model.D, ch <-chan model.ChatResponse) ([]model.D, error) {
 	fmt.Print("\nMODEL> ")
 
 	var reasoning bool
@@ -297,27 +293,25 @@ loop:
 			return messages, fmt.Errorf("error from model: %s", resp.Choice[0].Delta.Content)
 
 		case model.FinishReasonStop:
-			messages = append(messages, model.ChatMessage{
-				Role:    "assistant",
-				Content: resp.Choice[0].Delta.Content,
-			})
+			messages = append(messages, model.ChatMessage("assistant", resp.Choice[0].Delta.Content))
 			break loop
 
 		case model.FinishReasonTool:
-			fmt.Println()
+			fmt.Print("\n\n")
+
 			fmt.Printf("\u001b[92mModel Asking For Tool Call:\nToolID[%s]: %s(%s)\u001b[0m\n",
 				resp.Choice[0].Delta.ToolCalls[0].ID,
 				resp.Choice[0].Delta.ToolCalls[0].Name,
 				resp.Choice[0].Delta.ToolCalls[0].Arguments,
 			)
 
-			messages = append(messages, model.ChatMessage{
-				Role: "tool",
-				Content: fmt.Sprintf("Tool call %s: %s(%v)",
+			messages = append(messages,
+				model.ChatMessage("tool", fmt.Sprintf("Tool call %s: %s(%v)",
 					resp.Choice[0].Delta.ToolCalls[0].ID,
 					resp.Choice[0].Delta.ToolCalls[0].Name,
 					resp.Choice[0].Delta.ToolCalls[0].Arguments),
-			})
+				),
+			)
 			break loop
 
 		default:
@@ -329,7 +323,11 @@ loop:
 
 			if reasoning {
 				reasoning = false
+
 				fmt.Println()
+				if krn.ModelInfo().IsGPT {
+					fmt.Println()
+				}
 			}
 
 			fmt.Printf("%s", resp.Choice[0].Delta.Content)

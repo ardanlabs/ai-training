@@ -3,16 +3,19 @@ package model
 
 import (
 	"context"
-	"encoding/json"
+	"embed"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
 	"sync/atomic"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/hybridgroup/yzma/pkg/llama"
 )
+
+//go:embed jinja/*
+var jinjaFS embed.FS
 
 // Model represents a model and provides a low-level API for working with it.
 type Model struct {
@@ -50,7 +53,9 @@ func NewModel(cfg Config) (*Model, error) {
 
 	// -------------------------------------------------------------------------
 
-	template, err := retrieveTemplate(cfg, mdl)
+	modelInfo := newModelInfo(cfg, mdl)
+
+	template, err := retrieveTemplate(cfg, mdl, modelInfo)
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve model template: %w", err)
 	}
@@ -64,27 +69,38 @@ func NewModel(cfg Config) (*Model, error) {
 		ctxParams: modelCtxParams(cfg),
 		template:  template,
 		projFile:  cfg.ProjectionFile,
-		modelInfo: newModelInfo(cfg, mdl),
+		modelInfo: modelInfo,
 	}
 
 	return &m, nil
 }
 
-func retrieveTemplate(cfg Config, mdl llama.Model) (string, error) {
+func retrieveTemplate(cfg Config, mdl llama.Model, modelInfo ModelInfo) (string, error) {
 	var template string
 
 	if cfg.JinjaFile != "" {
-		template, err := readJinjaTemplate(cfg.JinjaFile)
+		data, err := readJinjaTemplate(cfg.JinjaFile)
 		if err != nil {
 			return "", fmt.Errorf("failed to read jinja template: %w", err)
 		}
 
-		if template == "" {
+		if data == "" {
 			return "", fmt.Errorf("jinja template is empty")
 		}
+
+		template = data
 	}
 
 	if template == "" {
+		if modelInfo.IsGPT {
+			data, err := jinjaFS.ReadFile("jinja/gpt-oss.jinja")
+			if err != nil {
+				return "", fmt.Errorf("failed to read gpt-oss.jinja template: %w", err)
+			}
+
+			return string(data), nil
+		}
+
 		template = llama.ModelChatTemplate(mdl, "")
 		if template == "" {
 			template, _ = llama.ModelMetaValStr(mdl, "tokenizer.chat_template")
@@ -142,9 +158,9 @@ func (m *Model) processTokens(ctx context.Context, id string, lctx llama.Context
 
 	// These flags track what mode the model is operating in.
 	var (
-		reasonFlag int
-		outputFlag int
-		toolFlag   int
+		reasonFlag     int
+		completionFlag int
+		toolFlag       int
 	)
 
 	// The buffer is used to process tokens.
@@ -171,7 +187,12 @@ loop:
 		// For the given batch, extract the response.
 		content, token, err := m.batchResponse(lctx, batch, sampler, buf)
 		if err != nil {
-			break loop
+			if errors.Is(err, io.EOF) {
+				break loop
+			}
+
+			m.sendErrorResponse(ctx, ch, id, object, index, err, Usage{})
+			return
 		}
 
 		// ---------------------------------------------------------------------
@@ -187,27 +208,43 @@ loop:
 			continue
 
 		case "<tool_call>":
-			batch = m.toolCallStart(token, &toolFlag, &completionTokens)
-			continue
-
-		case "</tool_call>":
-			batch = m.toolCallStop(token, &toolFlag, &completionTokens)
-			continue
-
-		case "<|channel|>":
-			batch, content, err = m.channelStart(lctx, token, sampler, buf, &reasonFlag, &reasonTokens, &completionTokens)
+			content, err = m.toolCall(lctx, token, sampler, buf)
 			if err != nil {
-				break loop
+				m.sendErrorResponse(ctx, ch, id, object, index, err, Usage{})
+				return
 			}
 
-			if content == "<|continue|>" {
+			toolFlag = 1
+			finalTooling.WriteString(content)
+			break loop
+
+		case "<|channel|>":
+			batch, content, err = m.gptChannel(lctx, token, sampler, buf)
+			if err != nil {
+				m.sendErrorResponse(ctx, ch, id, object, index, err, Usage{})
+				return
+			}
+
+			switch {
+			case content == "<|reasoning|>":
+				reasonFlag = 1
 				continue
+
+			case content == "<|completion|>":
+				reasonFlag = 0
+				continue
+
+			case content[:13] == "<|tool_call|>":
+				toolFlag = 1
+				finalTooling.WriteString(content[13:])
+				break loop
 			}
 
 		case "<|end|>":
-			batch, err = m.channelEnd(lctx, token, sampler, buf)
+			batch, err = m.gptEnd(lctx, token, sampler, buf)
 			if err != nil {
-				break loop
+				m.sendErrorResponse(ctx, ch, id, object, index, err, Usage{})
+				return
 			}
 			continue
 		}
@@ -216,7 +253,7 @@ loop:
 
 		// At the start or end of a mode we might have an extra CRLF we
 		// don't need.
-		if m.isUnncessaryCRLF(reasonFlag, toolFlag, outputFlag, content) {
+		if m.isUnncessaryCRLF(reasonFlag, completionFlag, content) {
 			batch = m.nextBatch(token)
 			continue
 		}
@@ -225,23 +262,6 @@ loop:
 		// the tokens per second.
 		elapsedSeconds := time.Since(now).Seconds()
 		tokensPerSecond = float64(outputTokens) / elapsedSeconds
-
-		// ---------------------------------------------------------------------
-
-		// We want to return the tool calling in a single response to make
-		// it easier for developers to process. We expect the model to stop
-		// processing tokens once the tool call is complete.
-		if toolFlag > 0 {
-			if err := m.storeFinalToolContent(ctx, &finalTooling, content); err != nil {
-				break loop
-			}
-
-			batch = m.nextBatch(token)
-			completionTokens += int(batch.NTokens)
-			outputTokens = reasonTokens + completionTokens
-
-			continue
-		}
 
 		// ---------------------------------------------------------------------
 		// We have reasoning or completion content to return to the client and
@@ -275,7 +295,7 @@ loop:
 
 		default:
 			completionTokens += int(batch.NTokens)
-			outputFlag++
+			completionFlag++
 		}
 
 		outputTokens = reasonTokens + completionTokens
@@ -283,10 +303,23 @@ loop:
 
 	// -------------------------------------------------------------------------
 
-	// Parse the tool call response to provide structured data.
+	// Parse the tool call response to structured data.
 	var respToolCall ResponseToolCall
-	if finalTooling.Len() > 0 {
-		respToolCall = parseToolCall(finalTooling)
+	if toolFlag == 1 {
+		content := finalTooling.String()
+		content = strings.Trim(content, "\n")
+
+		if len(content) > 0 {
+			// We will count the tokens for the final JSON document
+			// as completion tokens that would have been returned
+			// if we didn't provide a structured response.
+			tokens := llama.Tokenize(m.vocab, content, true, true)
+			batch := llama.BatchGetOne(tokens)
+			completionTokens += int(batch.NTokens)
+			outputTokens = reasonTokens + completionTokens
+		}
+
+		respToolCall = parseToolCall(content)
 	}
 
 	// Send the final response that contains eveything we have sent plus
@@ -349,128 +382,14 @@ func (m *Model) batchResponse(lctx llama.Context, batch llama.Batch, sampler lla
 	return content, token, nil
 }
 
-func (m *Model) thinkStart(token llama.Token, reasonFlag *int, reasonTokens *int) llama.Batch {
-	*reasonFlag = 1
-
-	batch := m.nextBatch(token)
-	*reasonTokens += int(batch.NTokens)
-
-	return batch
-}
-
-func (m *Model) thinkStop(token llama.Token, reasonFlag *int, completionTokens *int) llama.Batch {
-	*reasonFlag = 0
-
-	batch := m.nextBatch(token)
-	*completionTokens += int(batch.NTokens)
-
-	return batch
-}
-
-func (m *Model) toolCallStart(token llama.Token, toolFlag *int, completionTokens *int) llama.Batch {
-	*toolFlag = 1
-
-	batch := m.nextBatch(token)
-	*completionTokens += int(batch.NTokens)
-
-	return batch
-}
-
-func (m *Model) toolCallStop(token llama.Token, toolFlag *int, completionTokens *int) llama.Batch {
-	*toolFlag = 0
-
-	batch := m.nextBatch(token)
-	*completionTokens += int(batch.NTokens)
-
-	return batch
-}
-
-func (m *Model) channelStart(lctx llama.Context, token llama.Token, sampler llama.Sampler, buf []byte, reasoning *int, reasonTokens *int, completionTokens *int) (llama.Batch, string, error) {
-	// <|channel|>analysis<|message|>REASONING<|end|><|start|>assistant<|channel|>final<|message|>RESPONSE
-
-	batch := m.nextBatch(token)
-	content, token, err := m.batchResponse(lctx, batch, sampler, buf)
-	if err != nil {
-		return batch, "", err
-	}
-
-	switch content {
-	case "analysis":
-		batch, err = m.channelAnalysis(lctx, token, sampler, buf, reasoning, reasonTokens)
-		if err != nil {
-			return batch, "", err
-		}
-
-	case "final":
-		batch, err = m.channelFinal(lctx, token, sampler, buf, reasoning, completionTokens)
-		if err != nil {
-			return batch, "", err
-		}
-
-	default:
-		return batch, content, nil
-	}
-
-	return batch, "<|continue|>", nil
-}
-
-func (m *Model) channelAnalysis(lctx llama.Context, token llama.Token, sampler llama.Sampler, buf []byte, reasoning *int, reasonTokens *int) (llama.Batch, error) {
-	*reasoning = 1
-
-	batch := m.nextBatch(token)
-	_, token, err := m.batchResponse(lctx, batch, sampler, buf) // <|message|>
-	if err != nil {
-		return batch, err
-	}
-
-	batch = m.nextBatch(token)
-	*reasonTokens += int(batch.NTokens)
-
-	return batch, nil
-}
-
-func (m *Model) channelFinal(lctx llama.Context, token llama.Token, sampler llama.Sampler, buf []byte, reasoning *int, completionTokens *int) (llama.Batch, error) {
-	*reasoning = 0
-
-	batch := m.nextBatch(token)
-	_, token, err := m.batchResponse(lctx, batch, sampler, buf) // <|message|>
-	if err != nil {
-		return batch, err
-	}
-
-	batch = m.nextBatch(token)
-	*completionTokens += int(batch.NTokens)
-
-	return batch, nil
-}
-
-func (m *Model) channelEnd(lctx llama.Context, token llama.Token, sampler llama.Sampler, buf []byte) (llama.Batch, error) {
-	batch := m.nextBatch(token)
-
-	_, token, err := m.batchResponse(lctx, batch, sampler, buf) // <|start|>
-	if err != nil {
-		return batch, err
-	}
-
-	batch = m.nextBatch(token)
-
-	_, token, err = m.batchResponse(lctx, batch, sampler, buf) // assistant
-	if err != nil {
-		return batch, err
-	}
-
-	batch = m.nextBatch(token)
-	return batch, nil
-}
-
-func (m *Model) isUnncessaryCRLF(reasoning int, tooling int, completion int, content string) bool {
+func (m *Model) isUnncessaryCRLF(reasonFlag int, completionFlag int, content string) bool {
 	// We just started reasoning or tool calling so remove leading CR.
-	if (reasoning == 1 || tooling == 1) && content == "\x0A" {
+	if reasonFlag == 1 && content == "\x0A" {
 		return true
 	}
 
 	// We just started completion so remove leading CR.
-	if reasoning == 0 && tooling == 0 && completion == 0 && (content == "\x0A\x0A" || content == "\x0A") {
+	if reasonFlag == 0 && completionFlag == 0 && (content == "\x0A\x0A" || content == "\x0A") {
 		return true
 	}
 
@@ -484,18 +403,6 @@ func (m *Model) storeFinalContent(finalReasoning *strings.Builder, finalContent 
 	default:
 		finalContent.WriteString(content)
 	}
-}
-
-func (m *Model) storeFinalToolContent(ctx context.Context, finalTooling *strings.Builder, content string) error {
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	default:
-	}
-
-	finalTooling.WriteString(content)
-
-	return nil
 }
 
 func (m *Model) sendDeltaResponse(ctx context.Context, ch chan<- ChatResponse, id string, object string, index int, content string, reasonFlag int, usage Usage) error {
@@ -530,18 +437,14 @@ func (m *Model) sendFinalResponse(ctx context.Context, ch chan<- ChatResponse, i
 	}
 }
 
-// =============================================================================
+func (m *Model) sendErrorResponse(ctx context.Context, ch chan<- ChatResponse, id string, object string, index int, err error, usage Usage) {
+	select {
+	case <-ctx.Done():
 
-func parseToolCall(tooling strings.Builder) ResponseToolCall {
-	// The idea is to add a unique ID to the tool call. The user
-	// can use this ID to reference the tool call in the future.
+	case ch <- ChatResponseErr(id, object, m.modelInfo.Name, index,
+		err,
+		usage):
 
-	var toolCall ResponseToolCall
-	if err := json.Unmarshal([]byte(tooling.String()), &toolCall); err != nil {
-		return ResponseToolCall{}
+	default:
 	}
-
-	toolCall.ID = uuid.NewString()
-
-	return toolCall
 }

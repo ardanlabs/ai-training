@@ -23,8 +23,8 @@ import (
 )
 
 const (
-	modelURL = "https://huggingface.co/Qwen/Qwen3-8B-GGUF/resolve/main/Qwen3-8B-Q8_0.gguf?download=true"
-	// modelURL  = "https://huggingface.co/unsloth/gpt-oss-20b-GGUF/resolve/main/gpt-oss-20b-Q8_0.gguf?download=true"
+	//modelURL = "https://huggingface.co/Qwen/Qwen3-8B-GGUF/resolve/main/Qwen3-8B-Q8_0.gguf?download=true"
+	modelURL  = "https://huggingface.co/unsloth/gpt-oss-20b-GGUF/resolve/main/gpt-oss-20b-Q8_0.gguf?download=true"
 	libPath   = "zarf/llamacpp"
 	modelPath = "zarf/models"
 )
@@ -55,9 +55,7 @@ func run() error {
 
 	// -------------------------------------------------------------------------
 
-	tools := tools()
-
-	var messages []model.ChatMessage
+	messages := model.DocumentArray()
 
 	for {
 		messages, err = userInput(messages)
@@ -68,11 +66,16 @@ func run() error {
 			return fmt.Errorf("user input: %w", err)
 		}
 
-		messages, err = func() ([]model.ChatMessage, error) {
+		messages, err = func() ([]model.D, error) {
 			ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 			defer cancel()
 
-			ch, err := performChat(ctx, krn, messages, tools)
+			d := model.D{
+				"messages": messages,
+				"tools":    tools(krn.ModelInfo().IsGPT),
+			}
+
+			ch, err := performChat(ctx, krn, d)
 			if err != nil {
 				return nil, fmt.Errorf("unable to perform chat: %w", err)
 			}
@@ -126,7 +129,7 @@ func newKronk(modelFile string) (*kronk.Kronk, error) {
 	return krn, nil
 }
 
-func userInput(messages []model.ChatMessage) ([]model.ChatMessage, error) {
+func userInput(messages []model.D) ([]model.D, error) {
 	fmt.Print("\nUSER> ")
 
 	reader := bufio.NewReader(os.Stdin)
@@ -140,37 +143,59 @@ func userInput(messages []model.ChatMessage) ([]model.ChatMessage, error) {
 		return nil, io.EOF
 	}
 
-	messages = append(messages, model.ChatMessage{
-		Role:    "user",
-		Content: userInput,
-	})
+	messages = append(messages,
+		model.ChatMessage("user", userInput),
+	)
 
 	return messages, nil
 }
 
-func tools() []model.Tool {
-	tool := model.NewToolFunction(
-		"get_weather",
-		"Get the weather for a place",
-		model.ToolParameter{
-			Name:        "location",
-			Type:        "string",
-			Description: "The location to get the weather for, e.g. San Francisco, CA",
-		},
-	)
+func tools(isGPT bool) []model.D {
+	if isGPT {
+		return []model.D{
+			{
+				"type": "function",
+				"function": map[string]any{
+					"name":        "get_weather",
+					"description": "Get the current weather for a location",
+					"parameters": map[string]any{
+						"type": "object",
+						"properties": map[string]any{
+							"location": map[string]any{
+								"type":        "string",
+								"description": "The location to get the weather for, e.g. San Francisco, CA",
+							},
+						},
+						"required": []any{"location"},
+					},
+				},
+			},
+		}
+	}
 
-	return []model.Tool{tool}
+	return []model.D{
+		{
+			"type": "function",
+			"function": model.D{
+				"name":        "get_weather",
+				"description": "Get the current weather for a location",
+				"arguments": model.D{
+					"location": model.D{
+						"type":        "string",
+						"description": "The location to get the weather for, e.g. San Francisco, CA",
+					},
+				},
+			},
+		},
+	}
 }
 
-func performChat(ctx context.Context, krn *kronk.Kronk, messages []model.ChatMessage, tools []model.Tool) (<-chan model.ChatResponse, error) {
-	ch, err := krn.ChatStreaming(ctx, model.ChatRequest{
-		Messages: messages,
-		Tools:    tools,
-		Params: model.Params{
-			MaxTokens: 2048,
-		},
-	})
+func performChat(ctx context.Context, krn *kronk.Kronk, d model.D) (<-chan model.ChatResponse, error) {
+	params := model.Params{
+		MaxTokens: 2048,
+	}
 
+	ch, err := krn.ChatStreaming(ctx, params, d)
 	if err != nil {
 		return nil, fmt.Errorf("chat streaming: %w", err)
 	}
@@ -178,7 +203,7 @@ func performChat(ctx context.Context, krn *kronk.Kronk, messages []model.ChatMes
 	return ch, nil
 }
 
-func modelResponse(krn *kronk.Kronk, messages []model.ChatMessage, ch <-chan model.ChatResponse) ([]model.ChatMessage, error) {
+func modelResponse(krn *kronk.Kronk, messages []model.D, ch <-chan model.ChatResponse) ([]model.D, error) {
 	fmt.Print("\nMODEL> ")
 
 	var reasoning bool
@@ -193,27 +218,27 @@ loop:
 			return messages, fmt.Errorf("error from model: %s", resp.Choice[0].Delta.Content)
 
 		case model.FinishReasonStop:
-			messages = append(messages, model.ChatMessage{
-				Role:    "assistant",
-				Content: resp.Choice[0].Delta.Content,
-			})
+			messages = append(messages,
+				model.ChatMessage("assistant", resp.Choice[0].Delta.Content),
+			)
 			break loop
 
 		case model.FinishReasonTool:
-			fmt.Println()
+			fmt.Print("\n\n")
+
 			fmt.Printf("\u001b[92mModel Asking For Tool Call:\nToolID[%s]: %s(%s)\u001b[0m",
 				resp.Choice[0].Delta.ToolCalls[0].ID,
 				resp.Choice[0].Delta.ToolCalls[0].Name,
 				resp.Choice[0].Delta.ToolCalls[0].Arguments,
 			)
 
-			messages = append(messages, model.ChatMessage{
-				Role: "tool",
-				Content: fmt.Sprintf("Tool call %s: %s(%v)",
+			messages = append(messages,
+				model.ChatMessage("tool", fmt.Sprintf("Tool call %s: %s(%v)",
 					resp.Choice[0].Delta.ToolCalls[0].ID,
 					resp.Choice[0].Delta.ToolCalls[0].Name,
 					resp.Choice[0].Delta.ToolCalls[0].Arguments),
-			})
+				),
+			)
 			break loop
 
 		default:
@@ -225,7 +250,11 @@ loop:
 
 			if reasoning {
 				reasoning = false
+
 				fmt.Println()
+				if krn.ModelInfo().IsGPT {
+					fmt.Println()
+				}
 			}
 
 			fmt.Printf("%s", resp.Choice[0].Delta.Content)

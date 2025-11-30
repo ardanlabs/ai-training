@@ -3,7 +3,7 @@ module github.com/ardanlabs/ai-training
 go 1.25.3
 
 require (
-	github.com/ardanlabs/kronk v0.23.0
+	github.com/ardanlabs/kronk v0.24.0
 	github.com/dlclark/regexp2 v1.11.5
 	github.com/duckdb/duckdb-go/v2 v2.5.3
 	github.com/google/uuid v1.6.0
@@ -15,7 +15,7 @@ require (
 	golang.org/x/sync v0.18.0
 )
 
-replace github.com/ardanlabs/kronk => ../kronk
+// replace github.com/ardanlabs/kronk => ../kronk
 
 require (
 	cel.dev/expr v0.25.1 // indirect

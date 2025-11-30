@@ -10,7 +10,9 @@ package main
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"time"
 
@@ -45,7 +47,8 @@ func run() error {
 		return fmt.Errorf("unable to init kronk: %w", err)
 	}
 	defer func() {
-		if err := krn.Unload(); err != nil {
+		fmt.Println("\nUnloading Kronk")
+		if err := krn.Unload(context.Background()); err != nil {
 			fmt.Printf("failed to unload model: %v", err)
 		}
 	}()
@@ -59,6 +62,9 @@ func run() error {
 	for {
 		messages, err = userInput(messages)
 		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return nil
+			}
 			return fmt.Errorf("user input: %w", err)
 		}
 
@@ -128,6 +134,10 @@ func userInput(messages []model.ChatMessage) ([]model.ChatMessage, error) {
 	userInput, err := reader.ReadString('\n')
 	if err != nil {
 		return messages, fmt.Errorf("unable to read user input: %w", err)
+	}
+
+	if userInput == "quit\n" {
+		return nil, io.EOF
 	}
 
 	messages = append(messages, model.ChatMessage{

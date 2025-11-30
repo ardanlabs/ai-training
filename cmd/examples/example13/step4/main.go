@@ -92,7 +92,7 @@ func run() error {
 		return fmt.Errorf("unable to create embedding model: %w", err)
 	}
 	defer func() {
-		if err := krnEmbed.Unload(); err != nil {
+		if err := krnEmbed.Unload(context.Background()); err != nil {
 			fmt.Printf("failed to unload embedding model: %v", err)
 		}
 	}()
@@ -105,7 +105,7 @@ func run() error {
 		return fmt.Errorf("unable to create chat model: %w", err)
 	}
 	defer func() {
-		if err := krnChat.Unload(); err != nil {
+		if err := krnChat.Unload(context.Background()); err != nil {
 			fmt.Printf("failed to unload chat model: %v", err)
 		}
 	}()

@@ -12,7 +12,9 @@ import (
 	"bufio"
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"time"
@@ -54,7 +56,8 @@ func run() error {
 		return fmt.Errorf("unable to create embedding model: %w", err)
 	}
 	defer func() {
-		if err := krnEmbed.Unload(); err != nil {
+		fmt.Println("\nUnloading embedding model")
+		if err := krnEmbed.Unload(context.Background()); err != nil {
 			fmt.Printf("failed to unload embedding model: %v", err)
 		}
 	}()
@@ -67,7 +70,8 @@ func run() error {
 		return fmt.Errorf("unable to create chat model: %w", err)
 	}
 	defer func() {
-		if err := krnChat.Unload(); err != nil {
+		fmt.Println("\nUnloading chat model")
+		if err := krnChat.Unload(context.Background()); err != nil {
 			fmt.Printf("failed to unload chat model: %v", err)
 		}
 	}()
@@ -87,6 +91,9 @@ func run() error {
 	for {
 		messages, err = userInput(messages)
 		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return nil
+			}
 			return fmt.Errorf("unable to get user input: %w", err)
 		}
 
@@ -184,6 +191,10 @@ func userInput(messages []model.ChatMessage) ([]model.ChatMessage, error) {
 	userInput, err := reader.ReadString('\n')
 	if err != nil {
 		return messages, fmt.Errorf("unable to read user input: %w", err)
+	}
+
+	if userInput == "quit\n" {
+		return nil, io.EOF
 	}
 
 	messages = append(messages, model.ChatMessage{
@@ -332,7 +343,7 @@ loop:
 	percentage := (float64(contextTokens) / float64(contextWindow)) * 100
 	of := float32(contextWindow) / float32(1024)
 
-	fmt.Printf("\n\u001b[90mInput: %d  Reasoning: %d  Completion: %d  Output: %d  Window: %d (%.0f%% of %.0fK) TPS: %.2f\u001b[0m\n",
+	fmt.Printf("\n\n\u001b[90mInput: %d  Reasoning: %d  Completion: %d  Output: %d  Window: %d (%.0f%% of %.0fK) TPS: %.2f\u001b[0m\n",
 		lr.Usage.InputTokens, lr.Usage.ReasoningTokens, lr.Usage.CompletionTokens, lr.Usage.OutputTokens, contextTokens, percentage, of, lr.Usage.TokensPerSecond)
 
 	return messages, nil

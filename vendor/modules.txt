@@ -83,7 +83,7 @@ github.com/apache/arrow-go/v18/internal/bitutils
 github.com/apache/arrow-go/v18/internal/hashing
 github.com/apache/arrow-go/v18/internal/json
 github.com/apache/arrow-go/v18/internal/utils
-# github.com/ardanlabs/kronk v0.23.0 => ../kronk
+# github.com/ardanlabs/kronk v0.24.0
 ## explicit; go 1.25.3
 github.com/ardanlabs/kronk
 github.com/ardanlabs/kronk/install
@@ -1009,4 +1009,3 @@ google.golang.org/protobuf/types/known/fieldmaskpb
 google.golang.org/protobuf/types/known/structpb
 google.golang.org/protobuf/types/known/timestamppb
 google.golang.org/protobuf/types/known/wrapperspb
-# github.com/ardanlabs/kronk => ../kronk

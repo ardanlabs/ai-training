@@ -1,6 +1,6 @@
 // This example shows you a complete RAG application using DuckDB as an embedding
 // DB and an embedding model to generate embeddings, and a chat model for
-// answering a question using llamacpp directly via yzma and a native Go application.
+// answering a question using llama.cpp directly via yzma and a native Go application.
 //
 // # Running the example:
 //
@@ -146,8 +146,8 @@ func run() error {
 }
 
 func installSystem() (string, string, error) {
-	if err := install.LlamaCPP(libPath, download.CPU, true); err != nil {
-		return "", "", fmt.Errorf("unable to install llamacpp: %w", err)
+	if err := install.Libraries(libPath, download.CPU, true); err != nil {
+		return "", "", fmt.Errorf("unable to install llama.cpp: %w", err)
 	}
 
 	modelEmbedFile, err := install.Model(modelEmbedURL, modelPath)

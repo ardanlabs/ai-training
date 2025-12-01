@@ -1,5 +1,5 @@
 // This example shows you how to create a simple chat application against an
-// inference model using llamacpp directly via yzma and a native Go application.
+// inference model using llama.cpp directly via yzma and a native Go application.
 //
 // # Running the example:
 //
@@ -96,8 +96,8 @@ func run() error {
 }
 
 func installSystem() (string, error) {
-	if err := install.LlamaCPP(libPath, download.CPU, true); err != nil {
-		return "", fmt.Errorf("unable to install llamacpp: %w", err)
+	if err := install.Libraries(libPath, download.CPU, true); err != nil {
+		return "", fmt.Errorf("unable to install llama.cpp: %w", err)
 	}
 
 	modelFile, err := install.Model(modelURL, modelPath)

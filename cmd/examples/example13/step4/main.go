@@ -63,8 +63,8 @@ func main() {
 }
 
 func run() error {
-	if err := install.LlamaCPP(libPath, download.CPU, true); err != nil {
-		return fmt.Errorf("unable to install llamacpp: %w", err)
+	if err := install.Libraries(libPath, download.CPU, true); err != nil {
+		return fmt.Errorf("unable to install llama.cpp: %w", err)
 	}
 
 	modelEmbedFile, err := install.Model(modelEmbedURL, modelPath)

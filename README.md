@@ -101,9 +101,9 @@ limitations under the License.
 
 **- Example 13**: Kronk (API Based Model Server)
 
-- **Step 1**: This example shows you how to use Kronk to create a simple chat application against an inference model using llamacpp directly via yzma and a native Go application.
+- **Step 1**: This example shows you how to use Kronk to create a simple chat application against an inference model using llama.cpp directly via yzma and a native Go application.
 
-- **Step 2**: This example shows you how to use Kronk to execute a simple prompt against a vision model using llamacpp directly via yzma and a native Go application.
+- **Step 2**: This example shows you how to use Kronk to execute a simple prompt against a vision model using llama.cpp directly via yzma and a native Go application.
 
 - **Step 3**: This example shows you a complete RAG application using DuckDB as an embedding DB and an embedding model to generate embeddings, and a chat model for answering a question using Kronk directly via yzma and a native Go application.
 

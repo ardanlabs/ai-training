@@ -83,8 +83,8 @@ github.com/apache/arrow-go/v18/internal/bitutils
 github.com/apache/arrow-go/v18/internal/hashing
 github.com/apache/arrow-go/v18/internal/json
 github.com/apache/arrow-go/v18/internal/utils
-# github.com/ardanlabs/kronk v0.25.0
-## explicit; go 1.25.3
+# github.com/ardanlabs/kronk v0.26.0
+## explicit; go 1.25.0
 github.com/ardanlabs/kronk
 github.com/ardanlabs/kronk/install
 github.com/ardanlabs/kronk/model
@@ -454,7 +454,7 @@ github.com/json-iterator/go
 # github.com/jupiterrider/ffi v0.5.1
 ## explicit; go 1.18
 github.com/jupiterrider/ffi
-# github.com/klauspost/compress v1.18.1
+# github.com/klauspost/compress v1.18.2
 ## explicit; go 1.23
 github.com/klauspost/compress
 github.com/klauspost/compress/fse

@@ -144,7 +144,11 @@ install-models:
 
 install-gpt-models:
 	curl -Lo zarf/models/gpt-oss-20b-Q8_0.gguf "https://huggingface.co/unsloth/gpt-oss-20b-GGUF/resolve/main/gpt-oss-20b-Q8_0.gguf?download=true"
-	
+
+install-VLM-models:
+	curl -Lo models/SmolVLM-256M-Instruct-Q8_0.gguf  https://huggingface.co/ggml-org/SmolVLM-256M-Instruct-GGUF/resolve/main/SmolVLM-256M-Instruct-Q8_0.gguf?download=true
+	curl -Lo models/mmproj-SmolVLM-256M-Instruct-Q8_0.gguf  https://huggingface.co/ggml-org/SmolVLM-256M-Instruct-GGUF/resolve/main/mmproj-SmolVLM-256M-Instruct-Q8_0.gguf?download=true
+
 install-llama:
 	go install github.com/ollama/llama@latest
 

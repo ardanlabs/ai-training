@@ -178,6 +178,14 @@ func newKronk(modelFile string, nBatch int, embeddings bool) (*kronk.Kronk, erro
 		return nil, fmt.Errorf("unable to create inference model: %w", err)
 	}
 
+	if !embeddings {
+		fmt.Print("- system info:\n\t")
+		for k, v := range krn.SystemInfo() {
+			fmt.Printf("%s:%v, ", k, v)
+		}
+		fmt.Println()
+	}
+
 	fmt.Println("- modelFile      :", krn.ModelInfo().Name)
 	fmt.Println("  - contextWindow:", krn.ModelConfig().ContextWindow)
 	fmt.Println("  - embeddings   :", krn.ModelConfig().Embeddings)

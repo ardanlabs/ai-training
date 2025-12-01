@@ -24,9 +24,10 @@ import (
 
 const (
 	//modelURL = "https://huggingface.co/Qwen/Qwen3-8B-GGUF/resolve/main/Qwen3-8B-Q8_0.gguf?download=true"
-	modelURL  = "https://huggingface.co/unsloth/gpt-oss-20b-GGUF/resolve/main/gpt-oss-20b-Q8_0.gguf?download=true"
-	libPath   = "zarf/llamacpp"
-	modelPath = "zarf/models"
+	modelURL       = "https://huggingface.co/unsloth/gpt-oss-20b-GGUF/resolve/main/gpt-oss-20b-Q8_0.gguf?download=true"
+	libPath        = "zarf/llamacpp"
+	modelPath      = "zarf/models"
+	modelInstances = 1
 )
 
 func main() {
@@ -112,8 +113,6 @@ func newKronk(modelFile string) (*kronk.Kronk, error) {
 		return nil, fmt.Errorf("unable to init kronk: %w", err)
 	}
 
-	const modelInstances = 1
-
 	krn, err := kronk.New(modelInstances, model.Config{
 		ModelFile: modelFile,
 	})
@@ -152,16 +151,16 @@ func userInput(messages []model.D) ([]model.D, error) {
 
 func tools(isGPT bool) []model.D {
 	if isGPT {
-		return []model.D{
-			{
+		return model.DocumentArray(
+			model.D{
 				"type": "function",
-				"function": map[string]any{
+				"function": model.D{
 					"name":        "get_weather",
 					"description": "Get the current weather for a location",
-					"parameters": map[string]any{
+					"parameters": model.D{
 						"type": "object",
-						"properties": map[string]any{
-							"location": map[string]any{
+						"properties": model.D{
+							"location": model.D{
 								"type":        "string",
 								"description": "The location to get the weather for, e.g. San Francisco, CA",
 							},
@@ -170,11 +169,11 @@ func tools(isGPT bool) []model.D {
 					},
 				},
 			},
-		}
+		)
 	}
 
-	return []model.D{
-		{
+	return model.DocumentArray(
+		model.D{
 			"type": "function",
 			"function": model.D{
 				"name":        "get_weather",
@@ -187,7 +186,7 @@ func tools(isGPT bool) []model.D {
 				},
 			},
 		},
-	}
+	)
 }
 
 func performChat(ctx context.Context, krn *kronk.Kronk, d model.D) (<-chan model.ChatResponse, error) {
@@ -224,7 +223,10 @@ loop:
 			break loop
 
 		case model.FinishReasonTool:
-			fmt.Print("\n\n")
+			fmt.Println()
+			if krn.ModelInfo().IsGPT {
+				fmt.Println()
+			}
 
 			fmt.Printf("\u001b[92mModel Asking For Tool Call:\nToolID[%s]: %s(%s)\u001b[0m",
 				resp.Choice[0].Delta.ToolCalls[0].ID,

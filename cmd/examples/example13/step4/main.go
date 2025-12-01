@@ -42,6 +42,7 @@ const (
 	modelEmbedURL      = "https://huggingface.co/ggml-org/embeddinggemma-300m-qat-q8_0-GGUF/resolve/main/embeddinggemma-300m-qat-Q8_0.gguf?download=true"
 	libPath            = "zarf/llamacpp"
 	modelPath          = "zarf/models"
+	modelInstances     = 1
 	dbPath             = "zarf/data/duck-ex13-step3.db" // ":memory:"
 	chunksFile         = "zarf/data/book.chunks"
 	dimentions         = 768
@@ -81,8 +82,6 @@ func run() error {
 	if err := kronk.Init(libPath, kronk.LogSilent); err != nil {
 		return fmt.Errorf("unable to init kronk: %w", err)
 	}
-
-	const modelInstances = 1
 
 	krnEmbed, err := kronk.New(modelInstances, model.Config{
 		ModelFile:  modelEmbedFile,

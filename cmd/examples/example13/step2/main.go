@@ -21,11 +21,12 @@ import (
 )
 
 const (
-	modelURL  = "https://huggingface.co/ggml-org/Qwen2.5-VL-3B-Instruct-GGUF/resolve/main/Qwen2.5-VL-3B-Instruct-Q8_0.gguf?download=true"
-	projURL   = "https://huggingface.co/ggml-org/Qwen2.5-VL-3B-Instruct-GGUF/resolve/main/mmproj-Qwen2.5-VL-3B-Instruct-Q8_0.gguf?download=true"
-	imageFile = "zarf/samples/gallery/giraffe.jpg"
-	libPath   = "zarf/llamacpp"
-	modelPath = "zarf/models"
+	modelURL       = "https://huggingface.co/ggml-org/Qwen2.5-VL-3B-Instruct-GGUF/resolve/main/Qwen2.5-VL-3B-Instruct-Q8_0.gguf?download=true"
+	projURL        = "https://huggingface.co/ggml-org/Qwen2.5-VL-3B-Instruct-GGUF/resolve/main/mmproj-Qwen2.5-VL-3B-Instruct-Q8_0.gguf?download=true"
+	imageFile      = "zarf/samples/gallery/giraffe.jpg"
+	libPath        = "zarf/llamacpp"
+	modelPath      = "zarf/models"
+	modelInstances = 1
 )
 
 func main() {
@@ -93,8 +94,6 @@ func newKronk(modelFile string, projFile string) (*kronk.Kronk, error) {
 	if err := kronk.Init(libPath, kronk.LogSilent); err != nil {
 		return nil, fmt.Errorf("unable to init kronk: %w", err)
 	}
-
-	const modelInstances = 1
 
 	krn, err := kronk.New(modelInstances, model.Config{
 		ModelFile:      modelFile,

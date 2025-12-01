@@ -27,13 +27,14 @@ import (
 )
 
 const (
-	modelChatURL  = "https://huggingface.co/Qwen/Qwen3-8B-GGUF/resolve/main/Qwen3-8B-Q8_0.gguf?download=true"
-	modelEmbedURL = "https://huggingface.co/ggml-org/embeddinggemma-300m-qat-q8_0-GGUF/resolve/main/embeddinggemma-300m-qat-Q8_0.gguf?download=true"
-	libPath       = "zarf/llamacpp"
-	modelPath     = "zarf/models"
-	dbPath        = "zarf/data/duck-ex13-step3.db" // ":memory:"
-	chunksFile    = "zarf/data/book.chunks"
-	dimentions    = 768
+	modelChatURL   = "https://huggingface.co/Qwen/Qwen3-8B-GGUF/resolve/main/Qwen3-8B-Q8_0.gguf?download=true"
+	modelEmbedURL  = "https://huggingface.co/ggml-org/embeddinggemma-300m-qat-q8_0-GGUF/resolve/main/embeddinggemma-300m-qat-Q8_0.gguf?download=true"
+	libPath        = "zarf/llamacpp"
+	modelPath      = "zarf/models"
+	modelInstances = 1
+	dbPath         = "zarf/data/duck-ex13-step3.db" // ":memory:"
+	chunksFile     = "zarf/data/book.chunks"
+	dimentions     = 768
 )
 
 func main() {
@@ -167,8 +168,6 @@ func newKronk(modelFile string, nBatch int, embeddings bool) (*kronk.Kronk, erro
 		return nil, fmt.Errorf("unable to init kronk: %w", err)
 	}
 
-	const modelInstances = 1
-
 	krn, err := kronk.New(modelInstances, model.Config{
 		ModelFile:  modelFile,
 		NBatch:     nBatch,
@@ -297,7 +296,10 @@ loop:
 			break loop
 
 		case model.FinishReasonTool:
-			fmt.Print("\n\n")
+			fmt.Println()
+			if krn.ModelInfo().IsGPT {
+				fmt.Println()
+			}
 
 			fmt.Printf("\u001b[92mModel Asking For Tool Call:\nToolID[%s]: %s(%s)\u001b[0m\n",
 				resp.Choice[0].Delta.ToolCalls[0].ID,

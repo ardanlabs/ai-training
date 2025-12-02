@@ -208,7 +208,7 @@ func userInput(messages []model.D) ([]model.D, error) {
 		return nil, io.EOF
 	}
 
-	messages = append(messages, model.ChatMessage("user", userInput))
+	messages = append(messages, model.TextMessage("user", userInput))
 
 	return messages, nil
 }
@@ -267,7 +267,7 @@ func addContextPrompt(documents []duck.Document, messages []model.D) []model.D {
 	lastUserInput := messages[len(messages)-1]["content"].(string)
 	finalPrompt := fmt.Sprintf(prompt, content.String(), lastUserInput)
 
-	messages = append(messages, model.ChatMessage("user", finalPrompt))
+	messages = append(messages, model.TextMessage("user", finalPrompt))
 
 	return messages
 }
@@ -300,7 +300,7 @@ loop:
 			return messages, fmt.Errorf("error from model: %s", resp.Choice[0].Delta.Content)
 
 		case model.FinishReasonStop:
-			messages = append(messages, model.ChatMessage("assistant", resp.Choice[0].Delta.Content))
+			messages = append(messages, model.TextMessage("assistant", resp.Choice[0].Delta.Content))
 			break loop
 
 		case model.FinishReasonTool:
@@ -316,7 +316,7 @@ loop:
 			)
 
 			messages = append(messages,
-				model.ChatMessage("tool", fmt.Sprintf("Tool call %s: %s(%v)",
+				model.TextMessage("tool", fmt.Sprintf("Tool call %s: %s(%v)",
 					resp.Choice[0].Delta.ToolCalls[0].ID,
 					resp.Choice[0].Delta.ToolCalls[0].Name,
 					resp.Choice[0].Delta.ToolCalls[0].Arguments),

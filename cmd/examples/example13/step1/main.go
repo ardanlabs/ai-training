@@ -149,7 +149,7 @@ func userInput(messages []model.D) ([]model.D, error) {
 	}
 
 	messages = append(messages,
-		model.ChatMessage("user", userInput),
+		model.TextMessage("user", userInput),
 	)
 
 	return messages, nil
@@ -224,7 +224,7 @@ loop:
 
 		case model.FinishReasonStop:
 			messages = append(messages,
-				model.ChatMessage("assistant", resp.Choice[0].Delta.Content),
+				model.TextMessage("assistant", resp.Choice[0].Delta.Content),
 			)
 			break loop
 
@@ -241,7 +241,7 @@ loop:
 			)
 
 			messages = append(messages,
-				model.ChatMessage("tool", fmt.Sprintf("Tool call %s: %s(%v)",
+				model.TextMessage("tool", fmt.Sprintf("Tool call %s: %s(%v)",
 					resp.Choice[0].Delta.ToolCalls[0].ID,
 					resp.Choice[0].Delta.ToolCalls[0].Name,
 					resp.Choice[0].Delta.ToolCalls[0].Arguments),

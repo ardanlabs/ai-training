@@ -131,14 +131,14 @@ func performChat(ctx context.Context, krn *kronk.Kronk, question string, imageFi
 
 	d := model.D{
 		"messages": model.DocumentArray(
-			model.ChatMessage("user", question),
+			model.TextMessage("user", question),
+			model.MediaMessage(image),
 		),
 	}
 
-	ch, err := krn.VisionStreaming(ctx, image, params, d)
-
+	ch, err := krn.ChatStreaming(ctx, params, d)
 	if err != nil {
-		return nil, fmt.Errorf("vision streaming: %w", err)
+		return nil, fmt.Errorf("chat streaming: %w", err)
 	}
 
 	return ch, nil

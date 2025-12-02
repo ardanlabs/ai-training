@@ -82,7 +82,9 @@ func (h *handlers) chat(w http.ResponseWriter, r *http.Request) {
 		},
 	}
 
-	if err := h.krnChat.ChatStreamingHTTP(ctx, log, w, params, d); err != nil {
+	model.AddParams(params, d)
+
+	if err := h.krnChat.ChatStreamingHTTP(ctx, log, w, d); err != nil {
 		sendError(w, traceID, "streamResponse", err)
 		return
 	}
@@ -156,7 +158,7 @@ func (h *handlers) needVectorSearch(traceID string, req Request) (bool, error) {
 		),
 	}
 
-	response, err := h.krnChat.Chat(ctx, model.Params{}, d)
+	response, err := h.krnChat.Chat(ctx, d)
 	if err != nil {
 		return false, err
 	}

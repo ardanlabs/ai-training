@@ -23,7 +23,7 @@ import (
 )
 
 const (
-	//modelURL = "https://huggingface.co/Qwen/Qwen3-8B-GGUF/resolve/main/Qwen3-8B-Q8_0.gguf?download=true"
+	// modelURL = "https://huggingface.co/Qwen/Qwen3-8B-GGUF/resolve/main/Qwen3-8B-Q8_0.gguf?download=true"
 	modelURL       = "https://huggingface.co/unsloth/gpt-oss-20b-GGUF/resolve/main/gpt-oss-20b-Q8_0.gguf?download=true"
 	libPath        = "zarf/llamacpp"
 	modelPath      = "zarf/models"
@@ -179,6 +179,23 @@ func tools(isGPT bool) []model.D {
 					},
 				},
 			},
+			model.D{
+				"type": "function",
+				"function": model.D{
+					"name":        "invoke_cli_command",
+					"description": "Use this anytime you need to run a CLI command of any kind",
+					"parameters": model.D{
+						"type": "object",
+						"properties": model.D{
+							"call": model.D{
+								"type":        "string",
+								"description": "The full set of parameters to pass to the CLI command",
+							},
+						},
+						"required": []any{"call"},
+					},
+				},
+			},
 		)
 	}
 
@@ -194,6 +211,20 @@ func tools(isGPT bool) []model.D {
 						"description": "The location to get the weather for, e.g. San Francisco, CA",
 					},
 				},
+			},
+		},
+		model.D{
+			"type": "function",
+			"function": model.D{
+				"name":        "invoke_cli_command",
+				"description": "Use this anytime you need to run a CLI command of any kind",
+				"arguments": model.D{
+					"call": model.D{
+						"type":        "string",
+						"description": "The full set of parameters to pass to the CLI command",
+					},
+				},
+				"required": []any{"call"},
 			},
 		},
 	)

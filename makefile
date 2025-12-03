@@ -252,19 +252,19 @@ example12:
 	go run cmd/examples/example12/*.go
 
 example13-step1:
-	export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:zarf/llamacpp && \
+	export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:zarf/libraries && \
 	CGO_ENABLED=0 go run cmd/examples/example13/step1/*.go
 
 example13-step2:
-	export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:zarf/llamacpp && \
+	export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:zarf/libraries && \
 	CGO_ENABLED=0 go run cmd/examples/example13/step2/*.go 2> /dev/null
 
 example13-step3:
-	export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:zarf/llamacpp && \
+	export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:zarf/libraries && \
 	go run cmd/examples/example13/step3/*.go
 
 example13-step4:
-	export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:zarf/llamacpp && \
+	export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:zarf/libraries && \
 	go run cmd/examples/example13/step4/*.go
 
 example13-step4-npm-install:
@@ -427,7 +427,7 @@ jupyter-run:
 # Llamacpp support
 
 llama-bench:
-	zarf/llamacpp/llama-bench --list-devices
+	zarf/libraries/llama-bench --list-devices
 
 # ==============================================================================
 # Go Modules support

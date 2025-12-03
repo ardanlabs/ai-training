@@ -25,7 +25,7 @@ import (
 const (
 	// modelURL = "https://huggingface.co/Qwen/Qwen3-8B-GGUF/resolve/main/Qwen3-8B-Q8_0.gguf?download=true"
 	modelURL       = "https://huggingface.co/unsloth/gpt-oss-20b-GGUF/resolve/main/gpt-oss-20b-Q8_0.gguf?download=true"
-	libPath        = "zarf/llamacpp"
+	libPath        = "zarf/libraries"
 	modelPath      = "zarf/models"
 	modelInstances = 1
 )

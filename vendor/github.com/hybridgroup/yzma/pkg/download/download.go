@@ -1,11 +1,16 @@
 package download
 
 import (
+	"archive/tar"
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -13,13 +18,20 @@ import (
 )
 
 var (
+	ErrUnknownArch      = errors.New("unknown architecture")
 	ErrUnknownOS        = errors.New("unknown OS")
 	ErrUnknownProcessor = errors.New("unknown processor")
 	ErrInvalidVersion   = errors.New("invalid version")
 )
 
-// RetryCount is how many times the package will retry to obtain the latest llama.cpp version.
-var RetryCount = 3
+var (
+	// RetryCount is how many times the package will retry to obtain the latest llama.cpp version.
+	RetryCount = 3
+	// RetryDelay is the delay between retries when obtaining the latest llama.cpp version.
+	RetryDelay = 3 * time.Second
+	// apiURL is the GitHub API URL for fetching the latest llama.cpp version.
+	apiURL = "https://api.github.com/repos/ggml-org/llama.cpp/releases/latest"
+)
 
 // LlamaLatestVersion fetches the latest release tag of llama.cpp from the GitHub API.
 func LlamaLatestVersion() (string, error) {
@@ -30,23 +42,39 @@ func LlamaLatestVersion() (string, error) {
 		if err == nil {
 			return version, nil
 		}
-		time.Sleep(3 * time.Second)
+		time.Sleep(RetryDelay)
 	}
 
-	return "", err
+	return "", errors.New("unable to fetch latest version")
 }
 
 func getLatestVersion() (string, error) {
-	const apiURL = "https://api.github.com/repos/ggml-org/llama.cpp/releases/latest"
+	req, err := http.NewRequest("GET", apiURL, nil)
+	if err != nil {
+		return "", err
+	}
 
-	resp, err := http.Get(apiURL)
+	// Set required headers for GitHub API
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+
+	// Use GITHUB_TOKEN if available (supports both token and Bearer formats)
+	if token := os.Getenv("GITHUB_TOKEN"); token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return "", err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("received status code %d from GitHub API", resp.StatusCode)
+		body, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("received status code %d from GitHub API: %s", resp.StatusCode, string(body))
 	}
 
 	var result struct {
@@ -60,13 +88,104 @@ func getLatestVersion() (string, error) {
 	return result.TagName, nil
 }
 
-// Get downloads the llama.cpp precompiled binaries for the desired OS/processor.
+// getDownloadLocationAndFilename returns the download location and filename for the given parameters.
+func getDownloadLocationAndFilename(arch Arch, os OS, prcssr Processor, version string, dest string) (location, filename string, err error) {
+	location = fmt.Sprintf("https://github.com/ggml-org/llama.cpp/releases/download/%s", version)
+
+	switch os {
+	case Linux:
+		switch prcssr {
+		case CPU:
+			if arch == ARM64 {
+				return "", "", errors.New("precompiled binaries for Linux ARM64 CPU are not available")
+			}
+			filename = fmt.Sprintf("llama-%s-bin-ubuntu-x64.tar.gz", version)
+		case CUDA:
+			location = fmt.Sprintf("https://github.com/hybridgroup/llama-cpp-builder/releases/download/%s", version)
+			if arch == ARM64 {
+				filename = fmt.Sprintf("llama-%s-bin-ubuntu-cuda-arm64.tar.gz", version)
+			} else {
+				filename = fmt.Sprintf("llama-%s-bin-ubuntu-cuda-x64.tar.gz", version)
+			}
+		case Vulkan:
+			if arch == ARM64 {
+				location = fmt.Sprintf("https://github.com/hybridgroup/llama-cpp-builder/releases/download/%s", version)
+				filename = fmt.Sprintf("llama-%s-bin-ubuntu-vulkan-arm64.tar.gz", version)
+				break
+			}
+			filename = fmt.Sprintf("llama-%s-bin-ubuntu-vulkan-x64.tar.gz", version)
+		default:
+			return "", "", ErrUnknownProcessor
+		}
+
+	case Darwin:
+		switch prcssr {
+		case Metal:
+			if arch != ARM64 {
+				return "", "", errors.New("precompiled binaries for macOS non-ARM64 CPU/Metal are not available")
+			}
+			filename = fmt.Sprintf("llama-%s-bin-macos-arm64.tar.gz", version)
+		case CPU:
+			if arch == ARM64 {
+				filename = fmt.Sprintf("llama-%s-bin-macos-arm64.tar.gz", version)
+			} else {
+				filename = fmt.Sprintf("llama-%s-bin-macos-x64.tar.gz", version)
+			}
+		default:
+			return "", "", ErrUnknownProcessor
+		}
+
+	case Windows:
+		switch prcssr {
+		case CPU:
+			if arch == ARM64 {
+				filename = fmt.Sprintf("llama-%s-bin-win-cpu-arm64.zip", version)
+			} else {
+				filename = fmt.Sprintf("llama-%s-bin-win-cpu-x64.zip", version)
+			}
+		case CUDA:
+			if arch == ARM64 {
+				return "", "", errors.New("precompiled binaries for Windows ARM64 CUDA are not available")
+			}
+			// also requires the CUDA RT files
+			cudart := "cudart-llama-bin-win-cuda-12.4-x64.zip"
+			url := fmt.Sprintf("%s/%s", location, cudart)
+			if err := get(url, dest); err != nil {
+				return "", "", err
+			}
+			filename = fmt.Sprintf("llama-%s-bin-win-cuda-12.4-x64.zip", version)
+		case Vulkan:
+			if arch == ARM64 {
+				return "", "", errors.New("precompiled binaries for Windows ARM64 Vulkan are not available")
+			}
+			filename = fmt.Sprintf("llama-%s-bin-win-vulkan-x64.zip", version)
+		default:
+			return "", "", ErrUnknownProcessor
+		}
+
+	default:
+		return "", "", ErrUnknownOS
+	}
+
+	return location, filename, nil
+}
+
+// getFunc is the function used to download files. It can be overridden for testing.
+var getFunc = get
+
+// Get downloads the llama.cpp precompiled binaries for the desired arch/OS/processor.
+// arch can be one of the following values: "amd64", "arm64".
 // os can be one of the following values: "linux", "darwin", "windows".
 // processor can be one of the following values: "cpu", "cuda", "vulkan", "metal".
 // version should be the desired `b1234` formatted llama.cpp version. You can use the
 // [LlamaLatestVersion] function to obtain the latest release.
 // dest in the destination directory for the downloaded binaries.
-func Get(operatingSystem string, processor string, version string, dest string) error {
+func Get(architecture string, operatingSystem string, processor string, version string, dest string) error {
+	arch, err := ParseArch(architecture)
+	if err != nil {
+		return ErrUnknownArch
+	}
+
 	os, err := ParseOS(operatingSystem)
 	if err != nil {
 		return ErrUnknownOS
@@ -78,62 +197,25 @@ func Get(operatingSystem string, processor string, version string, dest string) 
 	}
 
 	if err := VersionIsValid(version); err != nil {
+		return ErrInvalidVersion
+	}
+
+	location, filename, err := getDownloadLocationAndFilename(arch, os, prcssr, version, dest)
+	if err != nil {
 		return err
 	}
 
-	var location, filename string
-	location = fmt.Sprintf("https://github.com/ggml-org/llama.cpp/releases/download/%s", version)
-
-	switch os {
-	case Linux:
-		switch prcssr {
-		case CPU:
-			filename = fmt.Sprintf("llama-%s-bin-ubuntu-x64.zip//build/bin", version)
-		case CUDA:
-			location = fmt.Sprintf("https://github.com/hybridgroup/llama-cpp-builder/releases/download/%s", version)
-			filename = fmt.Sprintf("llama-%s-bin-ubuntu-cuda-x64.zip", version)
-		case Vulkan:
-			filename = fmt.Sprintf("llama-%s-bin-ubuntu-vulkan-x64.zip//build/bin", version)
-		default:
-			return ErrUnknownProcessor
-		}
-
-	case Darwin:
-		switch prcssr {
-		case CPU, Metal:
-			filename = fmt.Sprintf("llama-%s-bin-macos-arm64.zip//build/bin", version)
-		default:
-			return ErrUnknownProcessor
-		}
-
-	case Windows:
-		switch prcssr {
-		case CPU:
-			filename = fmt.Sprintf("llama-%s-bin-win-cpu-x64.zip", version)
-		case CUDA:
-			// also requires the CUDA RT files
-			cudart := "cudart-llama-bin-win-cuda-12.4-x64.zip"
-			url := fmt.Sprintf("%s/%s", location, cudart)
-			if err := get(url, dest); err != nil {
-				return err
-			}
-
-			filename = fmt.Sprintf("llama-%s-bin-win-cuda-12.4-x64.zip", version)
-		case Vulkan:
-			filename = fmt.Sprintf("llama-%s-bin-win-vulkan-x64.zip", version)
-		default:
-			return ErrUnknownProcessor
-		}
-
-	default:
-		return ErrUnknownOS
-	}
-
 	url := fmt.Sprintf("%s/%s", location, filename)
-	return get(url, dest)
+	return getFunc(url, dest)
 }
 
 func get(url, dest string) error {
+	// Check if it's a .tar.gz file
+	if strings.HasSuffix(url, ".tar.gz") {
+		return downloadAndExtractTarGz(url, dest)
+	}
+
+	// Use go-getter for other file types (e.g., .zip)
 	client := &getter.Client{
 		Ctx:  context.Background(),
 		Src:  url,
@@ -143,6 +225,88 @@ func get(url, dest string) error {
 
 	if err := client.Get(); err != nil {
 		return err
+	}
+
+	return nil
+}
+
+// downloadAndExtractTarGz downloads a .tar.gz file and extracts it to the destination directory.
+func downloadAndExtractTarGz(url, dest string) error {
+	// Create HTTP request
+	client := &http.Client{
+		Timeout: 5 * time.Minute,
+	}
+
+	resp, err := client.Get(url)
+	if err != nil {
+		return fmt.Errorf("failed to download: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("bad response code: %d", resp.StatusCode)
+	}
+
+	// Create gzip reader
+	gzr, err := gzip.NewReader(resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to create gzip reader: %w", err)
+	}
+	defer gzr.Close()
+
+	// Create tar reader
+	tr := tar.NewReader(gzr)
+
+	// Ensure destination directory exists
+	if err := os.MkdirAll(dest, 0755); err != nil {
+		return fmt.Errorf("failed to create destination directory: %w", err)
+	}
+
+	// Extract files
+	for {
+		header, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return fmt.Errorf("failed to read tar header: %w", err)
+		}
+
+		// skip sanitize the file path to prevent path traversal attacks, since we control the source.
+		target := filepath.Join(dest, filepath.Clean(header.Name))
+
+		switch header.Typeflag {
+		case tar.TypeDir:
+			if err := os.MkdirAll(target, os.FileMode(header.Mode)); err != nil {
+				return fmt.Errorf("failed to create directory: %w", err)
+			}
+		case tar.TypeReg:
+			// Ensure parent directory exists
+			if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
+				return fmt.Errorf("failed to create parent directory: %w", err)
+			}
+
+			// Create the file
+			f, err := os.OpenFile(target, os.O_CREATE|os.O_RDWR|os.O_TRUNC, os.FileMode(header.Mode))
+			if err != nil {
+				return fmt.Errorf("failed to create file: %w", err)
+			}
+
+			// Copy contents
+			if _, err := io.Copy(f, tr); err != nil {
+				f.Close()
+				return fmt.Errorf("failed to write file: %w", err)
+			}
+			f.Close()
+		case tar.TypeSymlink:
+			// Handle symlinks
+			if err := os.Symlink(header.Linkname, target); err != nil {
+				// Ignore error if symlink already exists
+				if !os.IsExist(err) {
+					return fmt.Errorf("failed to create symlink: %w", err)
+				}
+			}
+		}
 	}
 
 	return nil

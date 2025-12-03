@@ -27,7 +27,7 @@ zarf/docker/ollama/
 zarf/docker/openwebui/
 zarf/docker/sql-data/
 zarf/docker/docling/
-zarf/llamacpp/
+zarf/libraries/
 
 debug.txt
 change_log.txt

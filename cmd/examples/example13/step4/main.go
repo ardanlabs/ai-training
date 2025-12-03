@@ -40,7 +40,7 @@ import (
 const (
 	modelChatURL       = "https://huggingface.co/Qwen/Qwen3-8B-GGUF/resolve/main/Qwen3-8B-Q8_0.gguf?download=true"
 	modelEmbedURL      = "https://huggingface.co/ggml-org/embeddinggemma-300m-qat-q8_0-GGUF/resolve/main/embeddinggemma-300m-qat-Q8_0.gguf?download=true"
-	libPath            = "zarf/llamacpp"
+	libPath            = "zarf/libraries"
 	modelPath          = "zarf/models"
 	modelInstances     = 1
 	dbPath             = "zarf/data/duck-ex13-step3.db" // ":memory:"

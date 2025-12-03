@@ -24,7 +24,7 @@ const (
 	modelURL       = "https://huggingface.co/ggml-org/Qwen2.5-VL-3B-Instruct-GGUF/resolve/main/Qwen2.5-VL-3B-Instruct-Q8_0.gguf?download=true"
 	projURL        = "https://huggingface.co/ggml-org/Qwen2.5-VL-3B-Instruct-GGUF/resolve/main/mmproj-Qwen2.5-VL-3B-Instruct-Q8_0.gguf?download=true"
 	imageFile      = "zarf/samples/gallery/giraffe.jpg"
-	libPath        = "zarf/llamacpp"
+	libPath        = "zarf/libraries"
 	modelPath      = "zarf/models"
 	modelInstances = 1
 )

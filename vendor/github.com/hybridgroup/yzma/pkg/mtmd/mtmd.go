@@ -35,15 +35,13 @@ type ContextParamsType struct {
 	ImageMarker        *byte
 	MediaMarker        *byte
 	FlashAttentionType llama.FlashAttentionType
-	// whether to run a warmup encode pass after initialization
-	Warmup         bool
-	ImageMinTokens int32
-	ImageMaxTokens int32
+	ImageMinTokens     int32
+	ImageMaxTokens     int32
 }
 
 var (
 	FFITypeContextParams = ffi.NewType(&ffi.TypeUint8, &ffi.TypeUint8, &ffi.TypeSint32, &ffi.TypePointer, &ffi.TypePointer,
-		&ffi.TypeUint8, &ffi.TypeUint8, &ffi.TypeSint32, &ffi.TypeSint32)
+		&ffi.TypeUint8, &ffi.TypeSint32, &ffi.TypeSint32)
 	FFITypeInputText = ffi.NewType(&ffi.TypePointer, &ffi.TypeUint8, &ffi.TypeUint8)
 )
 

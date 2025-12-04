@@ -16,6 +16,7 @@ import (
 
 	"github.com/ardanlabs/ai-training/cmd/examples/example13/install"
 	"github.com/ardanlabs/kronk"
+	"github.com/ardanlabs/kronk/defaults"
 	"github.com/ardanlabs/kronk/model"
 	"github.com/hybridgroup/yzma/pkg/download"
 )
@@ -24,9 +25,12 @@ const (
 	modelURL       = "https://huggingface.co/ggml-org/Qwen2.5-VL-3B-Instruct-GGUF/resolve/main/Qwen2.5-VL-3B-Instruct-Q8_0.gguf?download=true"
 	projURL        = "https://huggingface.co/ggml-org/Qwen2.5-VL-3B-Instruct-GGUF/resolve/main/mmproj-Qwen2.5-VL-3B-Instruct-Q8_0.gguf?download=true"
 	imageFile      = "zarf/samples/gallery/giraffe.jpg"
-	libPath        = "zarf/libraries"
-	modelPath      = "zarf/models"
 	modelInstances = 1
+)
+
+var (
+	libPath   = defaults.LibsDir()
+	modelPath = defaults.ModelsDir()
 )
 
 func main() {
@@ -77,17 +81,12 @@ func installSystem() (string, string, error) {
 		return "", "", fmt.Errorf("unable to install llama.cpp: %w", err)
 	}
 
-	modelFile, err := install.Model(modelURL, modelPath)
+	info, err := install.Model(modelURL, projURL, modelPath)
 	if err != nil {
 		return "", "", fmt.Errorf("unable to install model: %w", err)
 	}
 
-	projFile, err := install.Model(projURL, modelPath)
-	if err != nil {
-		return "", "", fmt.Errorf("unable to install model: %w", err)
-	}
-
-	return modelFile, projFile, nil
+	return info.ModelFile, info.ProjFile, nil
 }
 
 func newKronk(modelFile string, projFile string) (*kronk.Kronk, error) {

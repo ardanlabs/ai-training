@@ -18,6 +18,7 @@ import (
 
 	"github.com/ardanlabs/ai-training/cmd/examples/example13/install"
 	"github.com/ardanlabs/kronk"
+	"github.com/ardanlabs/kronk/defaults"
 	"github.com/ardanlabs/kronk/model"
 	"github.com/hybridgroup/yzma/pkg/download"
 )
@@ -25,9 +26,12 @@ import (
 const (
 	// modelURL = "https://huggingface.co/Qwen/Qwen3-8B-GGUF/resolve/main/Qwen3-8B-Q8_0.gguf?download=true"
 	modelURL       = "https://huggingface.co/unsloth/gpt-oss-20b-GGUF/resolve/main/gpt-oss-20b-Q8_0.gguf?download=true"
-	libPath        = "zarf/libraries"
-	modelPath      = "zarf/models"
 	modelInstances = 1
+)
+
+var (
+	libPath   = defaults.LibsDir()
+	modelPath = defaults.ModelsDir()
 )
 
 func main() {
@@ -104,12 +108,12 @@ func installSystem() (string, error) {
 		return "", fmt.Errorf("unable to install llama.cpp: %w", err)
 	}
 
-	modelFile, err := install.Model(modelURL, modelPath)
+	info, err := install.Model(modelURL, "", modelPath)
 	if err != nil {
 		return "", fmt.Errorf("unable to install model: %w", err)
 	}
 
-	return modelFile, nil
+	return info.ModelFile, nil
 }
 
 func newKronk(modelFile string) (*kronk.Kronk, error) {

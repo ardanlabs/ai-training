@@ -12,11 +12,13 @@ type Message struct {
 }
 
 type Request struct {
-	Messages    []Message `json:"messages"`
-	TopK        *int32    `json:"top_k"`
-	TopP        *float32  `json:"top_p"`
-	Temperature *float32  `json:"temperature"`
-	MaxTokens   *int      `json:"max_tokens"`
+	Messages        []Message `json:"messages"`
+	TopK            *int32    `json:"top_k"`
+	TopP            *float32  `json:"top_p"`
+	Temperature     *float32  `json:"temperature"`
+	MaxTokens       *int      `json:"max_tokens"`
+	Thinking        *string   `json:"enable_thinking"`
+	ReasoningEffort *string   `json:"reasoning_effort"`
 }
 
 func getParams(traceID string, req Request) model.Params {

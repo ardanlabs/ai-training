@@ -22,6 +22,7 @@ import (
 	"github.com/ardanlabs/ai-training/cmd/examples/example13/duck"
 	"github.com/ardanlabs/ai-training/cmd/examples/example13/install"
 	"github.com/ardanlabs/kronk"
+	"github.com/ardanlabs/kronk/defaults"
 	"github.com/ardanlabs/kronk/model"
 	"github.com/hybridgroup/yzma/pkg/download"
 )
@@ -29,12 +30,15 @@ import (
 const (
 	modelChatURL   = "https://huggingface.co/Qwen/Qwen3-8B-GGUF/resolve/main/Qwen3-8B-Q8_0.gguf?download=true"
 	modelEmbedURL  = "https://huggingface.co/ggml-org/embeddinggemma-300m-qat-q8_0-GGUF/resolve/main/embeddinggemma-300m-qat-Q8_0.gguf?download=true"
-	libPath        = "zarf/libraries"
-	modelPath      = "zarf/models"
 	modelInstances = 1
 	dbPath         = "zarf/data/duck-ex13-step3.db" // ":memory:"
 	chunksFile     = "zarf/data/book.chunks"
 	dimentions     = 768
+)
+
+var (
+	libPath   = defaults.LibsDir()
+	modelPath = defaults.ModelsDir()
 )
 
 func main() {
@@ -154,17 +158,17 @@ func installSystem() (string, string, error) {
 		return "", "", fmt.Errorf("unable to install llama.cpp: %w", err)
 	}
 
-	modelEmbedFile, err := install.Model(modelEmbedURL, modelPath)
+	infoEmbed, err := install.Model(modelEmbedURL, "", modelPath)
 	if err != nil {
 		return "", "", fmt.Errorf("unable to install embedding model: %w", err)
 	}
 
-	modelChatFile, err := install.Model(modelChatURL, modelPath)
+	infoChatFile, err := install.Model(modelChatURL, "", modelPath)
 	if err != nil {
 		return "", "", fmt.Errorf("unable to install chat model: %w", err)
 	}
 
-	return modelEmbedFile, modelChatFile, nil
+	return infoEmbed.ModelFile, infoChatFile.ModelFile, nil
 }
 
 func newKronk(modelFile string, nBatch int, embeddings bool) (*kronk.Kronk, error) {

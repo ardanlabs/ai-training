@@ -33,6 +33,7 @@ import (
 	"github.com/ardanlabs/ai-training/cmd/examples/example13/install"
 	"github.com/ardanlabs/ai-training/cmd/examples/example13/step4/website"
 	"github.com/ardanlabs/kronk"
+	"github.com/ardanlabs/kronk/defaults"
 	"github.com/ardanlabs/kronk/model"
 	"github.com/hybridgroup/yzma/pkg/download"
 )
@@ -40,8 +41,6 @@ import (
 const (
 	modelChatURL       = "https://huggingface.co/Qwen/Qwen3-8B-GGUF/resolve/main/Qwen3-8B-Q8_0.gguf?download=true"
 	modelEmbedURL      = "https://huggingface.co/ggml-org/embeddinggemma-300m-qat-q8_0-GGUF/resolve/main/embeddinggemma-300m-qat-Q8_0.gguf?download=true"
-	libPath            = "zarf/libraries"
-	modelPath          = "zarf/models"
 	modelInstances     = 1
 	dbPath             = "zarf/data/duck-ex13-step3.db" // ":memory:"
 	chunksFile         = "zarf/data/book.chunks"
@@ -51,6 +50,11 @@ const (
 	WebIdleTimeout     = 120 * time.Second
 	WebShutdownTimeout = 20 * time.Second
 	WebAPIHost         = "0.0.0.0:8080"
+)
+
+var (
+	libPath   = defaults.LibsDir()
+	modelPath = defaults.ModelsDir()
 )
 
 func main() {
@@ -67,12 +71,12 @@ func run() error {
 		return fmt.Errorf("unable to install llama.cpp: %w", err)
 	}
 
-	modelEmbedFile, err := install.Model(modelEmbedURL, modelPath)
+	infoEmbedFile, err := install.Model(modelEmbedURL, "", modelPath)
 	if err != nil {
 		return fmt.Errorf("unable to install embedding model: %w", err)
 	}
 
-	modelChatFile, err := install.Model(modelChatURL, modelPath)
+	infoChatFile, err := install.Model(modelChatURL, "", modelPath)
 	if err != nil {
 		return fmt.Errorf("unable to install chat model: %w", err)
 	}
@@ -84,7 +88,7 @@ func run() error {
 	}
 
 	krnEmbed, err := kronk.New(modelInstances, model.Config{
-		ModelFile:  modelEmbedFile,
+		ModelFile:  infoEmbedFile.ModelFile,
 		Embeddings: true,
 	})
 	if err != nil {
@@ -97,7 +101,7 @@ func run() error {
 	}()
 
 	krnChat, err := kronk.New(modelInstances, model.Config{
-		ModelFile: modelChatFile,
+		ModelFile: infoChatFile.ModelFile,
 		NBatch:    32 * 1024,
 	})
 	if err != nil {

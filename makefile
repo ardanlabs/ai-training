@@ -244,27 +244,21 @@ example11-step1:
 	go run ./cmd/examples/example11/step1/*.go
 
 example11-step2:
-	export OLLAMA_CONTEXT_LENGTH=$(OLLAMA_CONTEXT_LENGTH) && \
 	go run cmd/examples/example11/step2/*.go
 
 example12:
-	export OLLAMA_CONTEXT_LENGTH=$(OLLAMA_CONTEXT_LENGTH) && \
 	go run cmd/examples/example12/*.go
 
 example13-step1:
-	export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:zarf/libraries && \
 	CGO_ENABLED=0 go run cmd/examples/example13/step1/*.go
 
 example13-step2:
-	export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:zarf/libraries && \
 	CGO_ENABLED=0 go run cmd/examples/example13/step2/*.go 2> /dev/null
 
 example13-step3:
-	export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:zarf/libraries && \
 	go run cmd/examples/example13/step3/*.go
 
 example13-step4:
-	export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:zarf/libraries && \
 	go run cmd/examples/example13/step4/*.go
 
 example13-step4-npm-install:

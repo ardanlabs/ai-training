@@ -250,16 +250,16 @@ example12:
 	go run cmd/examples/example12/*.go
 
 example13-step1:
-	CGO_ENABLED=0 go run cmd/examples/example13/step1/*.go
+	CGO_ENABLED=0 go run cmd/examples/example13/step1/main.go
 
 example13-step2:
-	CGO_ENABLED=0 go run cmd/examples/example13/step2/*.go 2> /dev/null
+	CGO_ENABLED=0 go run cmd/examples/example13/step2/main.go
 
 example13-step3:
-	go run cmd/examples/example13/step3/*.go
+	go run cmd/examples/example13/step3/main.go
 
 example13-step4:
-	go run cmd/examples/example13/step4/*.go
+	go run cmd/examples/example13/step4/main.go
 
 example13-step4-npm-install:
 	cd cmd/examples/example13/step4/react/app && npm install

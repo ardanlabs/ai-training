@@ -30,9 +30,9 @@ import (
 	"time"
 
 	"github.com/ardanlabs/ai-training/cmd/examples/example13/duck"
-	"github.com/ardanlabs/ai-training/cmd/examples/example13/install"
 	"github.com/ardanlabs/ai-training/cmd/examples/example13/step4/website"
 	"github.com/ardanlabs/kronk"
+	"github.com/ardanlabs/kronk/cmd/kronk/installer"
 	"github.com/ardanlabs/kronk/defaults"
 	"github.com/ardanlabs/kronk/model"
 	"github.com/hybridgroup/yzma/pkg/download"
@@ -67,16 +67,16 @@ func main() {
 }
 
 func run() error {
-	if err := install.Libraries(libPath, download.CPU, true); err != nil {
+	if err := installer.Libraries(libPath, download.CPU, true); err != nil {
 		return fmt.Errorf("unable to install llama.cpp: %w", err)
 	}
 
-	infoEmbedFile, err := install.Model(modelEmbedURL, "", modelPath)
+	infoEmbedFile, err := installer.Model(modelEmbedURL, "", modelPath)
 	if err != nil {
 		return fmt.Errorf("unable to install embedding model: %w", err)
 	}
 
-	infoChatFile, err := install.Model(modelChatURL, "", modelPath)
+	infoChatFile, err := installer.Model(modelChatURL, "", modelPath)
 	if err != nil {
 		return fmt.Errorf("unable to install chat model: %w", err)
 	}

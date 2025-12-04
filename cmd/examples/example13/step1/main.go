@@ -16,8 +16,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/ardanlabs/ai-training/cmd/examples/example13/install"
 	"github.com/ardanlabs/kronk"
+	"github.com/ardanlabs/kronk/cmd/kronk/installer"
 	"github.com/ardanlabs/kronk/defaults"
 	"github.com/ardanlabs/kronk/model"
 	"github.com/hybridgroup/yzma/pkg/download"
@@ -104,11 +104,11 @@ func run() error {
 }
 
 func installSystem() (string, error) {
-	if err := install.Libraries(libPath, download.CPU, true); err != nil {
+	if err := installer.Libraries(libPath, download.CPU, true); err != nil {
 		return "", fmt.Errorf("unable to install llama.cpp: %w", err)
 	}
 
-	info, err := install.Model(modelURL, "", modelPath)
+	info, err := installer.Model(modelURL, "", modelPath)
 	if err != nil {
 		return "", fmt.Errorf("unable to install model: %w", err)
 	}

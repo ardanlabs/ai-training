@@ -19,6 +19,8 @@ func Libraries(libPath string, processor download.Processor, allowUpgrade bool) 
 	}
 
 	fmt.Println()
+	fmt.Println("- libPath   :", libPath)
+	fmt.Println("- processor :", processor)
 	fmt.Print("- check llama.cpp installation: ")
 
 	if orgVI.Current == orgVI.Latest {

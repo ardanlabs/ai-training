@@ -21,8 +21,8 @@ import (
 
 	"github.com/ardanlabs/ai-training/cmd/examples/example13/duck"
 	"github.com/ardanlabs/kronk"
-	"github.com/ardanlabs/kronk/cmd/kronk/installer"
 	"github.com/ardanlabs/kronk/defaults"
+	"github.com/ardanlabs/kronk/install"
 	"github.com/ardanlabs/kronk/model"
 	"github.com/hybridgroup/yzma/pkg/download"
 )
@@ -49,14 +49,14 @@ func main() {
 }
 
 func run() error {
-	modelEmbedFile, modelChatFile, err := installSystem()
+	infoEmbed, infoChat, err := installSystem()
 	if err != nil {
 		return fmt.Errorf("unable to install system: %w", err)
 	}
 
 	embedding := true
 
-	krnEmbed, err := newKronk(modelEmbedFile, 0, embedding)
+	krnEmbed, err := newKronk(infoEmbed, 0, embedding)
 	if err != nil {
 		return fmt.Errorf("unable to create embedding model: %w", err)
 	}
@@ -70,7 +70,7 @@ func run() error {
 	embedding = false
 
 	const nBatch = 32 * 1024
-	krnChat, err := newKronk(modelChatFile, nBatch, embedding)
+	krnChat, err := newKronk(infoChat, nBatch, embedding)
 	if err != nil {
 		return fmt.Errorf("unable to create chat model: %w", err)
 	}
@@ -153,31 +153,32 @@ func run() error {
 	}
 }
 
-func installSystem() (string, string, error) {
-	if err := installer.Libraries(libPath, download.CPU, true); err != nil {
-		return "", "", fmt.Errorf("unable to install llama.cpp: %w", err)
-	}
-
-	infoEmbed, err := installer.Model(modelEmbedURL, "", modelPath)
+func installSystem() (install.Info, install.Info, error) {
+	_, err := install.DownloadLibraries(context.Background(), install.FmtLogger, libPath, download.CPU, true)
 	if err != nil {
-		return "", "", fmt.Errorf("unable to install embedding model: %w", err)
+		return install.Info{}, install.Info{}, fmt.Errorf("unable to install llama.cpp: %w", err)
 	}
 
-	infoChatFile, err := installer.Model(modelChatURL, "", modelPath)
+	infoEmbed, err := install.DownloadModel(context.Background(), install.FmtLogger, modelEmbedURL, "", modelPath)
 	if err != nil {
-		return "", "", fmt.Errorf("unable to install chat model: %w", err)
+		return install.Info{}, install.Info{}, fmt.Errorf("unable to install model: %w", err)
 	}
 
-	return infoEmbed.ModelFile, infoChatFile.ModelFile, nil
+	infoChat, err := install.DownloadModel(context.Background(), install.FmtLogger, modelChatURL, "", modelPath)
+	if err != nil {
+		return install.Info{}, install.Info{}, fmt.Errorf("unable to install model: %w", err)
+	}
+
+	return infoEmbed, infoChat, nil
 }
 
-func newKronk(modelFile string, nBatch int, embeddings bool) (*kronk.Kronk, error) {
+func newKronk(info install.Info, nBatch int, embeddings bool) (*kronk.Kronk, error) {
 	if err := kronk.Init(libPath, kronk.LogSilent); err != nil {
 		return nil, fmt.Errorf("unable to init kronk: %w", err)
 	}
 
 	krn, err := kronk.New(modelInstances, model.Config{
-		ModelFile:  modelFile,
+		ModelFile:  info.ModelFile,
 		NBatch:     nBatch,
 		Embeddings: embeddings,
 	})

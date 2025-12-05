@@ -1,8 +1,11 @@
 // This example shows you how to create a simple chat application against an
-// inference model using llama.cpp directly via yzma and a native Go application.
+// inference model using kronk. Thanks to Kronk and yzma, reasoning and tool
+// calling is enabled.
 //
-// # Running the example:
+// The first time you run this program the system will download and install
+// the model and libraries.
 //
+// Run the example like this from the root of the project:
 //	$ make example13-step1
 
 package main
@@ -17,15 +20,15 @@ import (
 	"time"
 
 	"github.com/ardanlabs/kronk"
-	"github.com/ardanlabs/kronk/cmd/kronk/installer"
 	"github.com/ardanlabs/kronk/defaults"
+	"github.com/ardanlabs/kronk/install"
 	"github.com/ardanlabs/kronk/model"
 	"github.com/hybridgroup/yzma/pkg/download"
 )
 
 const (
-	// modelURL = "https://huggingface.co/Qwen/Qwen3-8B-GGUF/resolve/main/Qwen3-8B-Q8_0.gguf?download=true"
-	modelURL       = "https://huggingface.co/unsloth/gpt-oss-20b-GGUF/resolve/main/gpt-oss-20b-Q8_0.gguf?download=true"
+	modelURL = "https://huggingface.co/Qwen/Qwen3-8B-GGUF/resolve/main/Qwen3-8B-Q8_0.gguf"
+	// modelURL  = "https://huggingface.co/unsloth/gpt-oss-20b-GGUF/resolve/main/gpt-oss-20b-Q8_0.gguf"
 	modelInstances = 1
 )
 
@@ -42,12 +45,12 @@ func main() {
 }
 
 func run() error {
-	modelFile, err := installSystem()
+	info, err := installSystem()
 	if err != nil {
 		return fmt.Errorf("unable to installation system: %w", err)
 	}
 
-	krn, err := newKronk(modelFile)
+	krn, err := newKronk(libPath, info)
 	if err != nil {
 		return fmt.Errorf("unable to init kronk: %w", err)
 	}
@@ -103,26 +106,27 @@ func run() error {
 	}
 }
 
-func installSystem() (string, error) {
-	if err := installer.Libraries(libPath, download.CPU, true); err != nil {
-		return "", fmt.Errorf("unable to install llama.cpp: %w", err)
-	}
-
-	info, err := installer.Model(modelURL, "", modelPath)
+func installSystem() (install.Info, error) {
+	_, err := install.DownloadLibraries(context.Background(), install.FmtLogger, libPath, download.CPU, true)
 	if err != nil {
-		return "", fmt.Errorf("unable to install model: %w", err)
+		return install.Info{}, fmt.Errorf("unable to install llama.cpp: %w", err)
 	}
 
-	return info.ModelFile, nil
+	info, err := install.DownloadModel(context.Background(), install.FmtLogger, modelURL, "", modelPath)
+	if err != nil {
+		return install.Info{}, fmt.Errorf("unable to install model: %w", err)
+	}
+
+	return info, nil
 }
 
-func newKronk(modelFile string) (*kronk.Kronk, error) {
+func newKronk(libPath string, info install.Info) (*kronk.Kronk, error) {
 	if err := kronk.Init(libPath, kronk.LogSilent); err != nil {
 		return nil, fmt.Errorf("unable to init kronk: %w", err)
 	}
 
 	krn, err := kronk.New(modelInstances, model.Config{
-		ModelFile: modelFile,
+		ModelFile: info.ModelFile,
 	})
 
 	if err != nil {

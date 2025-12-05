@@ -32,8 +32,8 @@ import (
 	"github.com/ardanlabs/ai-training/cmd/examples/example13/duck"
 	"github.com/ardanlabs/ai-training/cmd/examples/example13/step4/website"
 	"github.com/ardanlabs/kronk"
-	"github.com/ardanlabs/kronk/cmd/kronk/installer"
 	"github.com/ardanlabs/kronk/defaults"
+	"github.com/ardanlabs/kronk/install"
 	"github.com/ardanlabs/kronk/model"
 	"github.com/hybridgroup/yzma/pkg/download"
 )
@@ -67,18 +67,19 @@ func main() {
 }
 
 func run() error {
-	if err := installer.Libraries(libPath, download.CPU, true); err != nil {
+	_, err := install.DownloadLibraries(context.Background(), install.FmtLogger, libPath, download.CPU, true)
+	if err != nil {
 		return fmt.Errorf("unable to install llama.cpp: %w", err)
 	}
 
-	infoEmbedFile, err := installer.Model(modelEmbedURL, "", modelPath)
+	infoEmbed, err := install.DownloadModel(context.Background(), install.FmtLogger, modelEmbedURL, "", modelPath)
 	if err != nil {
-		return fmt.Errorf("unable to install embedding model: %w", err)
+		return fmt.Errorf("unable to install model: %w", err)
 	}
 
-	infoChatFile, err := installer.Model(modelChatURL, "", modelPath)
+	infoChat, err := install.DownloadModel(context.Background(), install.FmtLogger, modelChatURL, "", modelPath)
 	if err != nil {
-		return fmt.Errorf("unable to install chat model: %w", err)
+		return fmt.Errorf("unable to install model: %w", err)
 	}
 
 	// -------------------------------------------------------------------------
@@ -88,7 +89,7 @@ func run() error {
 	}
 
 	krnEmbed, err := kronk.New(modelInstances, model.Config{
-		ModelFile:  infoEmbedFile.ModelFile,
+		ModelFile:  infoEmbed.ModelFile,
 		Embeddings: true,
 	})
 	if err != nil {
@@ -101,7 +102,7 @@ func run() error {
 	}()
 
 	krnChat, err := kronk.New(modelInstances, model.Config{
-		ModelFile: infoChatFile.ModelFile,
+		ModelFile: infoChat.ModelFile,
 		NBatch:    32 * 1024,
 	})
 	if err != nil {

@@ -42,7 +42,7 @@ cloud.google.com/go/iam/apiv1/iampb
 cloud.google.com/go/monitoring/apiv3/v2
 cloud.google.com/go/monitoring/apiv3/v2/monitoringpb
 cloud.google.com/go/monitoring/internal
-# cloud.google.com/go/storage v1.57.2
+# cloud.google.com/go/storage v1.58.0
 ## explicit; go 1.24.0
 cloud.google.com/go/storage
 cloud.google.com/go/storage/experimental
@@ -83,10 +83,9 @@ github.com/apache/arrow-go/v18/internal/bitutils
 github.com/apache/arrow-go/v18/internal/hashing
 github.com/apache/arrow-go/v18/internal/json
 github.com/apache/arrow-go/v18/internal/utils
-# github.com/ardanlabs/kronk v1.0.5
+# github.com/ardanlabs/kronk v1.0.6
 ## explicit; go 1.25.0
 github.com/ardanlabs/kronk
-github.com/ardanlabs/kronk/cmd/kronk/installer
 github.com/ardanlabs/kronk/defaults
 github.com/ardanlabs/kronk/install
 github.com/ardanlabs/kronk/model
@@ -415,7 +414,7 @@ github.com/hashicorp/go-getter/helper/url
 # github.com/hashicorp/go-version v1.8.0
 ## explicit
 github.com/hashicorp/go-version
-# github.com/hybridgroup/yzma v1.0.0
+# github.com/hybridgroup/yzma v1.0.1
 ## explicit; go 1.24.4
 github.com/hybridgroup/yzma/pkg/download
 github.com/hybridgroup/yzma/pkg/llama
@@ -489,7 +488,7 @@ github.com/modern-go/reflect2
 # github.com/montanaflynn/stats v0.7.1
 ## explicit; go 1.13
 github.com/montanaflynn/stats
-# github.com/nikolalohinski/gonja/v2 v2.4.2
+# github.com/nikolalohinski/gonja/v2 v2.5.0
 ## explicit; go 1.24.4
 github.com/nikolalohinski/gonja/v2
 github.com/nikolalohinski/gonja/v2/builtins
@@ -527,7 +526,7 @@ github.com/planetscale/vtprotobuf/types/known/emptypb
 github.com/planetscale/vtprotobuf/types/known/structpb
 github.com/planetscale/vtprotobuf/types/known/timestamppb
 github.com/planetscale/vtprotobuf/types/known/wrapperspb
-# github.com/sirupsen/logrus v1.9.3
+# github.com/sirupsen/logrus v1.9.4-0.20230606125235-dd1b4c2e81af
 ## explicit; go 1.13
 github.com/sirupsen/logrus
 # github.com/spiffe/go-spiffe/v2 v2.6.0

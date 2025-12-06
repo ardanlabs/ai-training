@@ -153,26 +153,26 @@ func run() error {
 	}
 }
 
-func installSystem() (tools.DownloadModelInfo, tools.DownloadModelInfo, error) {
+func installSystem() (tools.ModelPath, tools.ModelPath, error) {
 	_, err := tools.DownloadLibraries(context.Background(), tools.FmtLogger, libPath, download.CPU, true)
 	if err != nil {
-		return tools.DownloadModelInfo{}, tools.DownloadModelInfo{}, fmt.Errorf("unable to install llama.cpp: %w", err)
+		return tools.ModelPath{}, tools.ModelPath{}, fmt.Errorf("unable to install llama.cpp: %w", err)
 	}
 
 	infoEmbed, err := tools.DownloadModel(context.Background(), tools.FmtLogger, modelEmbedURL, "", modelPath)
 	if err != nil {
-		return tools.DownloadModelInfo{}, tools.DownloadModelInfo{}, fmt.Errorf("unable to install model: %w", err)
+		return tools.ModelPath{}, tools.ModelPath{}, fmt.Errorf("unable to install model: %w", err)
 	}
 
 	infoChat, err := tools.DownloadModel(context.Background(), tools.FmtLogger, modelChatURL, "", modelPath)
 	if err != nil {
-		return tools.DownloadModelInfo{}, tools.DownloadModelInfo{}, fmt.Errorf("unable to install model: %w", err)
+		return tools.ModelPath{}, tools.ModelPath{}, fmt.Errorf("unable to install model: %w", err)
 	}
 
 	return infoEmbed, infoChat, nil
 }
 
-func newKronk(info tools.DownloadModelInfo, nBatch int, embeddings bool) (*kronk.Kronk, error) {
+func newKronk(info tools.ModelPath, nBatch int, embeddings bool) (*kronk.Kronk, error) {
 	if err := kronk.Init(libPath, kronk.LogSilent); err != nil {
 		return nil, fmt.Errorf("unable to init kronk: %w", err)
 	}

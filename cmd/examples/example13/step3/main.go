@@ -22,8 +22,8 @@ import (
 	"github.com/ardanlabs/ai-training/cmd/examples/example13/duck"
 	"github.com/ardanlabs/kronk"
 	"github.com/ardanlabs/kronk/defaults"
-	"github.com/ardanlabs/kronk/install"
 	"github.com/ardanlabs/kronk/model"
+	"github.com/ardanlabs/kronk/tools"
 	"github.com/hybridgroup/yzma/pkg/download"
 )
 
@@ -153,26 +153,26 @@ func run() error {
 	}
 }
 
-func installSystem() (install.Info, install.Info, error) {
-	_, err := install.DownloadLibraries(context.Background(), install.FmtLogger, libPath, download.CPU, true)
+func installSystem() (tools.DownloadModelInfo, tools.DownloadModelInfo, error) {
+	_, err := tools.DownloadLibraries(context.Background(), tools.FmtLogger, libPath, download.CPU, true)
 	if err != nil {
-		return install.Info{}, install.Info{}, fmt.Errorf("unable to install llama.cpp: %w", err)
+		return tools.DownloadModelInfo{}, tools.DownloadModelInfo{}, fmt.Errorf("unable to install llama.cpp: %w", err)
 	}
 
-	infoEmbed, err := install.DownloadModel(context.Background(), install.FmtLogger, modelEmbedURL, "", modelPath)
+	infoEmbed, err := tools.DownloadModel(context.Background(), tools.FmtLogger, modelEmbedURL, "", modelPath)
 	if err != nil {
-		return install.Info{}, install.Info{}, fmt.Errorf("unable to install model: %w", err)
+		return tools.DownloadModelInfo{}, tools.DownloadModelInfo{}, fmt.Errorf("unable to install model: %w", err)
 	}
 
-	infoChat, err := install.DownloadModel(context.Background(), install.FmtLogger, modelChatURL, "", modelPath)
+	infoChat, err := tools.DownloadModel(context.Background(), tools.FmtLogger, modelChatURL, "", modelPath)
 	if err != nil {
-		return install.Info{}, install.Info{}, fmt.Errorf("unable to install model: %w", err)
+		return tools.DownloadModelInfo{}, tools.DownloadModelInfo{}, fmt.Errorf("unable to install model: %w", err)
 	}
 
 	return infoEmbed, infoChat, nil
 }
 
-func newKronk(info install.Info, nBatch int, embeddings bool) (*kronk.Kronk, error) {
+func newKronk(info tools.DownloadModelInfo, nBatch int, embeddings bool) (*kronk.Kronk, error) {
 	if err := kronk.Init(libPath, kronk.LogSilent); err != nil {
 		return nil, fmt.Errorf("unable to init kronk: %w", err)
 	}

@@ -33,8 +33,8 @@ import (
 	"github.com/ardanlabs/ai-training/cmd/examples/example13/step4/website"
 	"github.com/ardanlabs/kronk"
 	"github.com/ardanlabs/kronk/defaults"
-	"github.com/ardanlabs/kronk/install"
 	"github.com/ardanlabs/kronk/model"
+	"github.com/ardanlabs/kronk/tools"
 	"github.com/hybridgroup/yzma/pkg/download"
 )
 
@@ -67,17 +67,17 @@ func main() {
 }
 
 func run() error {
-	_, err := install.DownloadLibraries(context.Background(), install.FmtLogger, libPath, download.CPU, true)
+	_, err := tools.DownloadLibraries(context.Background(), tools.FmtLogger, libPath, download.CPU, true)
 	if err != nil {
 		return fmt.Errorf("unable to install llama.cpp: %w", err)
 	}
 
-	infoEmbed, err := install.DownloadModel(context.Background(), install.FmtLogger, modelEmbedURL, "", modelPath)
+	infoEmbed, err := tools.DownloadModel(context.Background(), tools.FmtLogger, modelEmbedURL, "", modelPath)
 	if err != nil {
 		return fmt.Errorf("unable to install model: %w", err)
 	}
 
-	infoChat, err := install.DownloadModel(context.Background(), install.FmtLogger, modelChatURL, "", modelPath)
+	infoChat, err := tools.DownloadModel(context.Background(), tools.FmtLogger, modelChatURL, "", modelPath)
 	if err != nil {
 		return fmt.Errorf("unable to install model: %w", err)
 	}

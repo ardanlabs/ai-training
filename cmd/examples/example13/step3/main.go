@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"runtime"
 	"strings"
 	"time"
 
@@ -37,8 +38,8 @@ const (
 )
 
 var (
-	libPath   = defaults.LibsDir()
-	modelPath = defaults.ModelsDir()
+	libPath   = defaults.LibsDir("")
+	modelPath = defaults.ModelsDir("")
 )
 
 func main() {
@@ -154,7 +155,19 @@ func run() error {
 }
 
 func installSystem() (tools.ModelPath, tools.ModelPath, error) {
-	_, err := tools.DownloadLibraries(context.Background(), tools.FmtLogger, libPath, download.CPU, true)
+	libCfg, err := tools.NewLibConfig(
+		libPath,
+		runtime.GOARCH,
+		runtime.GOOS,
+		download.CPU.String(),
+		kronk.LogSilent.Int(),
+		true,
+	)
+	if err != nil {
+		return tools.ModelPath{}, tools.ModelPath{}, err
+	}
+
+	_, err = tools.DownloadLibraries(context.Background(), tools.FmtLogger, libCfg)
 	if err != nil {
 		return tools.ModelPath{}, tools.ModelPath{}, fmt.Errorf("unable to install llama.cpp: %w", err)
 	}
@@ -195,7 +208,7 @@ func newKronk(info tools.ModelPath, nBatch int, embeddings bool) (*kronk.Kronk, 
 		fmt.Println()
 	}
 
-	fmt.Println("- modelFile      :", krn.ModelInfo().Name)
+	fmt.Println("- modelID.       :", krn.ModelInfo().ID)
 	fmt.Println("  - contextWindow:", krn.ModelConfig().ContextWindow)
 	fmt.Println("  - embeddings   :", krn.ModelConfig().Embeddings)
 	fmt.Println("  - isGPT        :", krn.ModelInfo().IsGPT)

@@ -122,9 +122,9 @@ install:
 
 docker:
 	docker pull mongodb/mongodb-atlas-local:8.0
-	docker pull ghcr.io/open-webui/open-webui:v0.6.34
-	docker pull postgres:18.0
-	docker pull quay.io/docling-project/docling-serve:v1.8.0
+	docker pull ghcr.io/open-webui/open-webui:v0.6.41
+	docker pull postgres:18.1
+	docker pull quay.io/docling-project/docling-serve:v1.9.0
 
 install-python:
 	rm -rf .venv
@@ -134,20 +134,6 @@ install-python:
 	uv pip install vllm
 	uv pip install jupyterlab
 	uv pip list > pydeps.txt
-
-install-models:
-	mkdir -p zarf/models
-	curl -Lo zarf/models/Qwen3-8B-Q8_0.gguf "https://huggingface.co/Qwen/Qwen3-8B-GGUF/resolve/main/Qwen3-8B-Q8_0.gguf?download=true"
-	curl -Lo zarf/models/Qwen2.5-VL-3B-Instruct-Q8_0.gguf "https://huggingface.co/ggml-org/Qwen2.5-VL-3B-Instruct-GGUF/resolve/main/Qwen2.5-VL-3B-Instruct-Q8_0.gguf?download=true"
-	curl -Lo zarf/models/mmproj-Qwen2.5-VL-3B-Instruct-Q8_0.gguf "https://huggingface.co/ggml-org/Qwen2.5-VL-3B-Instruct-GGUF/resolve/main/mmproj-Qwen2.5-VL-3B-Instruct-Q8_0.gguf?download=true"
-	curl -Lo zarf/models/embeddinggemma-300m-qat-Q8_0.gguf "https://huggingface.co/ggml-org/embeddinggemma-300m-qat-q8_0-GGUF/resolve/main/embeddinggemma-300m-qat-Q8_0.gguf?download=true"
-
-install-gpt-models:
-	curl -Lo zarf/models/gpt-oss-20b-Q8_0.gguf "https://huggingface.co/unsloth/gpt-oss-20b-GGUF/resolve/main/gpt-oss-20b-Q8_0.gguf?download=true"
-
-install-VLM-models:
-	curl -Lo models/SmolVLM-256M-Instruct-Q8_0.gguf  https://huggingface.co/ggml-org/SmolVLM-256M-Instruct-GGUF/resolve/main/SmolVLM-256M-Instruct-Q8_0.gguf?download=true
-	curl -Lo models/mmproj-SmolVLM-256M-Instruct-Q8_0.gguf  https://huggingface.co/ggml-org/SmolVLM-256M-Instruct-GGUF/resolve/main/mmproj-SmolVLM-256M-Instruct-Q8_0.gguf?download=true
 
 install-llama:
 	go install github.com/ollama/llama@latest

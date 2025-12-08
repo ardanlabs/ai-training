@@ -21,7 +21,7 @@ import (
 )
 
 // Version contains the current version of the kronk package.
-const Version = "1.0.9"
+const Version = "1.1.0"
 
 // =============================================================================
 
@@ -53,12 +53,12 @@ func Init(libPath string, logLevel LogLevel) error {
 		}
 
 		if err := llama.Load(libPath); err != nil {
-			initErr = fmt.Errorf("unable to load library: %w", err)
+			initErr = fmt.Errorf("init:unable to load library: %w", err)
 			return
 		}
 
 		if err := mtmd.Load(libPath); err != nil {
-			initErr = fmt.Errorf("unable to load mtmd library: %w", err)
+			initErr = fmt.Errorf("init:unable to load mtmd library: %w", err)
 			return
 		}
 
@@ -97,11 +97,11 @@ type Kronk struct {
 // you have more than 1 GPU, the recommended number of instances is 1.
 func New(modelInstances int, cfg model.Config) (*Kronk, error) {
 	if libraryLocation == "" {
-		return nil, fmt.Errorf("the Init() function has not been called")
+		return nil, fmt.Errorf("new:the Init() function has not been called")
 	}
 
 	if modelInstances <= 0 {
-		return nil, fmt.Errorf("instances must be > 0, got %d", modelInstances)
+		return nil, fmt.Errorf("new:instances must be > 0, got %d", modelInstances)
 	}
 
 	models := make(chan *model.Model, modelInstances)
@@ -197,13 +197,13 @@ func (krn *Kronk) Unload(ctx context.Context) error {
 		defer krn.shutdown.Unlock()
 
 		if krn.shutdownFlag {
-			return fmt.Errorf("already unloaded")
+			return fmt.Errorf("unload:already unloaded")
 		}
 
 		for krn.activeStreams.Load() > 0 {
 			select {
 			case <-ctx.Done():
-				return fmt.Errorf("cannot unload: %d active streams: %w", krn.activeStreams.Load(), ctx.Err())
+				return fmt.Errorf("unload:cannot unload: %d active streams: %w", krn.activeStreams.Load(), ctx.Err())
 
 			case <-time.After(100 * time.Millisecond):
 			}
@@ -224,7 +224,7 @@ func (krn *Kronk) Unload(ctx context.Context) error {
 	close(krn.models)
 	for model := range krn.models {
 		if err := model.Unload(ctx); err != nil {
-			sb.WriteString(fmt.Sprintf("failed to unload model: %s: %v\n", model.ModelInfo().ID, err))
+			sb.WriteString(fmt.Sprintf("unload:failed to unload model: %s: %v\n", model.ModelInfo().ID, err))
 		}
 	}
 
@@ -238,7 +238,7 @@ func (krn *Kronk) Unload(ctx context.Context) error {
 // Chat provides support to interact with an inference model.
 func (krn *Kronk) Chat(ctx context.Context, d model.D) (model.ChatResponse, error) {
 	if _, exists := ctx.Deadline(); !exists {
-		return model.ChatResponse{}, fmt.Errorf("context has no deadline, provide a reasonable timeout")
+		return model.ChatResponse{}, fmt.Errorf("chat:context has no deadline, provide a reasonable timeout")
 	}
 
 	f := func(m *model.Model) (model.ChatResponse, error) {
@@ -251,7 +251,7 @@ func (krn *Kronk) Chat(ctx context.Context, d model.D) (model.ChatResponse, erro
 // ChatStreaming provides support to interact with an inference model.
 func (krn *Kronk) ChatStreaming(ctx context.Context, d model.D) (<-chan model.ChatResponse, error) {
 	if _, exists := ctx.Deadline(); !exists {
-		return nil, fmt.Errorf("context has no deadline, provide a reasonable timeout")
+		return nil, fmt.Errorf("chat-streaming:context has no deadline, provide a reasonable timeout")
 	}
 
 	f := func(m *model.Model) <-chan model.ChatResponse {
@@ -266,24 +266,54 @@ func (krn *Kronk) ChatStreaming(ctx context.Context, d model.D) (<-chan model.Ch
 }
 
 // Logger is a function type for logging.
-type Logger func(ctx context.Context, format string, a ...any)
+type Logger func(ctx context.Context, msg string, args ...any)
 
-// ChatStreamingHTTP streams the response to an HTTP client.
-func (krn *Kronk) ChatStreamingHTTP(ctx context.Context, log Logger, w http.ResponseWriter, d model.D) error {
+// ChatCompletions streams the response to an HTTP client.
+func (krn *Kronk) ChatCompletions(ctx context.Context, log Logger, w http.ResponseWriter, d model.D) (model.ChatResponse, error) {
 	if _, exists := ctx.Deadline(); !exists {
-		return fmt.Errorf("context has no deadline, provide a reasonable timeout")
+		return model.ChatResponse{}, fmt.Errorf("chat-streaming-http:context has no deadline, provide a reasonable timeout")
 	}
 
-	log(ctx, "streamResponse: started")
+	var stream bool
+	streamReq, ok := d["stream"].(bool)
+	if ok {
+		stream = streamReq
+	}
+
+	// -------------------------------------------------------------------------
+
+	if !stream {
+		log(ctx, "chat-completions:REQUEST", "STREAM", "false")
+
+		resp, err := krn.Chat(ctx, d)
+		if err != nil {
+			return model.ChatResponse{}, fmt.Errorf("chat-streaming-http:stream-response: %w", err)
+		}
+
+		d, err := json.Marshal(resp)
+		if err != nil {
+			return resp, fmt.Errorf("chat-streaming-http:marshal: %w", err)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write(d)
+
+		return resp, nil
+	}
+
+	// -------------------------------------------------------------------------
+
+	log(ctx, "chat-completions:REQUEST", "STREAM", "true")
 
 	f, ok := w.(http.Flusher)
 	if !ok {
-		return fmt.Errorf("streaming not supported")
+		return model.ChatResponse{}, fmt.Errorf("chat-streaming-http:streaming not supported")
 	}
 
 	ch, err := krn.ChatStreaming(ctx, d)
 	if err != nil {
-		return fmt.Errorf("streamResponse: %w", err)
+		return model.ChatResponse{}, fmt.Errorf("chat-streaming-http:stream-response: %w", err)
 	}
 
 	w.Header().Set("Content-Type", "text/event-stream")
@@ -296,20 +326,24 @@ func (krn *Kronk) ChatStreamingHTTP(ctx context.Context, log Logger, w http.Resp
 	for resp := range ch {
 		if err := ctx.Err(); err != nil {
 			if errors.Is(err, context.Canceled) {
-				return errors.New("client disconnected, do not send response")
+				return resp, errors.New("chat-streaming-http:client disconnected, do not send response")
 			}
+		}
+
+		switch reason := resp.Choice[0].FinishReason; reason {
+		case model.FinishReasonStop:
+			// OpenAI does not expect the final delta to have content or reasoning.
+			// Kronk returns the entire streamed content in the final chunk.
+			resp.Choice[0].Delta = model.ResponseMessage{}
+			resp.Prompt = ""
+
+		case model.FinishReasonError:
+			log(ctx, "chat-completions:RESPONSE", "ERROR", resp.Choice[0].Delta.Content)
 		}
 
 		d, err := json.Marshal(resp)
 		if err != nil {
-			return fmt.Errorf("json.Marshal: %w", err)
-		}
-
-		if resp.Choice[0].FinishReason == model.FinishReasonError {
-			log(ctx, "streamResponse: ERROR: %s", resp.Choice[0].Delta.Content)
-			fmt.Fprintf(w, "data: %s\n", d)
-			f.Flush()
-			break
+			return resp, fmt.Errorf("chat-streaming-http:marshal: %w", err)
 		}
 
 		fmt.Fprintf(w, "data: %s\n", d)
@@ -323,21 +357,21 @@ func (krn *Kronk) ChatStreamingHTTP(ctx context.Context, log Logger, w http.Resp
 
 	// -------------------------------------------------------------------------
 
-	contextTokens := lr.Usage.InputTokens + lr.Usage.CompletionTokens
+	contextTokens := lr.Usage.PromptTokens + lr.Usage.CompletionTokens
 	contextWindow := krn.ModelConfig().ContextWindow
 	percentage := (float64(contextTokens) / float64(contextWindow)) * 100
 	of := float32(contextWindow) / float32(1024)
 
-	log(ctx, "streamResponse: Input: %d  Output: %d  Context: %d (%.0f%% of %.0fK) TPS: %.2f",
-		lr.Usage.InputTokens, lr.Usage.OutputTokens, contextTokens, percentage, of, lr.Usage.TokensPerSecond)
+	log(ctx, "chat-completions:USAGE", "Input", lr.Usage.PromptTokens, "Output", lr.Usage.OutputTokens,
+		"Context", contextTokens, "down", fmt.Sprintf("(%.0f%% of %.0fK) TPS: %.2f", percentage, of, lr.Usage.TokensPerSecond))
 
-	return nil
+	return lr, nil
 }
 
 // Embed provides support to interact with an embedding model.
 func (krn *Kronk) Embed(ctx context.Context, text string) ([]float32, error) {
 	if _, exists := ctx.Deadline(); !exists {
-		return []float32{}, fmt.Errorf("context has no deadline, provide a reasonable timeout")
+		return []float32{}, fmt.Errorf("embed:context has no deadline, provide a reasonable timeout")
 	}
 
 	f := func(m *model.Model) ([]float32, error) {
@@ -355,7 +389,7 @@ func (krn *Kronk) acquireModel(ctx context.Context) (*model.Model, error) {
 		defer krn.shutdown.Unlock()
 
 		if krn.shutdownFlag {
-			return fmt.Errorf("Kronk has been unloaded")
+			return fmt.Errorf("acquire-model:kronk has been unloaded")
 		}
 
 		krn.activeStreams.Add(1)
@@ -376,7 +410,7 @@ func (krn *Kronk) acquireModel(ctx context.Context) (*model.Model, error) {
 	case llama, ok := <-krn.models:
 		if !ok {
 			krn.activeStreams.Add(-1)
-			return nil, fmt.Errorf("Kronk has been unloaded")
+			return nil, fmt.Errorf("acquire-model:kronk has been unloaded")
 		}
 
 		return llama, nil

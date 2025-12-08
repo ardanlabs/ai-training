@@ -861,6 +861,9 @@ var (
 				"notifications-contacts": {
 					id: "notifications-contacts",
 				},
+				"nova-act": {
+					id: "nova-act",
+				},
 				"oam": {
 					id: "oam",
 				},
@@ -2043,6 +2046,9 @@ var (
 				},
 				"batch": {
 					id: "batch",
+				},
+				"bedrock": {
+					id: "bedrock",
 				},
 				"budgets": {
 					id: "budgets",

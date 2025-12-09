@@ -20,8 +20,14 @@ import (
 	"github.com/nikolalohinski/gonja/v2"
 )
 
+/*
+	- Fix downloading logging on model server since we can have multiple
+	- Finish Web commands for the cli tooling that are missing
+	- PS command
+*/
+
 // Version contains the current version of the kronk package.
-const Version = "1.1.0"
+const Version = "1.1.1"
 
 // =============================================================================
 
@@ -362,7 +368,7 @@ func (krn *Kronk) ChatCompletions(ctx context.Context, log Logger, w http.Respon
 	percentage := (float64(contextTokens) / float64(contextWindow)) * 100
 	of := float32(contextWindow) / float32(1024)
 
-	log(ctx, "chat-completions:USAGE", "Input", lr.Usage.PromptTokens, "Output", lr.Usage.OutputTokens,
+	log(ctx, "chat-completions:USAGE", "Prompt", lr.Usage.PromptTokens, "Output", lr.Usage.OutputTokens,
 		"Context", contextTokens, "down", fmt.Sprintf("(%.0f%% of %.0fK) TPS: %.2f", percentage, of, lr.Usage.TokensPerSecond))
 
 	return lr, nil

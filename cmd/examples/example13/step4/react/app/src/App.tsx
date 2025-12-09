@@ -24,6 +24,7 @@ interface Usage {
 }
 
 interface ChatRequest {
+  stream: boolean
   messages: Message[]
   temperature?: number
   top_p?: number
@@ -91,7 +92,8 @@ function App() {
     setMessages([...updatedMessages, assistantMessage])
 
     try {
-      const requestBody: ChatRequest = {
+        const requestBody: ChatRequest = {
+        stream: true,
         messages: updatedMessages,
         temperature,
         top_p: topP,

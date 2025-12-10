@@ -3,7 +3,7 @@ module github.com/ardanlabs/ai-training
 go 1.25.3
 
 require (
-	github.com/ardanlabs/kronk v1.1.6
+	github.com/ardanlabs/kronk v1.1.7
 	github.com/dlclark/regexp2 v1.11.5
 	github.com/duckdb/duckdb-go/v2 v2.5.4
 	github.com/google/uuid v1.6.0

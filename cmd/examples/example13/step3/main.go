@@ -163,17 +163,17 @@ func installSystem() (tools.ModelPath, tools.ModelPath, error) {
 		return tools.ModelPath{}, tools.ModelPath{}, err
 	}
 
-	_, err = tools.DownloadLibraries(context.Background(), tools.FmtLogger, libCfg)
+	_, err = tools.DownloadLibraries(context.Background(), kronk.FmtLogger, libCfg)
 	if err != nil {
 		return tools.ModelPath{}, tools.ModelPath{}, fmt.Errorf("unable to install llama.cpp: %w", err)
 	}
 
-	infoEmbed, err := tools.DownloadModel(context.Background(), tools.FmtLogger, modelEmbedURL, "", modelPath)
+	infoEmbed, err := tools.DownloadModel(context.Background(), kronk.FmtLogger, modelEmbedURL, "", modelPath)
 	if err != nil {
 		return tools.ModelPath{}, tools.ModelPath{}, fmt.Errorf("unable to install model: %w", err)
 	}
 
-	infoChat, err := tools.DownloadModel(context.Background(), tools.FmtLogger, modelChatURL, "", modelPath)
+	infoChat, err := tools.DownloadModel(context.Background(), kronk.FmtLogger, modelChatURL, "", modelPath)
 	if err != nil {
 		return tools.ModelPath{}, tools.ModelPath{}, fmt.Errorf("unable to install model: %w", err)
 	}

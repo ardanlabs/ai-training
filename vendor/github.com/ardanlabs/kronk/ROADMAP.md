@@ -2,7 +2,6 @@
 
 ### MODEL SERVER / TOOLING
 
-- Add and finish the PS command
 - There is a setting that allows the model to return multiple
   tool calls. Parallel bool json:"parallel"
 - Solidfy the auth system
@@ -11,6 +10,11 @@
   - Rate limiting
 - Apply OTEL Spans to critical areas beyond start/stop request
 - Maintain stats at a model level
+
+### API
+
+- Implement the Charmbracelt Interface
+  https://github.com/charmbracelet/fantasy/pull/92#issuecomment-3636479873
 
 ### FRONTEND
 

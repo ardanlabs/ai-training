@@ -134,16 +134,16 @@ func loadChunks(db *sql.DB, krn *kronk.Kronk, chunksFile string) error {
 			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 			defer cancel()
 
-			vec, err := krn.Embed(ctx, chunk)
+			resp, err := krn.Embeddings(ctx, chunk)
 			if err != nil {
 				return nil, fmt.Errorf("embed: %w", err)
 			}
 
-			if len(vec) == 0 {
+			if len(resp.Data[0].Embedding) == 0 {
 				return nil, fmt.Errorf("empty vector")
 			}
 
-			return vec, nil
+			return resp.Data[0].Embedding, nil
 		}()
 		if err != nil {
 			return err

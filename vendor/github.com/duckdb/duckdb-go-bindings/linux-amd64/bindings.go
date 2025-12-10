@@ -1025,7 +1025,6 @@ func DestroyArrowOptions(options *ArrowOptions) {
 
 func LibraryVersion() string {
 	cStr := C.duckdb_library_version()
-	defer Free(unsafe.Pointer(cStr))
 	return C.GoString(cStr)
 }
 
@@ -2206,12 +2205,9 @@ func GetInterval(v Value) Interval {
 }
 
 // GetValueType wraps duckdb_get_value_type.
-// The return value must be destroyed with DestroyLogicalType.
+// The return value must NOT be destroyed. It lives as long as Value (v) is alive.
 func GetValueType(v Value) LogicalType {
 	logicalType := C.duckdb_get_value_type(v.data())
-	if debugMode {
-		incrAllocCount("logicalType")
-	}
 	return LogicalType{
 		Ptr: unsafe.Pointer(logicalType),
 	}

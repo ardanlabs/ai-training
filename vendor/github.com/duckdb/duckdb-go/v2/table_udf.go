@@ -143,12 +143,12 @@ func isRowIdColumn(i mapping.IdxT) bool {
 
 func (tfd *tableFunctionData) setColumnCount(info mapping.InitInfo) {
 	count := mapping.InitGetColumnCount(info)
-	for i := mapping.IdxT(0); i < count; i++ {
-		srcPos := mapping.InitGetColumnIndex(info, i)
+	for i := range int(count) {
+		srcPos := mapping.InitGetColumnIndex(info, mapping.IdxT(i))
 		// FIXME: Special-case, should just work post duckdb v1.3.0.
 		// See: https://github.com/duckdb/duckdb/pull/16248
 		if !isRowIdColumn(srcPos) {
-			tfd.projection[int(srcPos)] = int(i)
+			tfd.projection[int(srcPos)] = i
 		}
 	}
 }
@@ -174,10 +174,10 @@ func udfBindTyped[T tableSource](infoPtr unsafe.Pointer) {
 	args := make([]any, argCount)
 	namedArgs := make(map[string]any)
 
-	for i, t := range config.Arguments {
+	for i := range config.Arguments {
 		var err error
 		value := mapping.BindGetParameter(info, mapping.IdxT(i))
-		args[i], err = getValue(t, value)
+		args[i], err = getValue(value)
 		mapping.DestroyValue(&value)
 
 		if err != nil {
@@ -186,10 +186,10 @@ func udfBindTyped[T tableSource](infoPtr unsafe.Pointer) {
 		}
 	}
 
-	for name, t := range config.NamedArguments {
+	for name := range config.NamedArguments {
 		var err error
 		value := mapping.BindGetNamedParameter(info, name)
-		namedArgs[name], err = getValue(t, value)
+		namedArgs[name], err = getValue(value)
 		mapping.DestroyValue(&value)
 
 		if err != nil {
@@ -285,6 +285,7 @@ func table_udf_callback(infoPtr, outputPtr unsafe.Pointer) {
 	instance := getPinned[tableFunctionData](mapping.FunctionGetBindData(info))
 
 	var chunk DataChunk
+	chunk.projection = instance.projection
 	err := chunk.initFromDuckDataChunk(output, true)
 	if err != nil {
 		mapping.FunctionSetError(info, err.Error())
@@ -296,8 +297,7 @@ func table_udf_callback(infoPtr, outputPtr unsafe.Pointer) {
 	switch fun := instance.fun.(type) {
 	case ParallelRowTableSource:
 		row := Row{
-			chunk:      &chunk,
-			projection: instance.projection,
+			chunk: &chunk,
 		}
 		maxSize := mapping.IdxT(GetDataChunkCapacity())
 

@@ -45,8 +45,17 @@ install-gotooling:
 # ==============================================================================
 # Kronk CLI
 
+kronk-server-detach:
+	go run cmd/kronk/main.go server --detach
+
 kronk-server:
 	go run cmd/kronk/main.go server | go run cmd/kronk/website/api/tooling/logfmt/main.go
+
+kronk-server-logs:
+	go run cmd/kronk/main.go logs
+
+kronk-server-stop:
+	go run cmd/kronk/main.go stop
 
 kronk-libs:
 	go run cmd/kronk/main.go libs
@@ -66,6 +75,7 @@ kronk-remove:
 kronk-show:
 	go run cmd/kronk/main.go show "$(ID)"
 
+# ------------------------------------------------------------------------------
 
 kronk-libs-local: install-libraries
 
@@ -115,13 +125,22 @@ curl-kronk-chat:
 	curl -i -X POST http://localhost:3000/v1/chat/completions \
      -H "Content-Type: application/json" \
      -d '{ \
+	 	"stream": true, \
 	 	"model": "qwen3-8b-q8_0", \
 		"messages": [ \
 			{ \
 				"role": "user", \
-				"content": "How do you declare an interface in Go?" \
+				"content": "Hello model" \
 			} \
 		] \
+    }'
+
+curl-kronk-embeddings:
+	curl -i -X POST http://localhost:3000/v1/embeddings \
+     -H "Content-Type: application/json" \
+     -d '{ \
+	 	"model": "embeddinggemma-300m-qat-Q8_0", \
+  		"input": "Why is the sky blue?" \
     }'
 
 # ==============================================================================
@@ -155,6 +174,7 @@ test: install-libraries install-models
 	export RUN_IN_PARALLEL=1 && \
 	export GITHUB_WORKSPACE=$(shell pwd) && \
 	CGO_ENABLED=0 go test -v -count=1 ./tests
+	CGO_ENABLED=0 go test -v -count=1 ./cmd/kronk/website/app/sdk/krn
 
 # ==============================================================================
 # Go Modules support

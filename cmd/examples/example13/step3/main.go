@@ -55,9 +55,7 @@ func run() error {
 		return fmt.Errorf("unable to install system: %w", err)
 	}
 
-	embedding := true
-
-	krnEmbed, err := newKronk(infoEmbed, 0, embedding)
+	krnEmbed, err := newKronk(infoEmbed, 0)
 	if err != nil {
 		return fmt.Errorf("unable to create embedding model: %w", err)
 	}
@@ -68,10 +66,8 @@ func run() error {
 		}
 	}()
 
-	embedding = false
-
 	const nBatch = 32 * 1024
-	krnChat, err := newKronk(infoChat, nBatch, embedding)
+	krnChat, err := newKronk(infoChat, nBatch)
 	if err != nil {
 		return fmt.Errorf("unable to create chat model: %w", err)
 	}
@@ -185,22 +181,21 @@ func installSystem() (tools.ModelPath, tools.ModelPath, error) {
 	return infoEmbed, infoChat, nil
 }
 
-func newKronk(info tools.ModelPath, nBatch int, embeddings bool) (*kronk.Kronk, error) {
+func newKronk(info tools.ModelPath, nBatch int) (*kronk.Kronk, error) {
 	if err := kronk.Init(libPath, kronk.LogSilent); err != nil {
 		return nil, fmt.Errorf("unable to init kronk: %w", err)
 	}
 
 	krn, err := kronk.New(modelInstances, model.Config{
-		ModelFile:  info.ModelFile,
-		NBatch:     nBatch,
-		Embeddings: embeddings,
+		ModelFile: info.ModelFile,
+		NBatch:    nBatch,
 	})
 
 	if err != nil {
 		return nil, fmt.Errorf("unable to create inference model: %w", err)
 	}
 
-	if !embeddings {
+	if !krn.ModelInfo().IsEmbedModel {
 		fmt.Print("- system info:\n\t")
 		for k, v := range krn.SystemInfo() {
 			fmt.Printf("%s:%v, ", k, v)
@@ -210,8 +205,8 @@ func newKronk(info tools.ModelPath, nBatch int, embeddings bool) (*kronk.Kronk, 
 
 	fmt.Println("- modelID.       :", krn.ModelInfo().ID)
 	fmt.Println("  - contextWindow:", krn.ModelConfig().ContextWindow)
-	fmt.Println("  - embeddings   :", krn.ModelConfig().Embeddings)
-	fmt.Println("  - isGPT        :", krn.ModelInfo().IsGPT)
+	fmt.Println("  - embeddings   :", krn.ModelInfo().IsEmbedModel)
+	fmt.Println("  - isGPT        :", krn.ModelInfo().IsGPTModel)
 
 	return krn, nil
 }
@@ -240,16 +235,16 @@ func vectorSearch(ctx context.Context, krnEmbed *kronk.Kronk, db *sql.DB, messag
 
 	lastUserInput := messages[len(messages)-1]["content"].(string)
 
-	queryVector, err := krnEmbed.Embed(ctx, lastUserInput)
+	resp, err := krnEmbed.Embeddings(ctx, lastUserInput)
 	if err != nil {
 		return nil, fmt.Errorf("embed: %w", err)
 	}
 
-	if len(queryVector) == 0 {
+	if len(resp.Data[0].Embedding) == 0 {
 		return nil, fmt.Errorf("empty query vector")
 	}
 
-	docs, err := duck.Search(db, queryVector, 5)
+	docs, err := duck.Search(db, resp.Data[0].Embedding, 5)
 	if err != nil {
 		return nil, fmt.Errorf("error searching database: %w", err)
 	}
@@ -323,7 +318,7 @@ loop:
 
 		case model.FinishReasonTool:
 			fmt.Println()
-			if krn.ModelInfo().IsGPT {
+			if krn.ModelInfo().IsGPTModel {
 				fmt.Println()
 			}
 
@@ -353,7 +348,7 @@ loop:
 				reasoning = false
 
 				fmt.Println()
-				if krn.ModelInfo().IsGPT {
+				if krn.ModelInfo().IsGPTModel {
 					fmt.Println()
 				}
 			}

@@ -102,8 +102,7 @@ func run() error {
 	}
 
 	krnEmbed, err := kronk.New(modelInstances, model.Config{
-		ModelFile:  infoEmbed.ModelFile,
-		Embeddings: true,
+		ModelFile: infoEmbed.ModelFile,
 	})
 	if err != nil {
 		return fmt.Errorf("unable to create embedding model: %w", err)
@@ -134,8 +133,8 @@ func run() error {
 	fmt.Println()
 
 	fmt.Println("- contextWindow:", krnChat.ModelConfig().ContextWindow)
-	fmt.Println("- embeddings   :", krnChat.ModelConfig().Embeddings)
-	fmt.Println("- isGPT        :", krnChat.ModelInfo().IsGPT)
+	fmt.Println("- embeddings   :", krnChat.ModelInfo().IsEmbedModel)
+	fmt.Println("- isGPT        :", krnChat.ModelInfo().IsGPTModel)
 
 	// -------------------------------------------------------------------------
 

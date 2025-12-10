@@ -81,7 +81,7 @@ func run() error {
 
 			d := model.D{
 				"messages":    messages,
-				"tools":       toolDocuments(krn.ModelInfo().IsGPT),
+				"tools":       toolDocuments(krn.ModelInfo().IsGPTModel),
 				"max_tokens":  2048,
 				"temperature": 0.7,
 				"top_p":       0.9,
@@ -153,8 +153,8 @@ func newKronk(libPath string, info tools.ModelPath) (*kronk.Kronk, error) {
 	fmt.Println()
 
 	fmt.Println("- contextWindow:", krn.ModelConfig().ContextWindow)
-	fmt.Println("- embeddings   :", krn.ModelConfig().Embeddings)
-	fmt.Println("- isGPT        :", krn.ModelInfo().IsGPT)
+	fmt.Println("- embeddings   :", krn.ModelInfo().IsEmbedModel)
+	fmt.Println("- isGPT        :", krn.ModelInfo().IsGPTModel)
 
 	return krn, nil
 }
@@ -282,7 +282,7 @@ loop:
 
 		case model.FinishReasonTool:
 			fmt.Println()
-			if krn.ModelInfo().IsGPT {
+			if krn.ModelInfo().IsGPTModel {
 				fmt.Println()
 			}
 
@@ -312,7 +312,7 @@ loop:
 				reasoning = false
 
 				fmt.Println()
-				if krn.ModelInfo().IsGPT {
+				if krn.ModelInfo().IsGPTModel {
 					fmt.Println()
 				}
 			}

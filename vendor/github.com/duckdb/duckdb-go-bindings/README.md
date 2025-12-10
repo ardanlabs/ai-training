@@ -19,6 +19,7 @@ This module's *first* release contains DuckDB's v1.2.0 release.
 
 | duckdb version | main module | darwin amd | darwin arm | linux amd | linux arm | windows amd |
 |----------------|-------------|------------|------------|-----------|-----------|-------------|
+| v1.4.3         | v0.1.24     | v0.1.24    | v0.1.24    | v0.1.24   | v0.1.24   | v0.1.24     |
 | v1.4.2         | v0.1.23     | v0.1.23    | v0.1.23    | v0.1.23   | v0.1.23   | v0.1.23     |
 | v1.4.1         | v0.1.21     | v0.1.21    | v0.1.21    | v0.1.21   | v0.1.21   | v0.1.21     |
 | v1.4.0         | v0.1.19     | v0.1.19    | v0.1.19    | v0.1.19   | v0.1.19   | v0.1.19     |

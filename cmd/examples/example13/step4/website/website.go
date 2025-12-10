@@ -92,7 +92,7 @@ func (h *handlers) chat(w http.ResponseWriter, r *http.Request) {
 
 	model.AddParams(params, d)
 
-	if _, err := h.krnChat.ChatCompletions(ctx, log, w, d); err != nil {
+	if _, err := h.krnChat.ChatStreamingHTTP(ctx, log, w, d); err != nil {
 		sendError(w, traceID, "streamResponse", err)
 		return
 	}
@@ -192,12 +192,12 @@ func (h *handlers) vectorSearch(traceID string, req Request) ([]duck.Document, e
 	ctx, cancel := context.WithTimeout(context.Background(), h.timeout)
 	defer cancel()
 
-	queryVector, err := h.krnEmbed.Embed(ctx, question)
+	resp, err := h.krnEmbed.Embeddings(ctx, question)
 	if err != nil {
 		return nil, fmt.Errorf("embed: %w", err)
 	}
 
-	docs, err := duck.Search(h.db, queryVector, 5)
+	docs, err := duck.Search(h.db, resp.Data[0].Embedding, 5)
 	if err != nil {
 		return nil, fmt.Errorf("search: %w", err)
 	}

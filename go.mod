@@ -3,11 +3,11 @@ module github.com/ardanlabs/ai-training
 go 1.25.3
 
 require (
-	github.com/ardanlabs/kronk v1.2.0
+	github.com/ardanlabs/kronk v1.2.1
 	github.com/dlclark/regexp2 v1.11.5
 	github.com/duckdb/duckdb-go/v2 v2.5.4
 	github.com/google/uuid v1.6.0
-	github.com/hybridgroup/yzma v1.2.0
+	github.com/hybridgroup/yzma v1.3.0
 	github.com/jackc/pgx/v5 v5.7.6
 	github.com/jmoiron/sqlx v1.4.0
 	github.com/modelcontextprotocol/go-sdk v1.1.0

@@ -118,6 +118,8 @@ static void release_nested_internal(struct ArrowSchema* schema,
     if (is_dynamic) {
         free((void*)schema->format);
         free((void*)schema->name);
+    } else {
+        free(schema->children);
     }
     ArrowSchemaMarkReleased(schema);
 }
@@ -161,6 +163,7 @@ void test_primitive(struct ArrowSchema* schema, const char* fmt) {
 // Since test_lists et al. allocate an entirely array of ArrowSchema pointers,
 // need to expose a function to free it.
 void free_malloced_schemas(struct ArrowSchema** schemas) {
+    free(schemas[0]);
     free(schemas);
 }
 
@@ -325,6 +328,7 @@ static void release_stream(struct ArrowArrayStream* st) {
 static void release_the_array(struct ArrowArray* out) {
     for (int i = 0; i < out->n_children; ++i) {
         ArrowArrayRelease(out->children[i]);
+        free(out->children[i]);
     }
     free((void*)out->children);
     free(out->buffers);
@@ -335,8 +339,13 @@ void export_int32_array(const int32_t*, int64_t, struct ArrowArray*);
 
 static void release_str_array(struct ArrowArray* array) {
     assert(array->n_buffers == 3);
+    if (array->buffers[0] != NULL) {
+        free((void*) array->buffers[0]);
+    }
     free((void*) array->buffers[1]);
-    free((void*) array->buffers[2]);
+    if (array->buffers[2] != NULL && array->buffers[2] != (void*)0x1) {
+        free((void*) array->buffers[2]);
+    }
     free(array->buffers);
     array->release = NULL;
 }
@@ -359,6 +368,29 @@ void export_str_array(const char* data, const int32_t* offsets, int64_t nitems, 
     out->buffers[0] = NULL;
     out->buffers[1] = offsets;
     out->buffers[2] = data;
+}
+
+void export_str_array_with_nulls(int64_t nitems, struct ArrowArray* out) {
+    *out = (struct ArrowArray) {
+        .length = nitems,
+        .offset = 0,
+        .null_count = nitems,
+        .n_buffers = 3,
+        .n_children = 0,
+        .children = NULL,
+        .dictionary = NULL,
+        // bookkeeping
+        .release = &release_str_array
+    };
+
+    out->buffers = (const void**)malloc(sizeof(void*) * out->n_buffers);
+    assert(out->buffers != NULL);
+    int64_t bitmap_nbytes = (nitems + 7) / 8;
+    out->buffers[0] = malloc(bitmap_nbytes);
+    memset((void*)out->buffers[0], 0, bitmap_nbytes);
+    out->buffers[1] = malloc((nitems + 1) * sizeof(int32_t));
+    memset((void*)out->buffers[1], 0, (nitems + 1) * sizeof(int32_t));
+    out->buffers[2] = (void*)0x1;
 }
 
 static int next_record(struct ArrowArrayStream* st, struct ArrowArray* out) {
@@ -426,6 +458,7 @@ int test_exported_stream(struct ArrowArrayStream* stream) {
       stream->release(stream);
       break;
     }
+    array.release(&array);
   }
   return 0;
 }

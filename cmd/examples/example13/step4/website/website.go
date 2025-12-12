@@ -10,10 +10,8 @@ import (
 	"io/fs"
 	"net/http"
 	"regexp"
-	"strings"
 	"time"
 
-	"github.com/ardanlabs/ai-training/cmd/examples/example13/duck"
 	"github.com/ardanlabs/kronk"
 	"github.com/ardanlabs/kronk/model"
 	"github.com/google/uuid"
@@ -48,30 +46,15 @@ func (h *handlers) chat(w http.ResponseWriter, r *http.Request) {
 
 	fmt.Printf("traceID: %s: chat: stream[%v] msgs[%#v]\n", traceID, req.Stream, req.Messages)
 
-	documents, err := h.findContext(traceID, req)
-	if err != nil {
-		sendError(w, traceID, "findContext", err)
-		return
-	}
-
 	ctx, cancel := context.WithTimeout(context.Background(), h.timeout)
 	defer cancel()
 
-	log := func(ctx context.Context, msg string, args ...any) {
-		fmt.Print(msg)
-		for i := 0; i < len(args); i += 2 {
-			if i+1 < len(args) {
-				fmt.Printf(" %v[%v]", args[i], args[i+1])
-			}
-		}
-		fmt.Printf(" traceID[%v]", traceID)
-		fmt.Println()
-	}
+	ctx = kronk.SetFmtLoggerTraceID(ctx, traceID)
 
 	params := getParams(traceID, req)
 
 	d := model.D{
-		"messages": h.compileChatMessages(traceID, req, documents),
+		"messages": h.compileChatMessages(traceID, req),
 		"stream":   req.Stream,
 		"tools": []model.D{
 			{
@@ -92,7 +75,7 @@ func (h *handlers) chat(w http.ResponseWriter, r *http.Request) {
 
 	model.AddParams(params, d)
 
-	if _, err := h.krnChat.ChatStreamingHTTP(ctx, log, w, d); err != nil {
+	if _, err := h.krnChat.ChatStreamingHTTP(ctx, w, d); err != nil {
 		sendError(w, traceID, "streamResponse", err)
 		return
 	}
@@ -131,82 +114,8 @@ func (h *handlers) fileServerReact() func(w http.ResponseWriter, r *http.Request
 
 // =============================================================================
 
-func (h *handlers) findContext(traceID string, req Request) ([]duck.Document, error) {
-	yesSearch, err := h.needVectorSearch(traceID, req)
-	if err != nil {
-		return nil, fmt.Errorf("needVectorSearch: %w", err)
-	}
-
-	if yesSearch {
-		docs, err := h.vectorSearch(traceID, req)
-		if err != nil {
-			return nil, fmt.Errorf("vectorSearch: %w", err)
-		}
-		return docs, nil
-	}
-
-	return nil, nil
-}
-
-func (h *handlers) needVectorSearch(traceID string, req Request) (bool, error) {
-	const prompt = `
-		Is the following question related to the Go programming language?
-		Please response with a YES or NO answer.
-
-		Question:
-		%s
-	`
-
-	ctx, cancel := context.WithTimeout(context.Background(), h.timeout)
-	defer cancel()
-
-	d := model.D{
-		"messages": model.DocumentArray(
-			model.TextMessage("user", fmt.Sprintf(prompt, req.Messages[len(req.Messages)-1].Content)),
-		),
-	}
-
-	response, err := h.krnChat.Chat(ctx, d)
-	if err != nil {
-		return false, err
-	}
-
-	resp := strings.ToLower(response.Choice[0].Delta.Content)
-
-	if strings.Contains(resp, "yes") {
-		fmt.Printf("traceID: %s: needVectorSearch: response: YES: %s\n", traceID, resp)
-		return true, nil
-	}
-
-	fmt.Printf("traceID: %s: needVectorSearch: response: NO: %s\n", traceID, resp)
-	return false, nil
-}
-
-func (h *handlers) vectorSearch(traceID string, req Request) ([]duck.Document, error) {
-	fmt.Printf("traceID: %s: vectorSearch: started", traceID)
-
-	question := req.Messages[len(req.Messages)-1].Content
-
-	fmt.Printf("traceID: %s: vectorSearch: started: question: %s\n", traceID, question)
-
-	ctx, cancel := context.WithTimeout(context.Background(), h.timeout)
-	defer cancel()
-
-	resp, err := h.krnEmbed.Embeddings(ctx, question)
-	if err != nil {
-		return nil, fmt.Errorf("embed: %w", err)
-	}
-
-	docs, err := duck.Search(h.db, resp.Data[0].Embedding, 5)
-	if err != nil {
-		return nil, fmt.Errorf("search: %w", err)
-	}
-
-	return docs, nil
-}
-
-func (h *handlers) compileChatMessages(traceID string, req Request, documents []duck.Document) []model.D {
-	fmt.Printf("traceID: %s: compileChatMessages: started: msgs: %d: documents: %d\n", traceID, len(req.Messages), len(documents))
+func (h *handlers) compileChatMessages(traceID string, req Request) []model.D {
+	fmt.Printf("traceID: %s: compileChatMessages: started: msgs: %d\n", traceID, len(req.Messages))
 
 	const systemPrompt = `
 		- Use any provided Context to answer the user's question.
@@ -225,21 +134,6 @@ func (h *handlers) compileChatMessages(traceID string, req Request, documents []
 	// Add all but the very last message in the history.
 	for _, msg := range req.Messages[:len(req.Messages)-1] {
 		msgs = append(msgs, model.TextMessage(msg.Role, msg.Content))
-	}
-
-	// Add the top 2 extra context if it exists.
-	var count int
-	var content string
-	for _, doc := range documents {
-		content = fmt.Sprintf("%s\n%s\n", content, doc.Text)
-		count++
-		if count >= 2 {
-			break
-		}
-	}
-
-	if count > 0 {
-		msgs = append(msgs, model.TextMessage("user", fmt.Sprintf("Context:\n%s\n\n", content)))
 	}
 
 	// Add the final message from the history. We expect this to be a question.

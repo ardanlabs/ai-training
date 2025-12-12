@@ -23,9 +23,9 @@ import (
 )
 
 const (
-	modelURL       = "https://huggingface.co/ggml-org/Qwen2.5-VL-3B-Instruct-GGUF/resolve/main/Qwen2.5-VL-3B-Instruct-Q8_0.gguf?download=true"
-	projURL        = "https://huggingface.co/ggml-org/Qwen2.5-VL-3B-Instruct-GGUF/resolve/main/mmproj-Qwen2.5-VL-3B-Instruct-Q8_0.gguf?download=true"
-	imageFile      = "zarf/samples/gallery/giraffe.jpg"
+	modelURL       = "https://huggingface.co/ggml-org/Qwen2.5-VL-3B-Instruct-GGUF/resolve/main/Qwen2.5-VL-3B-Instruct-Q8_0.gguf"
+	projURL        = "https://huggingface.co/ggml-org/Qwen2.5-VL-3B-Instruct-GGUF/resolve/main/mmproj-Qwen2.5-VL-3B-Instruct-Q8_0.gguf"
+	imageFile      = "examples/samples/giraffe.jpg"
 	modelInstances = 1
 )
 
@@ -47,7 +47,7 @@ func run() error {
 		return fmt.Errorf("unable to install system: %w", err)
 	}
 
-	krn, err := newKronk(info)
+	krn, err := newKronk(libPath, info)
 	if err != nil {
 		return fmt.Errorf("unable to init kronk: %w", err)
 	}
@@ -95,22 +95,22 @@ func installSystem() (tools.ModelPath, error) {
 		return tools.ModelPath{}, fmt.Errorf("unable to install llama.cpp: %w", err)
 	}
 
-	info, err := tools.DownloadModel(context.Background(), kronk.FmtLogger, modelURL, projURL, modelPath)
+	mp, err := tools.DownloadModel(context.Background(), kronk.FmtLogger, modelURL, projURL, modelPath)
 	if err != nil {
 		return tools.ModelPath{}, fmt.Errorf("unable to install model: %w", err)
 	}
 
-	return info, nil
+	return mp, nil
 }
 
-func newKronk(info tools.ModelPath) (*kronk.Kronk, error) {
+func newKronk(libPath string, mp tools.ModelPath) (*kronk.Kronk, error) {
 	if err := kronk.Init(libPath, kronk.LogSilent); err != nil {
 		return nil, fmt.Errorf("unable to init kronk: %w", err)
 	}
 
 	krn, err := kronk.New(modelInstances, model.Config{
-		ModelFile:      info.ModelFile,
-		ProjectionFile: info.ProjFile,
+		ModelFile:      mp.ModelFile,
+		ProjectionFile: mp.ProjFile,
 	})
 
 	if err != nil {
@@ -139,19 +139,16 @@ func performChat(ctx context.Context, krn *kronk.Kronk, question string, imageFi
 	fmt.Printf("\nQuestion: %s\n", question)
 
 	d := model.D{
-		"messages": model.DocumentArray(
-			model.TextMessage("user", question),
-			model.MediaMessage(image),
-		),
-		"max_tokens":  2048,
+		"messages":    model.MediaMessage(question, image),
 		"temperature": 0.7,
 		"top_p":       0.9,
 		"top_k":       40,
+		"max_tokens":  2048,
 	}
 
 	ch, err := krn.ChatStreaming(ctx, d)
 	if err != nil {
-		return nil, fmt.Errorf("chat streaming: %w", err)
+		return nil, fmt.Errorf("vision streaming: %w", err)
 	}
 
 	return ch, nil
@@ -196,7 +193,7 @@ loop:
 	percentage := (float64(contextTokens) / float64(contextWindow)) * 100
 	of := float32(contextWindow) / float32(1024)
 
-	fmt.Printf("\n\n\u001b[90mPrompt: %d  Reasoning: %d  Completion: %d  Output: %d  Window: %d (%.0f%% of %.0fK) TPS: %.2f\u001b[0m\n",
+	fmt.Printf("\n\n\u001b[90mInput: %d  Reasoning: %d  Completion: %d  Output: %d  Window: %d (%.0f%% of %.0fK) TPS: %.2f\u001b[0m\n",
 		lr.Usage.PromptTokens, lr.Usage.ReasoningTokens, lr.Usage.CompletionTokens, lr.Usage.OutputTokens, contextTokens, percentage, of, lr.Usage.TokensPerSecond)
 
 	return nil

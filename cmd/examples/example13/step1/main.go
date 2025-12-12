@@ -29,7 +29,7 @@ import (
 
 const (
 	modelURL = "https://huggingface.co/Qwen/Qwen3-8B-GGUF/resolve/main/Qwen3-8B-Q8_0.gguf"
-	// modelURL  = "https://huggingface.co/unsloth/gpt-oss-20b-GGUF/resolve/main/gpt-oss-20b-Q8_0.gguf"
+	//modelURL       = "https://huggingface.co/unsloth/gpt-oss-20b-GGUF/resolve/main/gpt-oss-20b-Q8_0.gguf"
 	modelInstances = 1
 )
 
@@ -48,7 +48,7 @@ func main() {
 func run() error {
 	info, err := installSystem()
 	if err != nil {
-		return fmt.Errorf("unable to installation system: %w", err)
+		return fmt.Errorf("run:unable to installation system: %w", err)
 	}
 
 	krn, err := newKronk(libPath, info)
@@ -58,7 +58,7 @@ func run() error {
 	defer func() {
 		fmt.Println("\nUnloading Kronk")
 		if err := krn.Unload(context.Background()); err != nil {
-			fmt.Printf("failed to unload model: %v", err)
+			fmt.Printf("run:failed to unload model: %v", err)
 		}
 	}()
 
@@ -72,7 +72,7 @@ func run() error {
 			if errors.Is(err, io.EOF) {
 				return nil
 			}
-			return fmt.Errorf("user input: %w", err)
+			return fmt.Errorf("run:user input: %w", err)
 		}
 
 		messages, err = func() ([]model.D, error) {
@@ -90,24 +90,27 @@ func run() error {
 
 			ch, err := performChat(ctx, krn, d)
 			if err != nil {
-				return nil, fmt.Errorf("unable to perform chat: %w", err)
+				return nil, fmt.Errorf("run:unable to perform chat: %w", err)
 			}
 
 			messages, err = modelResponse(krn, messages, ch)
 			if err != nil {
-				return nil, fmt.Errorf("model response: %w", err)
+				return nil, fmt.Errorf("run:model response: %w", err)
 			}
 
 			return messages, nil
 		}()
 
 		if err != nil {
-			return fmt.Errorf("unable to perform chat: %w", err)
+			return fmt.Errorf("run:unable to perform chat: %w", err)
 		}
 	}
 }
 
 func installSystem() (tools.ModelPath, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
 	libCfg, err := tools.NewLibConfig(
 		libPath,
 		runtime.GOARCH,
@@ -120,26 +123,26 @@ func installSystem() (tools.ModelPath, error) {
 		return tools.ModelPath{}, err
 	}
 
-	_, err = tools.DownloadLibraries(context.Background(), kronk.FmtLogger, libCfg)
+	_, err = tools.DownloadLibraries(ctx, kronk.FmtLogger, libCfg)
 	if err != nil {
-		return tools.ModelPath{}, fmt.Errorf("unable to install llama.cpp: %w", err)
+		return tools.ModelPath{}, fmt.Errorf("install-system:unable to install llama.cpp: %w", err)
 	}
 
-	info, err := tools.DownloadModel(context.Background(), kronk.FmtLogger, modelURL, "", modelPath)
+	info, err := tools.DownloadModel(ctx, kronk.FmtLogger, modelURL, "", modelPath)
 	if err != nil {
-		return tools.ModelPath{}, fmt.Errorf("unable to install model: %w", err)
+		return tools.ModelPath{}, fmt.Errorf("install-system:unable to install model: %w", err)
 	}
 
 	return info, nil
 }
 
-func newKronk(libPath string, info tools.ModelPath) (*kronk.Kronk, error) {
+func newKronk(libPath string, mp tools.ModelPath) (*kronk.Kronk, error) {
 	if err := kronk.Init(libPath, kronk.LogSilent); err != nil {
 		return nil, fmt.Errorf("unable to init kronk: %w", err)
 	}
 
 	krn, err := kronk.New(modelInstances, model.Config{
-		ModelFile: info.ModelFile,
+		ModelFile: mp.ModelFile,
 	})
 
 	if err != nil {
@@ -286,19 +289,24 @@ loop:
 				fmt.Println()
 			}
 
-			fmt.Printf("\u001b[92mModel Asking For Tool Call:\nToolID[%s]: %s(%s)\u001b[0m",
-				resp.Choice[0].Delta.ToolCalls[0].ID,
-				resp.Choice[0].Delta.ToolCalls[0].Name,
-				resp.Choice[0].Delta.ToolCalls[0].Arguments,
-			)
+			fmt.Printf("\u001b[92mModel Asking For Tool Calls:\n\u001b[0m")
 
-			messages = append(messages,
-				model.TextMessage("tool", fmt.Sprintf("Tool call %s: %s(%v)",
-					resp.Choice[0].Delta.ToolCalls[0].ID,
-					resp.Choice[0].Delta.ToolCalls[0].Name,
-					resp.Choice[0].Delta.ToolCalls[0].Arguments),
-				),
-			)
+			for _, tool := range resp.Choice[0].Delta.ToolCalls {
+				fmt.Printf("\u001b[92mToolID[%s]: %s(%s)\n\u001b[0m",
+					tool.ID,
+					tool.Name,
+					tool.Arguments,
+				)
+
+				messages = append(messages,
+					model.TextMessage("tool", fmt.Sprintf("Tool call %s: %s(%v)\n",
+						tool.ID,
+						tool.Name,
+						tool.Arguments),
+					),
+				)
+			}
+
 			break loop
 
 		default:
@@ -328,7 +336,7 @@ loop:
 	percentage := (float64(contextTokens) / float64(contextWindow)) * 100
 	of := float32(contextWindow) / float32(1024)
 
-	fmt.Printf("\n\n\u001b[90mPrompt: %d  Reasoning: %d  Completion: %d  Output: %d  Window: %d (%.0f%% of %.0fK) TPS: %.2f\u001b[0m\n",
+	fmt.Printf("\n\n\u001b[90mInput: %d  Reasoning: %d  Completion: %d  Output: %d  Window: %d (%.0f%% of %.0fK) TPS: %.2f\u001b[0m\n",
 		lr.Usage.PromptTokens, lr.Usage.ReasoningTokens, lr.Usage.CompletionTokens, lr.Usage.OutputTokens, contextTokens, percentage, of, lr.Usage.TokensPerSecond)
 
 	return messages, nil

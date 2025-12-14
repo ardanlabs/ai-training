@@ -7,8 +7,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/ardanlabs/kronk"
-	"github.com/ardanlabs/kronk/defaults"
+	"github.com/ardanlabs/kronk/sdk/defaults"
+	"github.com/ardanlabs/kronk/sdk/kronk"
 	"github.com/hybridgroup/yzma/pkg/download"
 )
 

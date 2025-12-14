@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"runtime"
 
-	"github.com/ardanlabs/kronk"
+	"github.com/ardanlabs/kronk/sdk/kronk"
 	"github.com/hybridgroup/yzma/pkg/download"
 )
 
@@ -18,7 +18,11 @@ var (
 )
 
 // BaseDir is the default base folder location for kronk files.
-func BaseDir() string {
+func BaseDir(override string) string {
+	if override != "" {
+		return override
+	}
+
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return fmt.Sprintf("./%s", basePath)

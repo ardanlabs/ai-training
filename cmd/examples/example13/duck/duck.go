@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ardanlabs/kronk"
+	"github.com/ardanlabs/kronk/sdk/kronk"
 	"github.com/duckdb/duckdb-go/v2"
 )
 

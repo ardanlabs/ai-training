@@ -7,7 +7,7 @@ cloud.google.com/go/internal
 cloud.google.com/go/internal/optional
 cloud.google.com/go/internal/trace
 cloud.google.com/go/internal/version
-# cloud.google.com/go/auth v0.17.0
+# cloud.google.com/go/auth v0.18.0
 ## explicit; go 1.24.0
 cloud.google.com/go/auth
 cloud.google.com/go/auth/credentials
@@ -83,12 +83,14 @@ github.com/apache/arrow-go/v18/internal/bitutils
 github.com/apache/arrow-go/v18/internal/hashing
 github.com/apache/arrow-go/v18/internal/json
 github.com/apache/arrow-go/v18/internal/utils
-# github.com/ardanlabs/kronk v1.3.0
+# github.com/ardanlabs/kronk v1.4.0
 ## explicit; go 1.25.0
-github.com/ardanlabs/kronk/sdk/defaults
 github.com/ardanlabs/kronk/sdk/kronk
-github.com/ardanlabs/kronk/sdk/model
-github.com/ardanlabs/kronk/sdk/tools
+github.com/ardanlabs/kronk/sdk/kronk/defaults
+github.com/ardanlabs/kronk/sdk/kronk/model
+github.com/ardanlabs/kronk/sdk/tools/downloader
+github.com/ardanlabs/kronk/sdk/tools/libs
+github.com/ardanlabs/kronk/sdk/tools/models
 # github.com/aws/aws-sdk-go-v2 v1.41.0
 ## explicit; go 1.23
 github.com/aws/aws-sdk-go-v2/aws
@@ -165,7 +167,7 @@ github.com/aws/aws-sdk-go-v2/service/internal/presigned-url
 github.com/aws/aws-sdk-go-v2/service/internal/s3shared
 github.com/aws/aws-sdk-go-v2/service/internal/s3shared/arn
 github.com/aws/aws-sdk-go-v2/service/internal/s3shared/config
-# github.com/aws/aws-sdk-go-v2/service/s3 v1.93.2
+# github.com/aws/aws-sdk-go-v2/service/s3 v1.94.0
 ## explicit; go 1.23
 github.com/aws/aws-sdk-go-v2/service/s3
 github.com/aws/aws-sdk-go-v2/service/s3/internal/arn
@@ -726,7 +728,7 @@ golang.org/x/sys/cpu
 golang.org/x/sys/unix
 golang.org/x/sys/windows
 golang.org/x/sys/windows/registry
-# golang.org/x/telemetry v0.0.0-20251208220230-2638a1023523
+# golang.org/x/telemetry v0.0.0-20251215142616-e75fd47794af
 ## explicit; go 1.24.0
 golang.org/x/telemetry/counter
 golang.org/x/telemetry/internal/counter

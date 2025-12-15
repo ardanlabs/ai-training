@@ -32,10 +32,11 @@ import (
 
 	"github.com/ardanlabs/ai-training/cmd/examples/example13/duck"
 	"github.com/ardanlabs/ai-training/cmd/examples/example13/step4/website"
-	"github.com/ardanlabs/kronk/sdk/defaults"
 	"github.com/ardanlabs/kronk/sdk/kronk"
-	"github.com/ardanlabs/kronk/sdk/model"
-	"github.com/ardanlabs/kronk/sdk/tools"
+	"github.com/ardanlabs/kronk/sdk/kronk/defaults"
+	"github.com/ardanlabs/kronk/sdk/kronk/model"
+	"github.com/ardanlabs/kronk/sdk/tools/libs"
+	"github.com/ardanlabs/kronk/sdk/tools/models"
 	"github.com/hybridgroup/yzma/pkg/download"
 )
 
@@ -68,7 +69,7 @@ func main() {
 }
 
 func run() error {
-	libCfg, err := tools.NewLibConfig(
+	libCfg, err := libs.NewConfig(
 		libPath,
 		runtime.GOARCH,
 		runtime.GOOS,
@@ -80,17 +81,17 @@ func run() error {
 		return err
 	}
 
-	_, err = tools.DownloadLibraries(context.Background(), kronk.FmtLogger, libCfg)
+	_, err = libs.Download(context.Background(), kronk.FmtLogger, libCfg)
 	if err != nil {
 		return fmt.Errorf("unable to install llama.cpp: %w", err)
 	}
 
-	infoEmbed, err := tools.DownloadModel(context.Background(), kronk.FmtLogger, modelEmbedURL, "", modelPath)
+	infoEmbed, err := models.Download(context.Background(), kronk.FmtLogger, modelEmbedURL, "", modelPath)
 	if err != nil {
 		return fmt.Errorf("unable to install model: %w", err)
 	}
 
-	infoChat, err := tools.DownloadModel(context.Background(), kronk.FmtLogger, modelChatURL, "", modelPath)
+	infoChat, err := models.Download(context.Background(), kronk.FmtLogger, modelChatURL, "", modelPath)
 	if err != nil {
 		return fmt.Errorf("unable to install model: %w", err)
 	}

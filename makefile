@@ -146,7 +146,7 @@ OLLAMA_FLASH_ATTENTION := true
 OLLAMA_CONTEXT_LENGTH := 16384    #49152, #32768, #24576, #16384,
 OLLAMA_NUM_PARALLEL := 2
 OLLAMA_MAX_LOADED_MODELS := 2
-OLLAMA_HOST := 0.0.0.0:11434
+OLLAMA_HOST ?= 0.0.0.0:11434
 
 # ==============================================================================
 # Examples

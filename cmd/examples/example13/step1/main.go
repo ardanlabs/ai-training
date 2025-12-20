@@ -82,7 +82,7 @@ func run() error {
 
 			d := model.D{
 				"messages":    messages,
-				"tools":       toolDocuments(krn.ModelInfo().IsGPTModel),
+				"tools":       toolDocuments(),
 				"max_tokens":  2048,
 				"temperature": 0.7,
 				"top_p":       0.9,
@@ -184,57 +184,22 @@ func userInput(messages []model.D) ([]model.D, error) {
 	return messages, nil
 }
 
-func toolDocuments(isGPT bool) []model.D {
-	if isGPT {
-		return model.DocumentArray(
-			model.D{
-				"type": "function",
-				"function": model.D{
-					"name":        "get_weather",
-					"description": "Get the current weather for a location",
-					"parameters": model.D{
-						"type": "object",
-						"properties": model.D{
-							"location": model.D{
-								"type":        "string",
-								"description": "The location to get the weather for, e.g. San Francisco, CA",
-							},
-						},
-						"required": []any{"location"},
-					},
-				},
-			},
-			model.D{
-				"type": "function",
-				"function": model.D{
-					"name":        "invoke_cli_command",
-					"description": "Use this anytime you need to run a CLI command of any kind",
-					"parameters": model.D{
-						"type": "object",
-						"properties": model.D{
-							"call": model.D{
-								"type":        "string",
-								"description": "The full set of parameters to pass to the CLI command",
-							},
-						},
-						"required": []any{"call"},
-					},
-				},
-			},
-		)
-	}
-
+func toolDocuments() []model.D {
 	return model.DocumentArray(
 		model.D{
 			"type": "function",
 			"function": model.D{
 				"name":        "get_weather",
 				"description": "Get the current weather for a location",
-				"arguments": model.D{
-					"location": model.D{
-						"type":        "string",
-						"description": "The location to get the weather for, e.g. San Francisco, CA",
+				"parameters": model.D{
+					"type": "object",
+					"properties": model.D{
+						"location": model.D{
+							"type":        "string",
+							"description": "The location to get the weather for, e.g. San Francisco, CA",
+						},
 					},
+					"required": []any{"location"},
 				},
 			},
 		},
@@ -243,13 +208,16 @@ func toolDocuments(isGPT bool) []model.D {
 			"function": model.D{
 				"name":        "invoke_cli_command",
 				"description": "Use this anytime you need to run a CLI command of any kind",
-				"arguments": model.D{
-					"call": model.D{
-						"type":        "string",
-						"description": "The full set of parameters to pass to the CLI command",
+				"parameters": model.D{
+					"type": "object",
+					"properties": model.D{
+						"call": model.D{
+							"type":        "string",
+							"description": "The full set of parameters to pass to the CLI command",
+						},
 					},
+					"required": []any{"call"},
 				},
-				"required": []any{"call"},
 			},
 		},
 	)

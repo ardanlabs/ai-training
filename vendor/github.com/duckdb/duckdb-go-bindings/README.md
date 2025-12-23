@@ -8,29 +8,47 @@ Minimum Go version: 1.24.
 
 #### 🚧 WORK IN PROGRESS 🚧
 
-> [!IMPORTANT]  
+> [!IMPORTANT]
 > Some type aliases and function wrappers are still missing.
-> 
+>
 > Breaking changes can happen.
 
 ## Releases
 
-This module's *first* release contains DuckDB's v1.2.0 release.
+### Single module (v0.3.0+)
 
-| duckdb version | main module | darwin amd | darwin arm | linux amd | linux arm | windows amd |
-|----------------|-------------|------------|------------|-----------|-----------|-------------|
-| v1.4.3         | v0.1.24     | v0.1.24    | v0.1.24    | v0.1.24   | v0.1.24   | v0.1.24     |
-| v1.4.2         | v0.1.23     | v0.1.23    | v0.1.23    | v0.1.23   | v0.1.23   | v0.1.23     |
-| v1.4.1         | v0.1.21     | v0.1.21    | v0.1.21    | v0.1.21   | v0.1.21   | v0.1.21     |
-| v1.4.0         | v0.1.19     | v0.1.19    | v0.1.19    | v0.1.19   | v0.1.19   | v0.1.19     |
-| v1.3.2         | v0.1.17     | v0.1.12    | v0.1.12    | v0.1.12   | v0.1.12   | v0.1.12     |
-| v1.3.1         | v0.1.16     | v0.1.11    | v0.1.11    | v0.1.11   | v0.1.11   | v0.1.11     |
-| v1.3.0         | v0.1.15     | v0.1.10    | v0.1.10    | v0.1.10   | v0.1.10   | v0.1.10     |
-| v1.2.2         | v0.1.14     | v0.1.9     | v0.1.9     | v0.1.9    | v0.1.9    | v0.1.9      |
-| v1.2.1         | v0.1.13     | v0.1.8     | v0.1.8     | v0.1.8    | v0.1.8    | v0.1.8      |
-| v1.2.0         | v0.1.10     | v0.1.5     | v0.1.5     | v0.1.5    | v0.1.5    | v0.1.5      |
+Starting with v0.3.0, the module includes pre-built static libraries for all platforms. Simply import `github.com/duckdb/duckdb-go-bindings`.
 
-The main module (`github.com/duckdb/duckdb-go-bindings`) does not link any pre-built static library.
+| duckdb version | module version |
+| -------------- | -------------- |
+| v1.4.3         | v0.3.0         |
+
+### Legacy per-platform submodules (v0.1.x)
+
+Older versions require platform-specific imports (e.g., `github.com/duckdb/duckdb-go-bindings/darwin-arm64`). These tags continue to work.
+
+| duckdb version | main    | darwin  | linux   | windows |
+| -------------- | ------- | ------- | ------- | ------- |
+| v1.4.3         | v0.1.24 | v0.1.24 | v0.1.24 | v0.1.24 |
+| v1.4.2         | v0.1.23 | v0.1.23 | v0.1.23 | v0.1.23 |
+| v1.4.1         | v0.1.21 | v0.1.21 | v0.1.21 | v0.1.21 |
+| v1.4.0         | v0.1.19 | v0.1.19 | v0.1.19 | v0.1.19 |
+| v1.3.2         | v0.1.17 | v0.1.12 | v0.1.12 | v0.1.12 |
+| v1.3.1         | v0.1.16 | v0.1.11 | v0.1.11 | v0.1.11 |
+| v1.3.0         | v0.1.15 | v0.1.10 | v0.1.10 | v0.1.10 |
+| v1.2.2         | v0.1.14 | v0.1.9  | v0.1.9  | v0.1.9  |
+| v1.2.1         | v0.1.13 | v0.1.8  | v0.1.8  | v0.1.8  |
+| v1.2.0         | v0.1.10 | v0.1.5  | v0.1.5  | v0.1.5  |
+
+## Local Development
+
+To develop locally, copy the workspace template file:
+
+```bash
+cp go.work.dev go.work
+```
+
+This sets up Go workspaces to use the local lib/* submodules instead of fetching from the module proxy.
 
 ## Releasing a new duckdb version
 
@@ -41,57 +59,92 @@ The main module (`github.com/duckdb/duckdb-go-bindings`) does not link any pre-b
 5. Open a PR.
 6. Wait for all tests to pass.
 7. Merge the PR into `main`.
-8. Publish the tags by incrementing the latest tagged release for the main module, and for each OS+architecture combination.
+8. Publish tags for the root module and the platform submodules by incrementing the latest tagged release.
+
 ```
-git tag <tagname>
-git push origin <tagname>
+VERSION=v0.3.0
+git tag "${VERSION}"
+git tag "lib/darwin-amd64/${VERSION}"
+git tag "lib/darwin-arm64/${VERSION}"
+git tag "lib/linux-amd64/${VERSION}"
+git tag "lib/linux-arm64/${VERSION}"
+git tag "lib/windows-amd64/${VERSION}"
+git push origin "${VERSION}" "lib/darwin-amd64/${VERSION}" "lib/darwin-arm64/${VERSION}" "lib/linux-amd64/${VERSION}" "lib/linux-arm64/${VERSION}" "lib/windows-amd64/${VERSION}"
 ```
 
 Example PR: https://github.com/duckdb/duckdb-go-bindings/pull/19.
 
-## Using a pre-built static library
+## Installation
 
-A few pre-built static libraries exist for different OS + architecture combinations.
-You can import these into your projects without providing additional build flags.
-`CGO` must be enabled, and your system needs a compiler available.
+Simply import the module in your Go project:
 
-Here's a list:
-- `github.com/duckdb/duckdb-go-bindings/`...
-  - `darwin-amd64`
-  - `darwin-arm64`
-  - `linux-amd64`
-  - `linux-arm64`
-  - `windows-amd64`
-
-## Static linking
-
-Note that the lib(s) name must match the name provided in the `CGO_LDFLAGS`.
-
-On Darwin. 
-```
-CGO_ENABLED=1 CPPFLAGS="-DDUCKDB_STATIC_BUILD" CGO_LDFLAGS="-lduckdb -lc++ -L/path/to/lib" go build -tags=duckdb_use_static_lib
+```go
+import "github.com/duckdb/duckdb-go-bindings"
 ```
 
-On Linux.
-```
-CGO_ENABLED=1 CPPFLAGS="-DDUCKDB_STATIC_BUILD" CGO_LDFLAGS="-lduckdb -lstdc++ -lm -ldl -L/path/to/lib" go build -tags=duckdb_use_static_lib
+The module includes pre-built static libraries for all supported platforms:
+
+- darwin-amd64
+- darwin-arm64
+- linux-amd64
+- linux-arm64
+- windows-amd64
+
+Platform detection and linking is handled automatically through cgo directives. `CGO_ENABLED=1` is required, and your system needs a C compiler.
+
+## Build Configuration
+
+### Default: Pre-built Static Libraries
+
+By default (no build tags needed), the module automatically links against the pre-built static libraries for your platform:
+
+```bash
+go build  # Just works!
+go test   # Just works!
 ```
 
-On Windows.
-```
-CGO_ENABLED=1 CPPFLAGS="-DDUCKDB_STATIC_BUILD" CGO_LDFLAGS="-lduckdb -lws2_32 -lwsock32 -lrstrtmgr -lstdc++ -lm --static -L/path/to/lib" go build -tags=duckdb_use_static_lib
+The appropriate library and linker flags are selected automatically based on your OS and architecture.
+
+### Alternative: Custom Static Libraries
+
+To use your own DuckDB static library instead of the pre-built ones, use the `duckdb_use_static_lib` build tag and provide library paths via `CGO_LDFLAGS`:
+
+```bash
+# Darwin/macOS
+CGO_ENABLED=1 \
+  CPPFLAGS="-DDUCKDB_STATIC_BUILD" \
+  CGO_LDFLAGS="-lduckdb -lc++ -L/path/to/lib" \
+  go build -tags=duckdb_use_static_lib
+
+# Linux
+CGO_ENABLED=1 \
+  CPPFLAGS="-DDUCKDB_STATIC_BUILD" \
+  CGO_LDFLAGS="-lduckdb -lstdc++ -lm -ldl -L/path/to/lib" \
+  go build -tags=duckdb_use_static_lib
+
+# Windows
+CGO_ENABLED=1 \
+  CPPFLAGS="-DDUCKDB_STATIC_BUILD" \
+  CGO_LDFLAGS="-lduckdb -lws2_32 -lwsock32 -lrstrtmgr -lstdc++ -lm --static -L/path/to/lib" \
+  go build -tags=duckdb_use_static_lib
 ```
 
-## Dynamic linking
+### Alternative: Dynamic Libraries
 
-On Darwin.
-```
-CGO_ENABLED=1 CGO_LDFLAGS="-lduckdb -L/path/to/dir" DYLD_LIBRARY_PATH=/path/to/dir go build -tags=duckdb_use_lib
-```
+To link against a shared DuckDB library, use the `duckdb_use_lib` build tag:
 
-On Linux.
-```
-CGO_ENABLED=1 CGO_LDFLAGS="-lduckdb -L/path/to/dir" LD_LIBRARY_PATH=/path/to/dir go build -tags=duckdb_use_lib
+```bash
+# Darwin/macOS
+CGO_ENABLED=1 \
+  CGO_LDFLAGS="-lduckdb -L/path/to/dir" \
+  DYLD_LIBRARY_PATH=/path/to/dir \
+  go build -tags=duckdb_use_lib
+
+# Linux
+CGO_ENABLED=1 \
+  CGO_LDFLAGS="-lduckdb -L/path/to/dir" \
+  LD_LIBRARY_PATH=/path/to/dir \
+  go build -tags=duckdb_use_lib
 ```
 
 ## Arrow functions

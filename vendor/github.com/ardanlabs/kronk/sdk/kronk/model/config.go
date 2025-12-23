@@ -75,16 +75,16 @@ type Logger func(ctx context.Context, msg string, args ...any)
 // Embeddings is a boolean that determines if the model you are using is an
 // embedding model. This must be true when using an embedding model.
 type Config struct {
-	Log            Logger
-	ModelFile      string
-	ProjectionFile string
-	JinjaFile      string
-	Device         string
-	ContextWindow  int
-	NBatch         int
-	NUBatch        int
-	NThreads       int
-	NThreadsBatch  int
+	Log           Logger
+	ModelFile     string
+	ProjFile      string
+	JinjaFile     string
+	Device        string
+	ContextWindow int
+	NBatch        int
+	NUBatch       int
+	NThreads      int
+	NThreadsBatch int
 }
 
 func validateConfig(cfg Config) error {

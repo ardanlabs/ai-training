@@ -1,16 +1,12 @@
 DUCKDB_VERSION=v1.4.3
 
 fetch.static.libs:
-	cd ${DIRECTORY} && \
+	cd lib/${PLATFORM} && \
 	curl -OL https://github.com/duckdb/duckdb/releases/download/${DUCKDB_VERSION}/${FILENAME}.zip && \
-	rm *.a && \
-	rm -f duckdb.h && \
+	rm -f *.a duckdb.h && \
 	unzip ${FILENAME}.zip && \
-	rm -f ${FILENAME}.zip
-
-update.binding:
-	rm -f ${DIRECTORY}/bindings*.go && \
-	cp bindings*.go ${DIRECTORY}/.
+	rm -f ${FILENAME}.zip && \
+	if [ -n "${COPY_HEADER}" ]; then cp duckdb.h ../../include/; fi
 
 test.dynamic.lib:
 	mkdir dynamic-dir && \

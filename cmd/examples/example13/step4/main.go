@@ -35,6 +35,7 @@ import (
 	"github.com/ardanlabs/kronk/sdk/kronk"
 	"github.com/ardanlabs/kronk/sdk/kronk/defaults"
 	"github.com/ardanlabs/kronk/sdk/kronk/model"
+	"github.com/ardanlabs/kronk/sdk/kronk/template"
 	"github.com/ardanlabs/kronk/sdk/tools/libs"
 	"github.com/ardanlabs/kronk/sdk/tools/models"
 	"github.com/hybridgroup/yzma/pkg/download"
@@ -74,7 +75,6 @@ func run() error {
 		runtime.GOARCH,
 		runtime.GOOS,
 		download.CPU.String(),
-		kronk.LogSilent.Int(),
 		true,
 	)
 	if err != nil {
@@ -102,7 +102,7 @@ func run() error {
 		return fmt.Errorf("unable to init kronk: %w", err)
 	}
 
-	krnEmbed, err := kronk.New(modelInstances, model.Config{
+	krnEmbed, err := kronk.New(modelInstances, template.New(), model.Config{
 		ModelFile: infoEmbed.ModelFile,
 	})
 	if err != nil {
@@ -114,7 +114,7 @@ func run() error {
 		}
 	}()
 
-	krnChat, err := kronk.New(modelInstances, model.Config{
+	krnChat, err := kronk.New(modelInstances, template.New(), model.Config{
 		ModelFile: infoChat.ModelFile,
 		NBatch:    32 * 1024,
 	})

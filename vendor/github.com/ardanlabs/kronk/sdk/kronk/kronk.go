@@ -21,7 +21,7 @@ import (
 )
 
 // Version contains the current version of the kronk package.
-const Version = "1.6.0"
+const Version = "1.8.0"
 
 // =============================================================================
 
@@ -65,8 +65,13 @@ func Init(libPath string, logLevel LogLevel) error {
 		}
 
 		libraryLocation = libPath
-
 		llama.Init()
+
+		// ---------------------------------------------------------------------
+
+		if logLevel < 1 || logLevel > 2 {
+			logLevel = LogSilent
+		}
 
 		switch logLevel {
 		case LogSilent:
@@ -99,7 +104,7 @@ type Kronk struct {
 //
 // modelInstances represents the number of instances of the model to create. Unless
 // you have more than 1 GPU, the recommended number of instances is 1.
-func New(modelInstances int, cfg model.Config) (*Kronk, error) {
+func New(modelInstances int, templater model.Templater, cfg model.Config) (*Kronk, error) {
 	if libraryLocation == "" {
 		return nil, fmt.Errorf("new:the Init() function has not been called")
 	}
@@ -112,7 +117,7 @@ func New(modelInstances int, cfg model.Config) (*Kronk, error) {
 	var firstModel *model.Model
 
 	for range modelInstances {
-		m, err := model.NewModel(cfg)
+		m, err := model.NewModel(templater, cfg)
 		if err != nil {
 			close(models)
 			for model := range models {

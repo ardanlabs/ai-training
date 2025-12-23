@@ -3,14 +3,14 @@ module github.com/ardanlabs/ai-training
 go 1.25.3
 
 require (
-	github.com/ardanlabs/kronk v1.6.0
+	github.com/ardanlabs/kronk v1.8.0
 	github.com/dlclark/regexp2 v1.11.5
 	github.com/duckdb/duckdb-go/v2 v2.5.4
 	github.com/google/uuid v1.6.0
 	github.com/hybridgroup/yzma v1.3.0
 	github.com/jackc/pgx/v5 v5.7.6
 	github.com/jmoiron/sqlx v1.4.0
-	github.com/modelcontextprotocol/go-sdk v1.1.0
+	github.com/modelcontextprotocol/go-sdk v1.2.0
 	go.mongodb.org/mongo-driver v1.17.6
 	golang.org/x/sync v0.19.0
 )
@@ -52,9 +52,14 @@ require (
 	github.com/bgentry/go-netrc v0.0.0-20140422174119-9fd32a8b3d3d // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/cncf/xds/go v0.0.0-20251210132809-ee656c7534f5 // indirect
-	github.com/duckdb/duckdb-go-bindings v0.1.24 // indirect
+	github.com/duckdb/duckdb-go-bindings v0.3.1 // indirect
 	github.com/duckdb/duckdb-go-bindings/darwin-amd64 v0.1.24 // indirect
 	github.com/duckdb/duckdb-go-bindings/darwin-arm64 v0.1.24 // indirect
+	github.com/duckdb/duckdb-go-bindings/lib/darwin-amd64 v0.3.1 // indirect
+	github.com/duckdb/duckdb-go-bindings/lib/darwin-arm64 v0.3.1 // indirect
+	github.com/duckdb/duckdb-go-bindings/lib/linux-amd64 v0.3.1 // indirect
+	github.com/duckdb/duckdb-go-bindings/lib/linux-arm64 v0.3.1 // indirect
+	github.com/duckdb/duckdb-go-bindings/lib/windows-amd64 v0.3.1 // indirect
 	github.com/duckdb/duckdb-go-bindings/linux-amd64 v0.1.24 // indirect
 	github.com/duckdb/duckdb-go-bindings/linux-arm64 v0.1.24 // indirect
 	github.com/duckdb/duckdb-go-bindings/windows-amd64 v0.1.24 // indirect
@@ -120,15 +125,15 @@ require (
 	golang.org/x/net v0.48.0 // indirect
 	golang.org/x/oauth2 v0.34.0 // indirect
 	golang.org/x/sys v0.39.0 // indirect
-	golang.org/x/telemetry v0.0.0-20251219171224-e0dd3dd4fbaf // indirect
+	golang.org/x/telemetry v0.0.0-20251222180846-3f2a21fb04ff // indirect
 	golang.org/x/text v0.32.0 // indirect
 	golang.org/x/time v0.14.0 // indirect
 	golang.org/x/tools v0.40.0 // indirect
 	golang.org/x/xerrors v0.0.0-20240903120638-7835f813f4da // indirect
 	google.golang.org/api v0.258.0 // indirect
-	google.golang.org/genproto v0.0.0-20251213004720-97cd9d5aeac2 // indirect
-	google.golang.org/genproto/googleapis/api v0.0.0-20251213004720-97cd9d5aeac2 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20251213004720-97cd9d5aeac2 // indirect
+	google.golang.org/genproto v0.0.0-20251222181119-0a764e51fe1b // indirect
+	google.golang.org/genproto/googleapis/api v0.0.0-20251222181119-0a764e51fe1b // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20251222181119-0a764e51fe1b // indirect
 	google.golang.org/grpc v1.77.0 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 )

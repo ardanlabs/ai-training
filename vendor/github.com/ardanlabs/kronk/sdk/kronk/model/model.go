@@ -3,7 +3,6 @@ package model
 
 import (
 	"context"
-	"embed"
 	"errors"
 	"fmt"
 	"io"
@@ -14,8 +13,10 @@ import (
 	"github.com/hybridgroup/yzma/pkg/llama"
 )
 
-//go:embed jinja/*
-var jinjaFS embed.FS
+// Templater returns a configured template for a model.
+type Templater interface {
+	Retrieve(modelID string) (Template, error)
+}
 
 // Model represents a model and provides a low-level API for working with it.
 type Model struct {
@@ -24,13 +25,17 @@ type Model struct {
 	model         llama.Model
 	vocab         llama.Vocab
 	ctxParams     llama.ContextParams
-	template      string
+	template      Template
 	projFile      string
 	modelInfo     ModelInfo
 	activeStreams atomic.Int32
 }
 
-func NewModel(cfg Config) (*Model, error) {
+func NewModel(templater Templater, cfg Config) (*Model, error) {
+	if templater == nil {
+		return nil, fmt.Errorf("templater required, use templater.New()")
+	}
+
 	if err := validateConfig(cfg); err != nil {
 		return nil, fmt.Errorf("new-model: unable to validate config: %w", err)
 	}
@@ -44,6 +49,10 @@ func NewModel(cfg Config) (*Model, error) {
 		mparams.SetDevices([]llama.GGMLBackendDevice{dev})
 	}
 
+	// OTEL: WANT TO KNOW HOW LONG THIS FUNCTION CALL TAKES
+	//       ADD A SPAN HERE
+	//       METRICS
+
 	mdl, err := llama.ModelLoadFromFile(cfg.ModelFile, mparams)
 	if err != nil {
 		return nil, fmt.Errorf("new-model: unable to load model: %w", err)
@@ -56,10 +65,12 @@ func NewModel(cfg Config) (*Model, error) {
 
 	modelInfo := toModelInfo(cfg, mdl)
 
-	template, err := retrieveTemplate(cfg, mdl, modelInfo)
+	template, err := retrieveTemplate(templater, cfg, mdl, modelInfo)
 	if err != nil {
 		return nil, fmt.Errorf("new-model: failed to retrieve model template: %w", err)
 	}
+
+	modelInfo.Template = template
 
 	// -------------------------------------------------------------------------
 
@@ -77,46 +88,46 @@ func NewModel(cfg Config) (*Model, error) {
 		vocab:     vocab,
 		ctxParams: modelCtxParams(cfg, modelInfo),
 		template:  template,
-		projFile:  cfg.ProjectionFile,
+		projFile:  cfg.ProjFile,
 		modelInfo: modelInfo,
 	}
 
 	return &m, nil
 }
 
-func retrieveTemplate(cfg Config, mdl llama.Model, modelInfo ModelInfo) (string, error) {
-	var template string
-
+func retrieveTemplate(templater Templater, cfg Config, mdl llama.Model, modelInfo ModelInfo) (Template, error) {
 	if cfg.JinjaFile != "" {
 		data, err := readJinjaTemplate(cfg.JinjaFile)
 		if err != nil {
-			return "", fmt.Errorf("retrieve-template: failed to read jinja template: %w", err)
+			return Template{}, fmt.Errorf("retrieve-template: failed to read jinja template: %w", err)
 		}
 
 		if data == "" {
-			return "", fmt.Errorf("retrieve-template: jinja template is empty")
+			return Template{}, fmt.Errorf("retrieve-template: jinja template is empty")
 		}
 
-		template = data
+		return Template{
+			FileName: cfg.JinjaFile,
+			Script:   data,
+		}, nil
 	}
 
-	if template == "" {
-		if modelInfo.IsGPTModel {
-			data, err := jinjaFS.ReadFile("jinja/gpt-oss.jinja")
-			if err != nil {
-				return "", fmt.Errorf("retrieve-template: failed to read gpt-oss.jinja template: %w", err)
-			}
-
-			return string(data), nil
-		}
-
-		template = llama.ModelChatTemplate(mdl, "")
-		if template == "" {
-			template, _ = llama.ModelMetaValStr(mdl, "tokenizer.chat_template")
+	if templater != nil {
+		template, err := templater.Retrieve(modelInfo.ID)
+		if err == nil {
+			return template, nil
 		}
 	}
 
-	return template, nil
+	data := llama.ModelChatTemplate(mdl, "")
+	if data == "" {
+		data, _ = llama.ModelMetaValStr(mdl, "tokenizer.chat_template")
+	}
+
+	return Template{
+		FileName: "tokenizer.chat_template",
+		Script:   data,
+	}, nil
 }
 
 func (m *Model) Unload(ctx context.Context) error {
@@ -366,6 +377,10 @@ loop:
 
 	// -------------------------------------------------------------------------
 
+	// OTEL: WANT TO KNOW HOW LONG THIS ENTIRE FUNCTION CALL TAKES
+	//       ADD A SPAN HERE
+	//       METRICS EXPORT USAGE / ADD CONTEXT WINDOW
+
 	// Send the final response that contains eveything we have sent plus
 	// the final usage numbers.
 	m.sendFinalResponse(ctx, ch, id, object, index, prompt, &finalContent, &finalReasoning, respToolCalls,
@@ -385,8 +400,12 @@ func (m *Model) startProcessing(lctx llama.Context, object string, prompt string
 	sampler := toSampler(params)
 
 	// Process the prompt and get the number of tokens plus the initial batch
-	// for the model response. If this is a vision call, we are just doing this
+	// for the model response. If this is a media call, we are just doing this
 	// for the input token count and the batch will be ignored.
+
+	// OTEL: WANT TO KNOW HOW LONG THIS FUNCTION CALL TAKES
+	//       ADD A SPAN HERE
+	//       METRICS PRE-FILL Non-Media
 
 	tokens := llama.Tokenize(m.vocab, prompt, true, true)
 	batch := llama.BatchGetOne(tokens)
@@ -401,6 +420,10 @@ func (m *Model) startProcessing(lctx llama.Context, object string, prompt string
 		batch = m.nextBatch(llama.SamplerSample(sampler, lctx, -1))
 		outputTokens = int(batch.NTokens)
 	}
+
+	// OTEL: WANT TO KNOW HOW LONG THIS FUNCTION CALL TAKES
+	//       ADD A SPAN HERE
+	//       METRICS TTFT for both
 
 	return sampler, batch, inputTokens, outputTokens
 }

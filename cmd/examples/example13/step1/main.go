@@ -23,6 +23,7 @@ import (
 	"github.com/ardanlabs/kronk/sdk/kronk"
 	"github.com/ardanlabs/kronk/sdk/kronk/defaults"
 	"github.com/ardanlabs/kronk/sdk/kronk/model"
+	"github.com/ardanlabs/kronk/sdk/kronk/template"
 	"github.com/ardanlabs/kronk/sdk/tools/libs"
 	"github.com/ardanlabs/kronk/sdk/tools/models"
 	"github.com/hybridgroup/yzma/pkg/download"
@@ -117,7 +118,6 @@ func installSystem() (models.Path, error) {
 		runtime.GOARCH,
 		runtime.GOOS,
 		download.CPU.String(),
-		kronk.LogSilent.Int(),
 		true,
 	)
 	if err != nil {
@@ -142,7 +142,7 @@ func newKronk(libPath string, mp models.Path) (*kronk.Kronk, error) {
 		return nil, fmt.Errorf("unable to init kronk: %w", err)
 	}
 
-	krn, err := kronk.New(modelInstances, model.Config{
+	krn, err := kronk.New(modelInstances, template.New(), model.Config{
 		ModelFile: mp.ModelFile,
 	})
 

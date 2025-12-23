@@ -17,27 +17,18 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"runtime"
 	"time"
 
 	"github.com/ardanlabs/kronk/sdk/kronk"
-	"github.com/ardanlabs/kronk/sdk/kronk/defaults"
 	"github.com/ardanlabs/kronk/sdk/kronk/model"
-	"github.com/ardanlabs/kronk/sdk/kronk/template"
 	"github.com/ardanlabs/kronk/sdk/tools/libs"
 	"github.com/ardanlabs/kronk/sdk/tools/models"
-	"github.com/hybridgroup/yzma/pkg/download"
 )
 
 const (
 	modelURL = "https://huggingface.co/Qwen/Qwen3-8B-GGUF/resolve/main/Qwen3-8B-Q8_0.gguf"
 	//modelURL       = "https://huggingface.co/unsloth/gpt-oss-20b-GGUF/resolve/main/gpt-oss-20b-Q8_0.gguf"
 	modelInstances = 1
-)
-
-var (
-	libPath   = defaults.LibsDir("")
-	modelPath = defaults.ModelsDir("")
 )
 
 func main() {
@@ -53,7 +44,7 @@ func run() error {
 		return fmt.Errorf("run:unable to installation system: %w", err)
 	}
 
-	krn, err := newKronk(libPath, info)
+	krn, err := newKronk(info)
 	if err != nil {
 		return fmt.Errorf("unable to init kronk: %w", err)
 	}
@@ -110,39 +101,38 @@ func run() error {
 }
 
 func installSystem() (models.Path, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
-	libCfg, err := libs.NewConfig(
-		libPath,
-		runtime.GOARCH,
-		runtime.GOOS,
-		download.CPU.String(),
-		true,
-	)
+	libs, err := libs.New()
 	if err != nil {
-		return models.Path{}, err
+		return models.Path{}, fmt.Errorf("unable to create libs api: %w", err)
 	}
 
-	_, err = libs.Download(ctx, kronk.FmtLogger, libCfg)
+	_, err = libs.Download(ctx, kronk.FmtLogger)
 	if err != nil {
-		return models.Path{}, fmt.Errorf("install-system:unable to install llama.cpp: %w", err)
+		return models.Path{}, fmt.Errorf("unable to install llama.cpp: %w", err)
 	}
 
-	info, err := models.Download(ctx, kronk.FmtLogger, modelURL, "", modelPath)
+	mdls, err := models.New()
 	if err != nil {
-		return models.Path{}, fmt.Errorf("install-system:unable to install model: %w", err)
+		return models.Path{}, fmt.Errorf("unable to create models api: %w", err)
 	}
 
-	return info, nil
+	mp, err := mdls.Download(ctx, kronk.FmtLogger, modelURL, "")
+	if err != nil {
+		return models.Path{}, fmt.Errorf("unable to install model: %w", err)
+	}
+
+	return mp, nil
 }
 
-func newKronk(libPath string, mp models.Path) (*kronk.Kronk, error) {
-	if err := kronk.Init(libPath, kronk.LogSilent); err != nil {
+func newKronk(mp models.Path) (*kronk.Kronk, error) {
+	if err := kronk.Init(); err != nil {
 		return nil, fmt.Errorf("unable to init kronk: %w", err)
 	}
 
-	krn, err := kronk.New(modelInstances, template.New(), model.Config{
+	krn, err := kronk.New(modelInstances, model.Config{
 		ModelFile: mp.ModelFile,
 	})
 

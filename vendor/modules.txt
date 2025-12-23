@@ -83,12 +83,11 @@ github.com/apache/arrow-go/v18/internal/bitutils
 github.com/apache/arrow-go/v18/internal/hashing
 github.com/apache/arrow-go/v18/internal/json
 github.com/apache/arrow-go/v18/internal/utils
-# github.com/ardanlabs/kronk v1.8.0
+# github.com/ardanlabs/kronk v1.9.0
 ## explicit; go 1.25.0
 github.com/ardanlabs/kronk/sdk/kronk
 github.com/ardanlabs/kronk/sdk/kronk/defaults
 github.com/ardanlabs/kronk/sdk/kronk/model
-github.com/ardanlabs/kronk/sdk/kronk/template
 github.com/ardanlabs/kronk/sdk/tools/catalog
 github.com/ardanlabs/kronk/sdk/tools/downloader
 github.com/ardanlabs/kronk/sdk/tools/libs
@@ -844,7 +843,7 @@ google.golang.org/genproto/googleapis/api/monitoredres
 google.golang.org/genproto/googleapis/rpc/code
 google.golang.org/genproto/googleapis/rpc/errdetails
 google.golang.org/genproto/googleapis/rpc/status
-# google.golang.org/grpc v1.77.0
+# google.golang.org/grpc v1.78.0
 ## explicit; go 1.24.0
 google.golang.org/grpc
 google.golang.org/grpc/attributes
@@ -978,6 +977,7 @@ google.golang.org/grpc/internal/xds/xdsclient/xdslbregistry
 google.golang.org/grpc/internal/xds/xdsclient/xdslbregistry/converter
 google.golang.org/grpc/internal/xds/xdsclient/xdsresource
 google.golang.org/grpc/internal/xds/xdsclient/xdsresource/version
+google.golang.org/grpc/internal/xds/xdsdepmgr
 google.golang.org/grpc/keepalive
 google.golang.org/grpc/mem
 google.golang.org/grpc/metadata

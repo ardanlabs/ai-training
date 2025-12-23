@@ -2,21 +2,62 @@
 package templates
 
 import (
-	"net"
-	"time"
+	"fmt"
+	"os"
+	"path/filepath"
+
+	"github.com/ardanlabs/kronk/sdk/kronk/defaults"
+	"github.com/ardanlabs/kronk/sdk/tools/catalog"
 )
 
 const (
-	localFolder = "templates"
+	defaultGithubPath = "https://api.github.com/repos/ardanlabs/kronk_catalogs/contents/templates"
+	localFolder       = "templates"
+	shaFile           = ".template_shas.json"
 )
 
-func hasNetwork() bool {
-	conn, err := net.DialTimeout("tcp", "8.8.8.8:53", 3*time.Second)
-	if err != nil {
-		return false
+// Templates manages the template system.
+type Templates struct {
+	templatePath   string
+	githubRepoPath string
+	catalog        *catalog.Catalog
+}
+
+// New constructs the template system using defaults paths.
+func New() (*Templates, error) {
+	return NewWithPaths("", "")
+}
+
+// NewWithPaths constructs the template system, using the specified github
+// repo path. If either path is empty, the default paths are used.
+func NewWithPaths(basePath string, githubRepoPath string) (*Templates, error) {
+	basePath = defaults.BaseDir(basePath)
+
+	if githubRepoPath == "" {
+		githubRepoPath = defaultGithubPath
 	}
 
-	conn.Close()
+	templatesPath := filepath.Join(basePath, localFolder)
 
-	return true
+	if err := os.MkdirAll(templatesPath, 0755); err != nil {
+		return nil, fmt.Errorf("creating templates directory: %w", err)
+	}
+
+	catalog, err := catalog.NewWithPaths(basePath, "")
+	if err != nil {
+		return nil, fmt.Errorf("catalog new: %w", err)
+	}
+
+	t := Templates{
+		templatePath:   templatesPath,
+		githubRepoPath: githubRepoPath,
+		catalog:        catalog,
+	}
+
+	return &t, nil
+}
+
+// TemplatesPath returns the location of the templates path.
+func (t *Templates) TemplatesPath() string {
+	return t.templatePath
 }

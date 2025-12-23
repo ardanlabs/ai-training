@@ -14,14 +14,16 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/ardanlabs/kronk/sdk/kronk/defaults"
 	"github.com/ardanlabs/kronk/sdk/kronk/model"
+	"github.com/ardanlabs/kronk/sdk/tools/templates"
 	"github.com/hybridgroup/yzma/pkg/llama"
 	"github.com/hybridgroup/yzma/pkg/mtmd"
 	"github.com/nikolalohinski/gonja/v2"
 )
 
 // Version contains the current version of the kronk package.
-const Version = "1.8.0"
+const Version = "1.9.0"
 
 // =============================================================================
 
@@ -48,8 +50,15 @@ var (
 // =============================================================================
 
 // Init initializes the Kronk backend suport.
-func Init(libPath string, logLevel LogLevel) error {
+func Init() error {
+	return InitWithSettings("", LogSilent)
+}
+
+// InitWithSettings initializes the Kronk backend suport.
+func InitWithSettings(libPath string, logLevel LogLevel) error {
 	initOnce.Do(func() {
+		libPath := defaults.LibsDir(libPath)
+
 		if v := os.Getenv("LD_LIBRARY_PATH"); !strings.Contains(v, libPath) {
 			os.Setenv("LD_LIBRARY_PATH", fmt.Sprintf("%s:%s", libPath, v))
 		}
@@ -90,6 +99,23 @@ func Init(libPath string, logLevel LogLevel) error {
 
 // =============================================================================
 
+type options struct {
+	templateRepo string
+}
+
+// Option represents a functional option for configuring Kronk.
+type Option func(*options)
+
+// WithTemplateRepo sets a custom Github repo for templates.
+// If not set, the default repo will be used.
+func WithTemplateRepo(repo string) Option {
+	return func(o *options) {
+		o.templateRepo = repo
+	}
+}
+
+// =============================================================================
+
 // Kronk provides a concurrently safe api for using llama.cpp to access models.
 type Kronk struct {
 	cfg           model.Config
@@ -104,20 +130,32 @@ type Kronk struct {
 //
 // modelInstances represents the number of instances of the model to create. Unless
 // you have more than 1 GPU, the recommended number of instances is 1.
-func New(modelInstances int, templater model.Templater, cfg model.Config) (*Kronk, error) {
+func New(modelInstances int, cfg model.Config, opts ...Option) (*Kronk, error) {
+	var o options
+	for _, opt := range opts {
+		opt(&o)
+	}
+
 	if libraryLocation == "" {
-		return nil, fmt.Errorf("new:the Init() function has not been called")
+		return nil, fmt.Errorf("the Init() function has not been called")
 	}
 
 	if modelInstances <= 0 {
-		return nil, fmt.Errorf("new:instances must be > 0, got %d", modelInstances)
+		return nil, fmt.Errorf("instances must be > 0, got %d", modelInstances)
 	}
+
+	tmlpRetriever, err := templates.NewWithPaths("", o.templateRepo)
+	if err != nil {
+		return nil, fmt.Errorf("template new: %w", err)
+	}
+
+	// -------------------------------------------------------------------------
 
 	models := make(chan *model.Model, modelInstances)
 	var firstModel *model.Model
 
 	for range modelInstances {
-		m, err := model.NewModel(templater, cfg)
+		m, err := model.NewModel(tmlpRetriever, cfg)
 		if err != nil {
 			close(models)
 			for model := range models {

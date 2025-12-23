@@ -2,22 +2,64 @@
 package catalog
 
 import (
-	"net"
-	"time"
+	"fmt"
+	"os"
+	"path/filepath"
+	"sync"
+
+	"github.com/ardanlabs/kronk/sdk/kronk/defaults"
+	"github.com/ardanlabs/kronk/sdk/tools/models"
 )
 
 const (
-	localFolder = "catalogs"
-	indexFile   = ".index.yaml"
+	defaultGithubPath = "https://api.github.com/repos/ardanlabs/kronk_catalogs/contents/catalogs"
+	localFolder       = "catalogs"
+	indexFile         = ".index.yaml"
 )
 
-func hasNetwork() bool {
-	conn, err := net.DialTimeout("tcp", "8.8.8.8:53", 3*time.Second)
-	if err != nil {
-		return false
+// Catalog manages the catalog system.
+type Catalog struct {
+	catalogPath    string
+	githubRepoPath string
+	models         *models.Models
+	biMutex        sync.Mutex
+}
+
+// New constructs the catalog system using defaults paths.
+func New() (*Catalog, error) {
+	return NewWithPaths("", "")
+}
+
+// NewWithPaths constructs the catalog system, using the specified github
+// repo path. If either path is empty, the default paths are used.
+func NewWithPaths(basePath string, githubRepoPath string) (*Catalog, error) {
+	basePath = defaults.BaseDir(basePath)
+
+	if githubRepoPath == "" {
+		githubRepoPath = defaultGithubPath
 	}
 
-	conn.Close()
+	catalogDir := filepath.Join(basePath, localFolder)
 
-	return true
+	if err := os.MkdirAll(catalogDir, 0755); err != nil {
+		return nil, fmt.Errorf("creating catalogs directory: %w", err)
+	}
+
+	models, err := models.New()
+	if err != nil {
+		return nil, fmt.Errorf("creating models system: %w", err)
+	}
+
+	c := Catalog{
+		catalogPath:    catalogDir,
+		githubRepoPath: githubRepoPath,
+		models:         models,
+	}
+
+	return &c, nil
+}
+
+// CatalogPath returns the location of the catalog path.
+func (c *Catalog) CatalogPath() string {
+	return c.catalogPath
 }

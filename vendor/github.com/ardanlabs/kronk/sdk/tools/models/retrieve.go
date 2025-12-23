@@ -1,7 +1,6 @@
 package models
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -9,8 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ardanlabs/kronk/sdk/kronk"
-	"github.com/ardanlabs/kronk/sdk/kronk/model"
 	"go.yaml.in/yaml/v2"
 )
 
@@ -24,10 +21,10 @@ type File struct {
 }
 
 // RetrieveFiles returns all the models in the given model directory.
-func RetrieveFiles(modelBasePath string) ([]File, error) {
+func (m *Models) RetrieveFiles() ([]File, error) {
 	var list []File
 
-	index, err := loadIndex(modelBasePath)
+	index, err := m.loadIndex()
 	if err != nil {
 		return nil, fmt.Errorf("unable to load index: %w", err)
 	}
@@ -38,7 +35,7 @@ func RetrieveFiles(modelBasePath string) ([]File, error) {
 			return nil, fmt.Errorf("stat: %w", err)
 		}
 
-		modelPath := strings.TrimLeft(mp.ModelFile, modelBasePath)
+		modelPath := strings.TrimLeft(mp.ModelFile, m.modelsPath)
 		parts := strings.Split(modelPath, "/")
 
 		mf := File{
@@ -66,8 +63,12 @@ func RetrieveFiles(modelBasePath string) ([]File, error) {
 }
 
 // retrieveFile finds the model and returns the model file information.
-func retrieveFile(modelBasePath string, modelID string) (File, error) {
-	mp, err := RetrievePath(modelBasePath, modelID)
+func (m *Models) retrieveFile(modelID string) (File, error) {
+	if modelID == "" {
+		return File{}, fmt.Errorf("missing model id")
+	}
+
+	mp, err := m.RetrievePath(modelID)
 	if err != nil {
 		return File{}, fmt.Errorf("retrieve-model-path: %w", err)
 	}
@@ -77,7 +78,7 @@ func retrieveFile(modelBasePath string, modelID string) (File, error) {
 		return File{}, fmt.Errorf("stat: %w", err)
 	}
 
-	modelPath := strings.TrimLeft(mp.ModelFile, modelBasePath)
+	modelPath := strings.TrimLeft(mp.ModelFile, m.modelsPath)
 	parts := strings.Split(modelPath, "/")
 
 	mf := File{
@@ -99,40 +100,13 @@ type Info struct {
 	Object  string
 	Created int64
 	OwnedBy string
-	Details model.ModelInfo
 }
 
 // RetrieveInfo provides details for the specified model.
-func RetrieveInfo(libPath string, modelBasePath string, modelID string) (Info, error) {
+func (m *Models) RetrieveInfo(modelID string) (Info, error) {
 	modelID = strings.ToLower(modelID)
 
-	mp, err := RetrievePath(modelBasePath, modelID)
-	if err != nil {
-		return Info{}, err
-	}
-
-	if err := kronk.Init(libPath, kronk.LogSilent); err != nil {
-		return Info{}, fmt.Errorf("show-model: unable to init kronk: %w", err)
-	}
-
-	const modelInstances = 1
-	krn, err := kronk.New(modelInstances, &templater{}, model.Config{
-		ModelFile: mp.ModelFile,
-		ProjFile:  mp.ProjFile,
-	})
-
-	if err != nil {
-		return Info{}, fmt.Errorf("show-model: unable to load kronk: %w", err)
-	}
-
-	defer func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-
-		krn.Unload(ctx)
-	}()
-
-	mf, err := retrieveFile(modelBasePath, modelID)
+	mf, err := m.retrieveFile(modelID)
 	if err != nil {
 		return Info{}, fmt.Errorf("show-model: unable to get model file information: %w", err)
 	}
@@ -142,7 +116,6 @@ func RetrieveInfo(libPath string, modelBasePath string, modelID string) (Info, e
 		Object:  "model",
 		Created: mf.Modified.UnixMilli(),
 		OwnedBy: mf.OwnedBy,
-		Details: krn.ModelInfo(),
 	}
 
 	return mi, nil
@@ -158,8 +131,8 @@ type Path struct {
 }
 
 // RetrievePath locates the physical location on disk and returns the full path.
-func RetrievePath(modelBasePath string, modelID string) (Path, error) {
-	index, err := loadIndex(modelBasePath)
+func (m *Models) RetrievePath(modelID string) (Path, error) {
+	index, err := m.loadIndex()
 	if err != nil {
 		return Path{}, fmt.Errorf("load-index: %w", err)
 	}
@@ -176,8 +149,8 @@ func RetrievePath(modelBasePath string, modelID string) (Path, error) {
 
 // MustRetrieveModel finds a model and panics if the model was not found. This
 // should only be used for testing.
-func MustRetrieveModel(modelBasePath string, modelID string) Path {
-	fi, err := RetrievePath(modelBasePath, modelID)
+func (m *Models) MustRetrieveModel(modelID string) Path {
+	fi, err := m.RetrievePath(modelID)
 	if err != nil {
 		panic(err.Error())
 	}
@@ -188,12 +161,12 @@ func MustRetrieveModel(modelBasePath string, modelID string) Path {
 // =============================================================================
 
 // LoadIndex returns the catalog index.
-func loadIndex(modelBasePath string) (map[string]Path, error) {
-	indexPath := filepath.Join(modelBasePath, indexFile)
+func (m *Models) loadIndex() (map[string]Path, error) {
+	indexPath := filepath.Join(m.modelsPath, indexFile)
 
 	data, err := os.ReadFile(indexPath)
 	if err != nil {
-		if err := BuildIndex(modelBasePath); err != nil {
+		if err := m.BuildIndex(); err != nil {
 			return nil, fmt.Errorf("build-index: %w", err)
 		}
 
@@ -209,14 +182,4 @@ func loadIndex(modelBasePath string) (map[string]Path, error) {
 	}
 
 	return index, nil
-}
-
-// =============================================================================
-
-type templater struct{}
-
-// Retrieve implement the templater interface for the construction of
-// Kronk which is used to get model details.
-func (t *templater) Retrieve(modelID string) (model.Template, error) {
-	return model.Template{}, nil
 }

@@ -26,19 +26,15 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"runtime"
 	"syscall"
 	"time"
 
 	"github.com/ardanlabs/ai-training/cmd/examples/example13/duck"
 	"github.com/ardanlabs/ai-training/cmd/examples/example13/step4/website"
 	"github.com/ardanlabs/kronk/sdk/kronk"
-	"github.com/ardanlabs/kronk/sdk/kronk/defaults"
 	"github.com/ardanlabs/kronk/sdk/kronk/model"
-	"github.com/ardanlabs/kronk/sdk/kronk/template"
 	"github.com/ardanlabs/kronk/sdk/tools/libs"
 	"github.com/ardanlabs/kronk/sdk/tools/models"
-	"github.com/hybridgroup/yzma/pkg/download"
 )
 
 const (
@@ -55,11 +51,6 @@ const (
 	WebAPIHost         = "0.0.0.0:8080"
 )
 
-var (
-	libPath   = defaults.LibsDir("")
-	modelPath = defaults.ModelsDir("")
-)
-
 func main() {
 	log.Default().SetOutput(os.Stdout)
 
@@ -70,51 +61,55 @@ func main() {
 }
 
 func run() error {
-	libCfg, err := libs.NewConfig(
-		libPath,
-		runtime.GOARCH,
-		runtime.GOOS,
-		download.CPU.String(),
-		true,
-	)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+
+	libs, err := libs.New()
 	if err != nil {
-		return err
+		return fmt.Errorf("unable to create libs api: %w", err)
 	}
 
-	_, err = libs.Download(context.Background(), kronk.FmtLogger, libCfg)
+	_, err = libs.Download(ctx, kronk.FmtLogger)
 	if err != nil {
-		return fmt.Errorf("unable to install llama.cpp: %w", err)
+		return fmt.Errorf("install-system:unable to install llama.cpp: %w", err)
 	}
 
-	infoEmbed, err := models.Download(context.Background(), kronk.FmtLogger, modelEmbedURL, "", modelPath)
+	mdls, err := models.New()
+	if err != nil {
+		return fmt.Errorf("unable to create models api: %w", err)
+	}
+
+	infoEmbed, err := mdls.Download(context.Background(), kronk.FmtLogger, modelEmbedURL, "")
 	if err != nil {
 		return fmt.Errorf("unable to install model: %w", err)
 	}
 
-	infoChat, err := models.Download(context.Background(), kronk.FmtLogger, modelChatURL, "", modelPath)
+	infoChat, err := mdls.Download(context.Background(), kronk.FmtLogger, modelChatURL, "")
 	if err != nil {
 		return fmt.Errorf("unable to install model: %w", err)
 	}
 
 	// -------------------------------------------------------------------------
 
-	if err := kronk.Init(libPath, kronk.LogSilent); err != nil {
+	if err := kronk.Init(); err != nil {
 		return fmt.Errorf("unable to init kronk: %w", err)
 	}
 
-	krnEmbed, err := kronk.New(modelInstances, template.New(), model.Config{
+	krnEmbed, err := kronk.New(modelInstances, model.Config{
 		ModelFile: infoEmbed.ModelFile,
 	})
+
 	if err != nil {
 		return fmt.Errorf("unable to create embedding model: %w", err)
 	}
+
 	defer func() {
 		if err := krnEmbed.Unload(context.Background()); err != nil {
 			fmt.Printf("failed to unload embedding model: %v", err)
 		}
 	}()
 
-	krnChat, err := kronk.New(modelInstances, template.New(), model.Config{
+	krnChat, err := kronk.New(modelInstances, model.Config{
 		ModelFile: infoChat.ModelFile,
 		NBatch:    32 * 1024,
 	})

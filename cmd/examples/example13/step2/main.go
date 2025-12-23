@@ -12,16 +12,12 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"runtime"
 	"time"
 
 	"github.com/ardanlabs/kronk/sdk/kronk"
-	"github.com/ardanlabs/kronk/sdk/kronk/defaults"
 	"github.com/ardanlabs/kronk/sdk/kronk/model"
-	"github.com/ardanlabs/kronk/sdk/kronk/template"
 	"github.com/ardanlabs/kronk/sdk/tools/libs"
 	"github.com/ardanlabs/kronk/sdk/tools/models"
-	"github.com/hybridgroup/yzma/pkg/download"
 )
 
 const (
@@ -29,11 +25,6 @@ const (
 	projURL        = "https://huggingface.co/ggml-org/Qwen2.5-VL-3B-Instruct-GGUF/resolve/main/mmproj-Qwen2.5-VL-3B-Instruct-Q8_0.gguf"
 	imageFile      = "zarf/samples/gallery/giraffe.jpg"
 	modelInstances = 1
-)
-
-var (
-	libPath = defaults.LibsDir("")
-	Path    = defaults.ModelsDir("")
 )
 
 func main() {
@@ -49,7 +40,7 @@ func run() error {
 		return fmt.Errorf("unable to install system: %w", err)
 	}
 
-	krn, err := newKronk(libPath, info)
+	krn, err := newKronk(info)
 	if err != nil {
 		return fmt.Errorf("unable to init kronk: %w", err)
 	}
@@ -80,23 +71,25 @@ func run() error {
 }
 
 func installSystem() (models.Path, error) {
-	libCfg, err := libs.NewConfig(
-		libPath,
-		runtime.GOARCH,
-		runtime.GOOS,
-		download.CPU.String(),
-		true,
-	)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+
+	libs, err := libs.New()
 	if err != nil {
-		return models.Path{}, err
+		return models.Path{}, fmt.Errorf("unable to create libs api: %w", err)
 	}
 
-	_, err = libs.Download(context.Background(), kronk.FmtLogger, libCfg)
+	_, err = libs.Download(ctx, kronk.FmtLogger)
 	if err != nil {
 		return models.Path{}, fmt.Errorf("unable to install llama.cpp: %w", err)
 	}
 
-	mp, err := models.Download(context.Background(), kronk.FmtLogger, modelURL, projURL, Path)
+	mdls, err := models.New()
+	if err != nil {
+		return models.Path{}, fmt.Errorf("unable to create models api: %w", err)
+	}
+
+	mp, err := mdls.Download(ctx, kronk.FmtLogger, modelURL, projURL)
 	if err != nil {
 		return models.Path{}, fmt.Errorf("unable to install model: %w", err)
 	}
@@ -104,12 +97,12 @@ func installSystem() (models.Path, error) {
 	return mp, nil
 }
 
-func newKronk(libPath string, mp models.Path) (*kronk.Kronk, error) {
-	if err := kronk.Init(libPath, kronk.LogSilent); err != nil {
+func newKronk(mp models.Path) (*kronk.Kronk, error) {
+	if err := kronk.Init(); err != nil {
 		return nil, fmt.Errorf("unable to init kronk: %w", err)
 	}
 
-	krn, err := kronk.New(modelInstances, template.New(), model.Config{
+	krn, err := kronk.New(modelInstances, model.Config{
 		ModelFile: mp.ModelFile,
 		ProjFile:  mp.ProjFile,
 	})

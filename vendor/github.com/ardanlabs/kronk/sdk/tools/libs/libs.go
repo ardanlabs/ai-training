@@ -8,7 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/ardanlabs/kronk/sdk/kronk/defaults"
+	"github.com/ardanlabs/kronk/sdk/tools/defaults"
 	"github.com/ardanlabs/kronk/sdk/tools/downloader"
 	"github.com/hybridgroup/yzma/pkg/download"
 )
@@ -29,6 +29,8 @@ type VersionTag struct {
 	Processor string `json:"processor"`
 	Latest    string `json:"-"`
 }
+
+// =============================================================================
 
 // Libs manages the library system.
 type Libs struct {

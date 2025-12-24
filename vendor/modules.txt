@@ -83,12 +83,13 @@ github.com/apache/arrow-go/v18/internal/bitutils
 github.com/apache/arrow-go/v18/internal/hashing
 github.com/apache/arrow-go/v18/internal/json
 github.com/apache/arrow-go/v18/internal/utils
-# github.com/ardanlabs/kronk v1.9.1
+# github.com/ardanlabs/kronk v1.9.2
 ## explicit; go 1.25.0
 github.com/ardanlabs/kronk/sdk/kronk
-github.com/ardanlabs/kronk/sdk/kronk/defaults
 github.com/ardanlabs/kronk/sdk/kronk/model
+github.com/ardanlabs/kronk/sdk/observ/metrics
 github.com/ardanlabs/kronk/sdk/tools/catalog
+github.com/ardanlabs/kronk/sdk/tools/defaults
 github.com/ardanlabs/kronk/sdk/tools/downloader
 github.com/ardanlabs/kronk/sdk/tools/libs
 github.com/ardanlabs/kronk/sdk/tools/models
@@ -169,7 +170,7 @@ github.com/aws/aws-sdk-go-v2/service/internal/presigned-url
 github.com/aws/aws-sdk-go-v2/service/internal/s3shared
 github.com/aws/aws-sdk-go-v2/service/internal/s3shared/arn
 github.com/aws/aws-sdk-go-v2/service/internal/s3shared/config
-# github.com/aws/aws-sdk-go-v2/service/s3 v1.94.0
+# github.com/aws/aws-sdk-go-v2/service/s3 v1.95.0
 ## explicit; go 1.23
 github.com/aws/aws-sdk-go-v2/service/s3
 github.com/aws/aws-sdk-go-v2/service/s3/internal/arn
@@ -420,7 +421,7 @@ github.com/googleapis/gax-go/v2/internallog
 github.com/googleapis/gax-go/v2/internallog/grpclog
 github.com/googleapis/gax-go/v2/internallog/internal
 github.com/googleapis/gax-go/v2/iterator
-# github.com/hashicorp/aws-sdk-go-base/v2 v2.0.0-beta.69
+# github.com/hashicorp/aws-sdk-go-base/v2 v2.0.0-beta.70
 ## explicit; go 1.24.6
 github.com/hashicorp/aws-sdk-go-base/v2/endpoints
 # github.com/hashicorp/go-cleanhttp v0.5.2

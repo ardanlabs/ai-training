@@ -96,7 +96,7 @@ func run() error {
 	}
 
 	krnEmbed, err := kronk.New(modelInstances, model.Config{
-		ModelFile: infoEmbed.ModelFile,
+		ModelFiles: infoEmbed.ModelFiles,
 	})
 
 	if err != nil {
@@ -110,8 +110,8 @@ func run() error {
 	}()
 
 	krnChat, err := kronk.New(modelInstances, model.Config{
-		ModelFile: infoChat.ModelFile,
-		NBatch:    32 * 1024,
+		ModelFiles: infoChat.ModelFiles,
+		NBatch:     32 * 1024,
 	})
 	if err != nil {
 		return fmt.Errorf("unable to create chat model: %w", err)

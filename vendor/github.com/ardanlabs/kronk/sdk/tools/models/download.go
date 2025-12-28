@@ -8,6 +8,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -18,8 +19,16 @@ import (
 type Logger func(ctx context.Context, msg string, args ...any)
 
 // Download performs a complete workflow for downloading and installing
-// the specified model.
-func (m *Models) Download(ctx context.Context, log Logger, modelFileURL string, projURL string) (Path, error) {
+// the specified model. If you need to set your HuggingFace token, use the
+// environment variable KRONK_HF_TOKEN.
+func (m *Models) Download(ctx context.Context, log Logger, modelURL string, projURL string) (Path, error) {
+	return m.DownloadShards(ctx, log, []string{modelURL}, projURL)
+}
+
+// DownloadShards performs a complete workflow for downloading and installing
+// the specified model. If you need to set your HuggingFace token, use the
+// environment variable KRONK_HF_TOKEN.
+func (m *Models) DownloadShards(ctx context.Context, log Logger, modelURLs []string, projURL string) (Path, error) {
 	if !hasNetwork() {
 		return Path{}, fmt.Errorf("download-model: no network available")
 	}
@@ -30,51 +39,70 @@ func (m *Models) Download(ctx context.Context, log Logger, modelFileURL string, 
 		}
 	}()
 
-	modelFileName, err := extractFileName(modelFileURL)
+	modelFileName, err := extractFileName(modelURLs[0])
 	if err != nil {
 		return Path{}, fmt.Errorf("download-model: unable to extract file name: %w", err)
 	}
 
 	modelID := extractModelID(modelFileName)
 
-	log(ctx, fmt.Sprintf("download-model: model-url[%s] proj-url[%s] model-id[%s]", modelFileURL, projURL, modelID))
-	log(ctx, "download-model: waiting to check model status...")
-
-	progress := func(src string, currentSize int64, totalSize int64, mibPerSec float64, complete bool) {
-		log(ctx, fmt.Sprintf("\x1b[1A\r\x1b[Kdownload-model: Downloading %s... %d MiB of %d MiB (%.2f MiB/s)", src, currentSize/(1024*1024), totalSize/(1024*1024), mibPerSec))
+	result := Path{
+		ModelFiles: make([]string, len(modelURLs)),
 	}
 
-	mp, errOrg := m.downloadModel(ctx, modelFileURL, projURL, progress)
-	if errOrg != nil {
-		log(ctx, "download-model:", "ERROR", errOrg, "model-file-url", modelFileURL)
-
-		if mp, err := m.RetrievePath(modelID); err == nil {
-			size, err := fileSize(mp.ModelFile)
-			if err != nil {
-				return Path{}, fmt.Errorf("download-model: unable to check file size of model: %w", err)
-			}
-
-			if size == 0 {
-				os.Remove(mp.ModelFile)
-				return Path{}, fmt.Errorf("download-model: unable to download file: %w", errOrg)
-			}
-
-			log(ctx, "download-model: status[using installed version of model]")
-			return mp, nil
+	for i, modelURL := range modelURLs {
+		if i > 0 {
+			projURL = ""
 		}
 
-		return Path{}, fmt.Errorf("download-model: unable to download model: %w", err)
+		log(ctx, fmt.Sprintf("download-model: model-url[%s] proj-url[%s] model-id[%s]", modelURL, projURL, modelID))
+		log(ctx, "download-model: waiting to check model status...")
+
+		progress := func(src string, currentSize int64, totalSize int64, mibPerSec float64, complete bool) {
+			log(ctx, fmt.Sprintf("\x1b[1A\r\x1b[Kdownload-model: Downloading %s... %d MiB of %d MiB (%.2f MiB/s)", src, currentSize/(1024*1024), totalSize/(1024*1024), mibPerSec))
+		}
+
+		mp, errOrg := m.downloadModel(ctx, modelURL, projURL, progress)
+		if errOrg != nil {
+			log(ctx, "download-model:", "ERROR", errOrg, "model-file-url", modelURL)
+
+			if mp, err := m.RetrievePath(modelID); err == nil && len(mp.ModelFiles) > 0 {
+				size, err := fileSize(mp.ModelFiles[0])
+				if err != nil {
+					return Path{}, fmt.Errorf("download-model: unable to check file size of model: %w", err)
+				}
+
+				if size == 0 {
+					for _, f := range mp.ModelFiles {
+						os.Remove(f)
+					}
+					return Path{}, fmt.Errorf("download-model: unable to download file: %w", errOrg)
+				}
+
+				log(ctx, "download-model: status[using installed version of model files]")
+				return mp, nil
+			}
+
+			return Path{}, fmt.Errorf("download-model: unable to download model file: %w", errOrg)
+		}
+
+		switch mp.Downloaded {
+		case true:
+			log(ctx, "download-model: status[downloaded]")
+
+		default:
+			log(ctx, "download-model: status[already exists]")
+		}
+
+		result.ModelFiles[i] = mp.ModelFiles[0]
+		if i == 0 {
+			result.ProjFile = mp.ProjFile
+		}
 	}
 
-	switch mp.Downloaded {
-	case true:
-		log(ctx, "download-model: status[downloaded]")
+	result.Downloaded = true
 
-	default:
-		log(ctx, "download-model: status[already exists]")
-	}
-
-	return mp, nil
+	return result, nil
 }
 
 // =============================================================================
@@ -86,14 +114,14 @@ func (m *Models) downloadModel(ctx context.Context, modelFileURL string, projFil
 	}
 
 	if projFileURL == "" {
-		return Path{ModelFile: modelFileName, Downloaded: downloadedMF}, nil
+		return Path{ModelFiles: []string{modelFileName}, Downloaded: downloadedMF}, nil
 	}
 
 	projFileName := createProjFileName(modelFileName)
 
 	if _, err := os.Stat(projFileName); err == nil {
 		inf := Path{
-			ModelFile:  modelFileName,
+			ModelFiles: []string{modelFileName},
 			ProjFile:   projFileName,
 			Downloaded: downloadedMF,
 		}
@@ -111,7 +139,7 @@ func (m *Models) downloadModel(ctx context.Context, modelFileURL string, projFil
 	}
 
 	inf := Path{
-		ModelFile:  modelFileName,
+		ModelFiles: []string{modelFileName},
 		ProjFile:   projFileName,
 		Downloaded: downloadedMF && downloadedPF,
 	}
@@ -144,8 +172,13 @@ func (m *Models) modelFilePathAndName(modelFileURL string) (string, string, erro
 		return "", "", fmt.Errorf("model-file-path-and-name: invalid huggingface url: %q", mURL.Path)
 	}
 
+	fileName, err := extractFileName(modelFileURL)
+	if err != nil {
+		return "", "", fmt.Errorf("model-file-path-and-name: unable to extract file name: %w", err)
+	}
+
 	modelFilePath := filepath.Join(m.modelsPath, parts[1], parts[2])
-	modelFileName := filepath.Join(modelFilePath, path.Base(mURL.Path))
+	modelFileName := filepath.Join(modelFilePath, fileName)
 
 	return modelFilePath, modelFileName, nil
 }
@@ -168,8 +201,13 @@ func createProjFileName(modelFileName string) string {
 	return strings.Replace(modelFileName, modelID, profFileName, 1)
 }
 
+var shardPattern = regexp.MustCompile(`-\d+-of-\d+$`)
+
 func extractModelID(modelFileName string) string {
-	return strings.TrimSuffix(path.Base(modelFileName), path.Ext(modelFileName))
+	name := strings.TrimSuffix(path.Base(modelFileName), path.Ext(modelFileName))
+	name = shardPattern.ReplaceAllString(name, "")
+
+	return name
 }
 
 func extractFileName(modelFileURL string) (string, error) {

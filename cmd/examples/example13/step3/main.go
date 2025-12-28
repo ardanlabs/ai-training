@@ -181,8 +181,8 @@ func newKronk(info models.Path, nBatch int) (*kronk.Kronk, error) {
 	}
 
 	krn, err := kronk.New(modelInstances, model.Config{
-		ModelFile: info.ModelFile,
-		NBatch:    nBatch,
+		ModelFiles: info.ModelFiles,
+		NBatch:     nBatch,
 	})
 
 	if err != nil {

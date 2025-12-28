@@ -103,8 +103,8 @@ func newKronk(mp models.Path) (*kronk.Kronk, error) {
 	}
 
 	krn, err := kronk.New(modelInstances, model.Config{
-		ModelFile: mp.ModelFile,
-		ProjFile:  mp.ProjFile,
+		ModelFiles: mp.ModelFiles,
+		ProjFile:   mp.ProjFile,
 	})
 
 	if err != nil {

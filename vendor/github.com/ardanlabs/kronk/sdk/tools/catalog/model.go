@@ -30,8 +30,19 @@ type File struct {
 
 // Files represents file information for a model.
 type Files struct {
-	Model File `yaml:"model"`
-	Proj  File `yaml:"proj"`
+	Models []File `yaml:"models"`
+	Proj   File   `yaml:"proj"`
+}
+
+// ToURLS converts a slice of File to a string of the URLs.
+func (f Files) ToURLS() []string {
+	models := make([]string, len(f.Models))
+
+	for i, file := range f.Models {
+		models[i] = file.URL
+	}
+
+	return models
 }
 
 // Model represents information for a model.
@@ -41,6 +52,7 @@ type Model struct {
 	OwnedBy      string       `yaml:"owned_by"`
 	ModelFamily  string       `yaml:"model_family"`
 	WebPage      string       `yaml:"web_page"`
+	GatedModel   bool         `yaml:"gated_model"`
 	Template     string       `yaml:"template"`
 	Files        Files        `yaml:"files"`
 	Capabilities Capabilities `yaml:"capabilities"`

@@ -14,7 +14,8 @@ var (
 	FFITypeModelParams = ffi.NewType(&ffi.TypePointer, &ffi.TypePointer, &ffi.TypeSint32,
 		&ffi.TypeSint32, &ffi.TypeSint32,
 		&ffi.TypePointer, &ffi.TypePointer, &ffi.TypePointer, &ffi.TypePointer,
-		&ffi.TypeUint8, &ffi.TypeUint8, &ffi.TypeUint8, &ffi.TypeUint8, &ffi.TypeUint8)
+		&ffi.TypeUint8, &ffi.TypeUint8, &ffi.TypeUint8, &ffi.TypeUint8, &ffi.TypeUint8,
+		&ffi.TypeUint8, &ffi.TypeUint8)
 
 	// FFITypeModelQuantizeParams represents the C struct llama_model_quantize_params
 	FFITypeModelQuantizeParams = ffi.NewType(&ffi.TypeSint32, &ffi.TypeSint32,
@@ -30,6 +31,14 @@ var (
 	//                          const char * path_model,
 	//           				struct llama_model_params   params);
 	modelLoadFromFileFunc ffi.Fun
+
+	// Load the model from multiple splits (support custom naming scheme)
+	// The paths must be in the correct order
+	// LLAMA_API struct llama_model * llama_model_load_from_splits(
+	//                          const char ** paths,
+	//                          size_t    n_paths,
+	//                          struct llama_model_params    params);
+	modelLoadFromSplitsFunc ffi.Fun
 
 	// LLAMA_API struct llama_model_params          llama_model_default_params(void);
 	modelFreeFunc ffi.Fun
@@ -115,6 +124,10 @@ var (
 	// LLAMA_API int32_t llama_model_meta_val_str_by_index(const struct llama_model * model, int32_t i, char * buf, size_t buf_size);
 	modelMetaValStrByIndexFunc ffi.Fun
 
+	// Get sampling metadata key name. Returns nullptr if the key is invalid
+	// LLAMA_API const char * llama_model_meta_key_str(enum llama_model_meta_key key);
+	modelMetaKeyStrFunc ffi.Fun
+
 	// LLAMA_API struct llama_model_quantize_params llama_model_quantize_default_params(void);
 	modelQuantizeDefaultParamsFunc ffi.Fun
 
@@ -134,6 +147,10 @@ func loadModelFuncs(lib ffi.Lib) error {
 
 	if modelLoadFromFileFunc, err = lib.Prep("llama_model_load_from_file", &ffi.TypePointer, &ffi.TypePointer, &FFITypeModelParams); err != nil {
 		return loadError("llama_model_load_from_file", err)
+	}
+
+	if modelLoadFromSplitsFunc, err = lib.Prep("llama_model_load_from_splits", &ffi.TypePointer, &ffi.TypePointer, &ffi.TypeSint32, &FFITypeModelParams); err != nil {
+		return loadError("llama_model_load_from_splits", err)
 	}
 
 	if modelFreeFunc, err = lib.Prep("llama_model_free", &ffi.TypeVoid, &ffi.TypePointer); err != nil {
@@ -240,6 +257,10 @@ func loadModelFuncs(lib ffi.Lib) error {
 		return loadError("llama_model_meta_val_str_by_index", err)
 	}
 
+	if modelMetaKeyStrFunc, err = lib.Prep("llama_model_meta_key_str", &ffi.TypePointer, &ffi.TypeSint32); err != nil {
+		return loadError("llama_model_meta_key_str", err)
+	}
+
 	if modelQuantizeDefaultParamsFunc, err = lib.Prep("llama_model_quantize_default_params", &FFITypeModelQuantizeParams); err != nil {
 		return loadError("llama_model_quantize_default_params", err)
 	}
@@ -270,6 +291,30 @@ func ModelLoadFromFile(pathModel string, params ModelParams) (Model, error) {
 	modelLoadFromFileFunc.Call(unsafe.Pointer(&model), unsafe.Pointer(&file), unsafe.Pointer(&params))
 	if model == 0 {
 		return model, errors.New("failed to load model")
+	}
+
+	return model, nil
+}
+
+// ModelLoadFromSplits loads a Model from multiple split files.
+// The paths slice must be in the correct order.
+func ModelLoadFromSplits(paths []string, params ModelParams) (Model, error) {
+	var model Model
+	if len(paths) == 0 {
+		return model, errors.New("no paths provided")
+	}
+
+	// Allocate C array of pointers to null-terminated strings
+	cStrs := make([]*byte, len(paths))
+	for i, _ := range paths {
+		cStrs[i] = &[]byte(paths[i] + "\x00")[0]
+	}
+	cPaths := unsafe.Pointer(&cStrs[0])
+	nPaths := int32(len(paths))
+
+	modelLoadFromSplitsFunc.Call(unsafe.Pointer(&model), &cPaths, &nPaths, unsafe.Pointer(&params))
+	if model == 0 {
+		return model, errors.New("failed to load model from splits")
 	}
 
 	return model, nil
@@ -676,6 +721,17 @@ func ModelMetaValStrByIndex(model Model, i int32) (string, bool) {
 	copy(value, buf[:int32(result)])
 
 	return string(value), true
+}
+
+// ModelMetaKeyStr returns the metadata key name for a given enum key.
+// Returns an empty string if the key is invalid.
+func ModelMetaKeyStr(key ModelMetaKey) string {
+	var ptr *byte
+	modelMetaKeyStrFunc.Call(unsafe.Pointer(&ptr), &key)
+	if ptr == nil {
+		return ""
+	}
+	return utils.BytePtrToString(ptr)
 }
 
 // SetTensorBufOverrides sets tensor buffer overrides for Mixture of Experts (MoE) execution.

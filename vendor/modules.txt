@@ -83,7 +83,7 @@ github.com/apache/arrow-go/v18/internal/bitutils
 github.com/apache/arrow-go/v18/internal/hashing
 github.com/apache/arrow-go/v18/internal/json
 github.com/apache/arrow-go/v18/internal/utils
-# github.com/ardanlabs/kronk v1.10.1
+# github.com/ardanlabs/kronk v1.10.3
 ## explicit; go 1.25.0
 github.com/ardanlabs/kronk/sdk/kronk
 github.com/ardanlabs/kronk/sdk/kronk/model
@@ -434,7 +434,7 @@ github.com/hashicorp/go-getter/helper/url
 # github.com/hashicorp/go-version v1.8.0
 ## explicit
 github.com/hashicorp/go-version
-# github.com/hybridgroup/yzma v1.3.1-0.20251228110848-706dbbe75310
+# github.com/hybridgroup/yzma v1.4.0
 ## explicit; go 1.24.4
 github.com/hybridgroup/yzma/pkg/download
 github.com/hybridgroup/yzma/pkg/llama

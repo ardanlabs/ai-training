@@ -12,7 +12,6 @@ const (
 	defTopP            = 0.9
 	defMinP            = 0.0
 	defTemp            = 0.8
-	defMaxTokens       = 1024
 	defEnableThinking  = ThinkingEnabled
 	defReasoningEffort = ReasoningEffortMedium
 )
@@ -118,7 +117,7 @@ func AddParams(p Params, d D) {
 	}
 }
 
-func parseParams(d D) (Params, error) {
+func (m *Model) parseParams(d D) (Params, error) {
 	var temp float32
 	if tempVal, exists := d["temperature"]; exists {
 		var err error
@@ -192,10 +191,10 @@ func parseParams(d D) (Params, error) {
 		ReasoningEffort: reasoningEffort,
 	}
 
-	return adjustParams(params), nil
+	return m.adjustParams(params), nil
 }
 
-func adjustParams(p Params) Params {
+func (m *Model) adjustParams(p Params) Params {
 	if p.Temperature <= 0 {
 		p.Temperature = defTemp
 	}
@@ -209,11 +208,11 @@ func adjustParams(p Params) Params {
 	}
 
 	if p.MinP <= 0 {
-		p.TopP = defMinP
+		p.MinP = defMinP
 	}
 
 	if p.MaxTokens <= 0 {
-		p.MaxTokens = defMaxTokens
+		p.MaxTokens = m.cfg.ContextWindow
 	}
 
 	if p.Thinking == "" {

@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/ardanlabs/kronk/sdk/tools/models"
 	"github.com/hybridgroup/yzma/pkg/llama"
 )
 
@@ -72,24 +73,43 @@ type Logger func(ctx context.Context, msg string, args ...any)
 // NThreadsBatch is the number of threads to use for batch processing. When set
 // to 0, the default llama.cpp value is used.
 //
-// Embeddings is a boolean that determines if the model you are using is an
-// embedding model. This must be true when using an embedding model.
+// IgnorelIntegrityCheck is a boolean that determines if the system should ignore
+// a model integrity check before trying to use it.
 type Config struct {
-	Log           Logger
-	ModelFiles    []string
-	ProjFile      string
-	JinjaFile     string
-	Device        string
-	ContextWindow int
-	NBatch        int
-	NUBatch       int
-	NThreads      int
-	NThreadsBatch int
+	Log                   Logger
+	ModelFiles            []string
+	ProjFile              string
+	JinjaFile             string
+	Device                string
+	ContextWindow         int
+	NBatch                int
+	NUBatch               int
+	NThreads              int
+	NThreadsBatch         int
+	IgnorelIntegrityCheck bool
 }
 
-func validateConfig(cfg Config) error {
+func validateConfig(cfg Config, log Logger) error {
 	if len(cfg.ModelFiles) == 0 {
 		return fmt.Errorf("validate-config: model file is required")
+	}
+
+	if !cfg.IgnorelIntegrityCheck {
+		for _, modelFile := range cfg.ModelFiles {
+			log(context.Background(), "checking-model-integrity", "model-file", modelFile)
+
+			if err := models.CheckModel(modelFile, true); err != nil {
+				return fmt.Errorf("validate-config: checking-model-integrity: %w", err)
+			}
+		}
+
+		if cfg.ProjFile != "" {
+			log(context.Background(), "checking-model-integrity", "model-file", cfg.ProjFile)
+
+			if err := models.CheckModel(cfg.ProjFile, true); err != nil {
+				return fmt.Errorf("validate-config: checking-model-integrity: %w", err)
+			}
+		}
 	}
 
 	return nil

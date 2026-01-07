@@ -31,7 +31,7 @@ services:
     user: "${UID:-503}:${GID:-20}"
 
   openwebui:
-    image: ghcr.io/open-webui/open-webui:v0.6.41
+    image: ghcr.io/open-webui/open-webui:v0.6.43
     container_name: openwebui
     restart: always
     pull_policy: never

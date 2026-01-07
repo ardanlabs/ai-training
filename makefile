@@ -122,7 +122,7 @@ install:
 
 docker:
 	docker pull mongodb/mongodb-atlas-local:8.0
-	docker pull ghcr.io/open-webui/open-webui:v0.6.41
+	docker pull ghcr.io/open-webui/open-webui:v0.6.43
 	docker pull postgres:18.1
 	docker pull quay.io/docling-project/docling-serve:v1.9.0
 

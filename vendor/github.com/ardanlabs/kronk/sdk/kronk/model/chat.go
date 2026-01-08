@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ardanlabs/kronk/sdk/observ/metrics"
+	"github.com/ardanlabs/kronk/sdk/kronk/observ/metrics"
 	"github.com/google/uuid"
 	"github.com/hybridgroup/yzma/pkg/llama"
 	"github.com/hybridgroup/yzma/pkg/mtmd"
@@ -63,6 +63,8 @@ func (m *Model) ChatStreaming(ctx context.Context, d D) <-chan ChatResponse {
 		if m.projFile != "" {
 			mctxParams := mtmd.ContextParamsDefault()
 
+			m.log(context.Background(), "loading prof from file", "status", "started")
+
 			// OTEL: WANT TO KNOW HOW LONG THESE FUNCTION CALLS TAKES
 			start := time.Now()
 
@@ -74,6 +76,8 @@ func (m *Model) ChatStreaming(ctx context.Context, d D) <-chan ChatResponse {
 			defer mtmd.Free(mtmdCtx)
 
 			metrics.AddProjFileLoadTime(time.Since(start))
+
+			m.log(context.Background(), "loading prof from file", "status", "completed")
 
 			// -----------------------------------------------------------------
 			// We want to use a raw media message format for processing media

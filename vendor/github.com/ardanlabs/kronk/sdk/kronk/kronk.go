@@ -18,15 +18,16 @@ import (
 )
 
 // Version contains the current version of the kronk package.
-const Version = "1.11.1"
+const Version = "1.11.3"
 
 // =============================================================================
 
 type options struct {
-	tr model.TemplateRetriever
+	tr  model.TemplateRetriever
+	ctx context.Context
 }
 
-// Option represents a functional option for configuring Kronk.
+// Option represents options for configuring Kronk.
 type Option func(*options)
 
 // WithTemplateRetriever sets a custom Github repo for templates.
@@ -34,6 +35,13 @@ type Option func(*options)
 func WithTemplateRetriever(templates model.TemplateRetriever) Option {
 	return func(o *options) {
 		o.tr = templates
+	}
+}
+
+// WithContext sets a context into the call to support logging trace ids.
+func WithContext(ctx context.Context) Option {
+	return func(o *options) {
+		o.ctx = ctx
 	}
 }
 
@@ -78,13 +86,18 @@ func New(modelInstances int, cfg model.Config, opts ...Option) (*Kronk, error) {
 		o.tr = templates
 	}
 
+	ctx := context.Background()
+	if o.ctx != nil {
+		ctx = o.ctx
+	}
+
 	// -------------------------------------------------------------------------
 
 	models := make(chan *model.Model, modelInstances)
 	var firstModel *model.Model
 
 	for range modelInstances {
-		m, err := model.NewModel(o.tr, cfg)
+		m, err := model.NewModel(ctx, o.tr, cfg)
 		if err != nil {
 			close(models)
 			for model := range models {

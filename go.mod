@@ -3,7 +3,7 @@ module github.com/ardanlabs/ai-training
 go 1.25.3
 
 require (
-	github.com/ardanlabs/kronk v1.11.1
+	github.com/ardanlabs/kronk v1.11.3
 	github.com/dlclark/regexp2 v1.11.5
 	github.com/duckdb/duckdb-go/v2 v2.5.4
 	github.com/google/uuid v1.6.0
@@ -51,14 +51,14 @@ require (
 	github.com/bgentry/go-netrc v0.0.0-20140422174119-9fd32a8b3d3d // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/cncf/xds/go v0.0.0-20251210132809-ee656c7534f5 // indirect
-	github.com/duckdb/duckdb-go-bindings v0.3.1 // indirect
+	github.com/duckdb/duckdb-go-bindings v0.3.2 // indirect
 	github.com/duckdb/duckdb-go-bindings/darwin-amd64 v0.1.24 // indirect
 	github.com/duckdb/duckdb-go-bindings/darwin-arm64 v0.1.24 // indirect
-	github.com/duckdb/duckdb-go-bindings/lib/darwin-amd64 v0.3.1 // indirect
-	github.com/duckdb/duckdb-go-bindings/lib/darwin-arm64 v0.3.1 // indirect
-	github.com/duckdb/duckdb-go-bindings/lib/linux-amd64 v0.3.1 // indirect
-	github.com/duckdb/duckdb-go-bindings/lib/linux-arm64 v0.3.1 // indirect
-	github.com/duckdb/duckdb-go-bindings/lib/windows-amd64 v0.3.1 // indirect
+	github.com/duckdb/duckdb-go-bindings/lib/darwin-amd64 v0.3.2 // indirect
+	github.com/duckdb/duckdb-go-bindings/lib/darwin-arm64 v0.3.2 // indirect
+	github.com/duckdb/duckdb-go-bindings/lib/linux-amd64 v0.3.2 // indirect
+	github.com/duckdb/duckdb-go-bindings/lib/linux-arm64 v0.3.2 // indirect
+	github.com/duckdb/duckdb-go-bindings/lib/windows-amd64 v0.3.2 // indirect
 	github.com/duckdb/duckdb-go-bindings/linux-amd64 v0.1.24 // indirect
 	github.com/duckdb/duckdb-go-bindings/linux-arm64 v0.1.24 // indirect
 	github.com/duckdb/duckdb-go-bindings/windows-amd64 v0.1.24 // indirect
@@ -78,7 +78,7 @@ require (
 	github.com/google/flatbuffers v25.12.19+incompatible // indirect
 	github.com/google/jsonschema-go v0.4.2 // indirect
 	github.com/google/s2a-go v0.1.9 // indirect
-	github.com/googleapis/enterprise-certificate-proxy v0.3.8 // indirect
+	github.com/googleapis/enterprise-certificate-proxy v0.3.9 // indirect
 	github.com/googleapis/gax-go/v2 v2.16.0 // indirect
 	github.com/hashicorp/aws-sdk-go-base/v2 v2.0.0-beta.70 // indirect
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
@@ -124,7 +124,7 @@ require (
 	golang.org/x/mod v0.31.0 // indirect
 	golang.org/x/net v0.48.0 // indirect
 	golang.org/x/oauth2 v0.34.0 // indirect
-	golang.org/x/sys v0.39.0 // indirect
+	golang.org/x/sys v0.40.0 // indirect
 	golang.org/x/telemetry v0.0.0-20251222180846-3f2a21fb04ff // indirect
 	golang.org/x/text v0.32.0 // indirect
 	golang.org/x/time v0.14.0 // indirect

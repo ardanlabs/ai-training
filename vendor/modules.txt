@@ -83,11 +83,11 @@ github.com/apache/arrow-go/v18/internal/bitutils
 github.com/apache/arrow-go/v18/internal/hashing
 github.com/apache/arrow-go/v18/internal/json
 github.com/apache/arrow-go/v18/internal/utils
-# github.com/ardanlabs/kronk v1.11.1
+# github.com/ardanlabs/kronk v1.11.3
 ## explicit; go 1.25.0
 github.com/ardanlabs/kronk/sdk/kronk
 github.com/ardanlabs/kronk/sdk/kronk/model
-github.com/ardanlabs/kronk/sdk/observ/metrics
+github.com/ardanlabs/kronk/sdk/kronk/observ/metrics
 github.com/ardanlabs/kronk/sdk/tools/catalog
 github.com/ardanlabs/kronk/sdk/tools/defaults
 github.com/ardanlabs/kronk/sdk/tools/downloader
@@ -246,7 +246,7 @@ github.com/cncf/xds/go/xds/type/v3
 ## explicit; go 1.13
 github.com/dlclark/regexp2
 github.com/dlclark/regexp2/syntax
-# github.com/duckdb/duckdb-go-bindings v0.3.1
+# github.com/duckdb/duckdb-go-bindings v0.3.2
 ## explicit; go 1.24
 github.com/duckdb/duckdb-go-bindings
 # github.com/duckdb/duckdb-go-bindings/darwin-amd64 v0.1.24
@@ -255,19 +255,19 @@ github.com/duckdb/duckdb-go-bindings/darwin-amd64
 # github.com/duckdb/duckdb-go-bindings/darwin-arm64 v0.1.24
 ## explicit; go 1.24
 github.com/duckdb/duckdb-go-bindings/darwin-arm64
-# github.com/duckdb/duckdb-go-bindings/lib/darwin-amd64 v0.3.1
+# github.com/duckdb/duckdb-go-bindings/lib/darwin-amd64 v0.3.2
 ## explicit; go 1.24
 github.com/duckdb/duckdb-go-bindings/lib/darwin-amd64
-# github.com/duckdb/duckdb-go-bindings/lib/darwin-arm64 v0.3.1
+# github.com/duckdb/duckdb-go-bindings/lib/darwin-arm64 v0.3.2
 ## explicit; go 1.24
 github.com/duckdb/duckdb-go-bindings/lib/darwin-arm64
-# github.com/duckdb/duckdb-go-bindings/lib/linux-amd64 v0.3.1
+# github.com/duckdb/duckdb-go-bindings/lib/linux-amd64 v0.3.2
 ## explicit; go 1.24
 github.com/duckdb/duckdb-go-bindings/lib/linux-amd64
-# github.com/duckdb/duckdb-go-bindings/lib/linux-arm64 v0.3.1
+# github.com/duckdb/duckdb-go-bindings/lib/linux-arm64 v0.3.2
 ## explicit; go 1.24
 github.com/duckdb/duckdb-go-bindings/lib/linux-arm64
-# github.com/duckdb/duckdb-go-bindings/lib/windows-amd64 v0.3.1
+# github.com/duckdb/duckdb-go-bindings/lib/windows-amd64 v0.3.2
 ## explicit; go 1.24
 github.com/duckdb/duckdb-go-bindings/lib/windows-amd64
 # github.com/duckdb/duckdb-go-bindings/linux-amd64 v0.1.24
@@ -406,7 +406,7 @@ github.com/google/s2a-go/stream
 # github.com/google/uuid v1.6.0
 ## explicit
 github.com/google/uuid
-# github.com/googleapis/enterprise-certificate-proxy v0.3.8
+# github.com/googleapis/enterprise-certificate-proxy v0.3.9
 ## explicit; go 1.23.0
 github.com/googleapis/enterprise-certificate-proxy/client
 github.com/googleapis/enterprise-certificate-proxy/client/util
@@ -741,7 +741,7 @@ golang.org/x/oauth2/jwt
 golang.org/x/sync/errgroup
 golang.org/x/sync/semaphore
 golang.org/x/sync/singleflight
-# golang.org/x/sys v0.39.0
+# golang.org/x/sys v0.40.0
 ## explicit; go 1.24.0
 golang.org/x/sys/cpu
 golang.org/x/sys/unix

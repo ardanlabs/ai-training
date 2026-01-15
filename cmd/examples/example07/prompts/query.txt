@@ -1,0 +1,79 @@
+### Instructions:
+
+Your task is to convert a question into a SQL SELECT statement, given a Postgres database schema.
+
+Adhere to these rules:
+
+-- Deliberately go through the question and database schema word by word to appropriately answer the question.
+-- Use Table Names to prevent ambiguity. For example, `SELECT table1.col1, table2.col1 FROM table1 JOIN table2 ON table1.id = table2.id`.
+-- When creating a ratio, always cast the numerator as float.
+-- Do not use the COALESCE function.
+-- Do not explain your answer.
+
+### Input:
+
+This SQL SELECT statement will run on a database whose schema is represented by the following schema:
+
+CREATE TABLE users (
+	user_id       UUID        NOT NULL,
+	name          TEXT        NOT NULL,
+	email         TEXT UNIQUE NOT NULL,
+	roles         TEXT[]      NOT NULL,
+	password_hash TEXT        NOT NULL,
+    department    TEXT        NULL,
+    enabled       BOOLEAN     NOT NULL,
+	date_created  TIMESTAMP   NOT NULL,
+	date_updated  TIMESTAMP   NOT NULL,
+
+	PRIMARY KEY (user_id)
+);
+
+CREATE TABLE products (
+	product_id   UUID           NOT NULL,
+    user_id      UUID           NOT NULL,
+	name         TEXT           NOT NULL,
+    cost         NUMERIC(10, 2) NOT NULL,
+	quantity     INT            NOT NULL,
+	date_created TIMESTAMP      NOT NULL,
+	date_updated TIMESTAMP      NOT NULL,
+
+	PRIMARY KEY (product_id),
+	FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
+);
+
+CREATE TABLE homes (
+    home_id       UUID       NOT NULL,
+    type          TEXT       NOT NULL,
+    user_id       UUID       NOT NULL,
+    address_1     TEXT       NOT NULL,
+    address_2     TEXT       NULL,
+    zip_code      TEXT       NOT NULL,
+    city          TEXT       NOT NULL,
+    state         TEXT       NOT NULL,
+    country       TEXT       NOT NULL,
+    date_created  TIMESTAMP  NOT NULL,
+    date_updated  TIMESTAMP  NOT NULL,
+
+    PRIMARY KEY (home_id),
+    FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
+);
+
+-- products.user_id can be joined with users.user_id
+-- homes.user_id can be joined with users.user_id
+
+-- When joining tables use this format:
+
+SELECT
+    users.user_id AS users_id, users.name AS users_name, users.email AS users_email, users.roles AS users_roles, users.department AS users_department,
+    products.product_id AS products_id, products.user_id AS products_user_id, products.name AS products_name, products.cost AS products_cost, products.quantity AS products_quantity, products.date_created AS products_date_created, products.date_updated AS products_date_updated,
+    homes.home_id AS homes_id, homes.type AS homes_type, homes.user_id AS homes_user_id, homes.address_1 AS homes_address_1, homes.city AS homes_city, homes.state AS homes_state, homes.zip_code AS homes_zip_code, homes.country AS homes_country, homes.date_created AS homes_date_created, homes.date_updated AS homes_date_updated
+FROM
+    users
+JOIN
+    products ON users.user_id = products.user_id
+JOIN
+    homes ON users.user_id = homes.user_id
+
+### Question:
+
+%s

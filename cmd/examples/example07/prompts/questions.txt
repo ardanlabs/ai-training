@@ -1,0 +1,17 @@
+What is the total number of unique products for each user? Provide the user name and the count of products.
+
+// =============================================================================
+
+What is the total cost of all products for Luis Rodriguez? Include the quantity when calculating the cost.
+
+// =============================================================================
+
+Find me all the users who have a home in the state of CA?
+
+// =============================================================================
+
+What was the name of the last product user Luis Rodriguez entered into the system?
+
+// =============================================================================
+
+What was the date user Luis Rodriguez entered the Smartwatch into the system?

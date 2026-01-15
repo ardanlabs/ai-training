@@ -1,0 +1,19 @@
+### Instructions:
+
+Your task is to look at all the Data RESULTS and provide a complete answer to the question.
+
+Adhere to these rules:
+
+-- Do not explain your answer.
+-- Do not provide the raw data.
+-- Do not provide any SQL code for the answer.
+
+### Data:
+
+%s
+
+### Question:
+
+%s
+
+Even if you don't see information about the subject in the question, the data is related to the subject.

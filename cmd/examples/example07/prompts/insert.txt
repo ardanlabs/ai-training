@@ -1,0 +1,97 @@
+### Instructions:
+
+Your task is to convert a question into a SQL INSERT statement, given a Postgres database schema.
+Adhere to these rules:
+
+- Deliberately go through the question and database schema word by word to appropriately answer the question
+- Use Table Aliases to prevent ambiguity. For example, `SELECT table1.col1, table2.col1 FROM table1 JOIN table2 ON table1.id = table2.id`.
+- When creating a ratio, always cast the numerator as float
+
+### Input:
+
+This SQL INSERT statement will run on a database whose schema is represented by the following schema:
+
+CREATE TABLE users (
+	user_id       UUID        NOT NULL,
+	name          TEXT        NOT NULL,
+	email         TEXT UNIQUE NOT NULL,
+	roles         TEXT[]      NOT NULL,
+	password_hash TEXT        NOT NULL,
+    department    TEXT        NULL,
+    enabled       BOOLEAN     NOT NULL,
+	date_created  TIMESTAMP   NOT NULL,
+	date_updated  TIMESTAMP   NOT NULL,
+
+	PRIMARY KEY (user_id)
+);
+
+CREATE TABLE products (
+	product_id   UUID           NOT NULL,
+    user_id      UUID           NOT NULL,
+	name         TEXT           NOT NULL,
+    cost         NUMERIC(10, 2) NOT NULL,
+	quantity     INT            NOT NULL,
+	date_created TIMESTAMP      NOT NULL,
+	date_updated TIMESTAMP      NOT NULL,
+
+	PRIMARY KEY (product_id),
+	FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
+);
+
+CREATE TABLE homes (
+    home_id       UUID       NOT NULL,
+    type          TEXT       NOT NULL,
+    user_id       UUID       NOT NULL,
+    address_1     TEXT       NOT NULL,
+    address_2     TEXT       NULL,
+    zip_code      TEXT       NOT NULL,
+    city          TEXT       NOT NULL,
+    state         TEXT       NOT NULL,
+    country       TEXT       NOT NULL,
+    date_created  TIMESTAMP  NOT NULL,
+    date_updated  TIMESTAMP  NOT NULL,
+
+    PRIMARY KEY (home_id),
+    FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
+);
+
+-- products.user_id can be joined with users.user_id
+-- homes.user_id can be joined with users.user_id
+
+### Response:
+
+Just provide the SQL INSERT statement to the questions starting with ```sql
+
+### Question:
+
+// =============================================================================
+
+Create an INSERT statement with proper data for each field to create 5 new users.
+
+// =============================================================================
+
+INSERT INTO users (user_id, name, email, roles, password_hash, department, enabled, date_created, date_updated)
+VALUES 
+    ('4bce0a9f-8e95-43f7-ba47-d3daeb5dbb83', 'Luis Rodriguez', 'luis.rodriguez@example.com', '{admin}', 'hashed_password', NULL, TRUE, NOW(), NOW()),
+    ('cdedc2d1-a8df-4ae6-9e14-befaa0f5d7ff', 'Sofia Sanchez', 'sofia.sanchez@example.com', '{user}', 'hashed_password', NULL, TRUE, NOW(), NOW()),
+    ('be3ac8b6-d66c-42ad-a1df-c77ab2a90ae9', 'Juan Hernandez', 'juan.hernandez@example.com', '{admin,user}', 'hashed_password', NULL, TRUE, NOW(), NOW()),
+    ('f7d6f4e5-a2db-44d3-bb51-e45ec8e4ff1c', 'Maria Garcia', 'maria.garcia@example.com', '{user}', 'hashed_password', NULL, TRUE, NOW(), NOW()),
+    ('a11d0d34-8dd9-41c7-af2c-a6b3f5c6ab27', 'Elena Vasquez', 'elena.vasquez@example.com', '{admin,user}', 'hashed_password', NULL, TRUE, NOW(), NOW());
+
+Create an INSERT statement that will create 5 products for user '4bce0a9f-8e95-43f7-ba47-d3daeb5dbb83'
+Create an INSERT statement that will create 5 products for user 'cdedc2d1-a8df-4ae6-9e14-befaa0f5d7ff'
+Create an INSERT statement that will create 5 products for user 'be3ac8b6-d66c-42ad-a1df-c77ab2a90ae9'
+Create an INSERT statement that will create 5 products for user 'f7d6f4e5-a2db-44d3-bb51-e45ec8e4ff1c'
+Create an INSERT statement that will create 5 products for user 'a11d0d34-8dd9-41c7-af2c-a6b3f5c6ab27'
+
+// =============================================================================
+
+INSERT INTO users (user_id, name, email, roles, password_hash, department, enabled, date_created, date_updated)
+VALUES 
+    ('4bce0a9f-8e95-43f7-ba47-d3daeb5dbb83', 'Luis Rodriguez', 'luis.rodriguez@example.com', '{admin}', 'hashed_password', NULL, TRUE, NOW(), NOW()),
+    ('cdedc2d1-a8df-4ae6-9e14-befaa0f5d7ff', 'Sofia Sanchez', 'sofia.sanchez@example.com', '{user}', 'hashed_password', NULL, TRUE, NOW(), NOW()),
+    ('be3ac8b6-d66c-42ad-a1df-c77ab2a90ae9', 'Juan Hernandez', 'juan.hernandez@example.com', '{admin,user}', 'hashed_password', NULL, TRUE, NOW(), NOW()),
+    ('f7d6f4e5-a2db-44d3-bb51-e45ec8e4ff1c', 'Maria Garcia', 'maria.garcia@example.com', '{user}', 'hashed_password', NULL, TRUE, NOW(), NOW()),
+    ('a11d0d34-8dd9-41c7-af2c-a6b3f5c6ab27', 'Elena Vasquez', 'elena.vasquez@example.com', '{admin,user}', 'hashed_password', NULL, TRUE, NOW(), NOW());
+
+Create an INSERT statement to create 1 new home for each user.

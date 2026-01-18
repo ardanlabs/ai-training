@@ -3,8 +3,8 @@
 //
 // # This requires running the following commands:
 //
-//		$ make compose-up
-//	 $ make kronk-up
+//	$ make compose-up
+//	$ make kronk-up
 package main
 
 import (

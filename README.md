@@ -75,13 +75,11 @@ limitations under the License.
 
 - **Step 1**: This example shows you how to create a terminal based chat agent using the Kronk service.
 
-- **Step 2**: This example shows you how to add a system prompt and better UI formatting from the chat agent in step 1.
+- **Step 2**: This example shows you the workflow and mechanics for tool calling.
 
-- **Step 3**: This example shows you the workflow and mechanics for tool calling.
+- **Step 3**: This example shows you how to add tool calling to the chat agent from steps 1 and 2.
 
-- **Step 4**: This example shows you how to add tool calling to the chat agent from steps 2 and 3.
-
-- **Step 5**: This example shows you how introduce "real" tooling into the coding agent from step4. We will add support for reading, listing, creating, and editing files. We also enhance the agent's UI.
+- **Step 4**: This example shows you how introduce "real" tooling into the coding agent from step3. We will add support for reading, listing, creating, and editing files. We also enhance the agent's UI.
 
 **- Example 10**: AI Agents with MCP
 

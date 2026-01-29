@@ -30,7 +30,7 @@ import (
 
 var (
 	url   = "http://localhost:8080/v1/chat/completions"
-	model = "Qwen3-8B-Q8_0"
+	model = "gpt-oss-20b-Q8_0"
 )
 
 func init() {

@@ -22,17 +22,18 @@ import (
 	"github.com/ardanlabs/ai-training/cmd/examples/example13/duck"
 	"github.com/ardanlabs/kronk/sdk/kronk"
 	"github.com/ardanlabs/kronk/sdk/kronk/model"
+	"github.com/ardanlabs/kronk/sdk/tools/defaults"
 	"github.com/ardanlabs/kronk/sdk/tools/libs"
 	"github.com/ardanlabs/kronk/sdk/tools/models"
+	"github.com/ardanlabs/kronk/sdk/tools/templates"
 )
 
 const (
-	modelChatURL   = "https://huggingface.co/Qwen/Qwen3-8B-GGUF/resolve/main/Qwen3-8B-Q8_0.gguf?download=true"
-	modelEmbedURL  = "https://huggingface.co/ggml-org/embeddinggemma-300m-qat-q8_0-GGUF/resolve/main/embeddinggemma-300m-qat-Q8_0.gguf?download=true"
-	modelInstances = 1
-	dbPath         = "zarf/data/duck-ex13-step3.db" // ":memory:"
-	chunksFile     = "zarf/data/book.chunks"
-	dimentions     = 768
+	modelChatURL  = "unsloth/gpt-oss-20b-GGUF/gpt-oss-20b-Q8_0.gguf"
+	modelEmbedURL = "ggml-org/embeddinggemma-300m-qat-q8_0-GGUF/embeddinggemma-300m-qat-Q8_0.gguf?download=true"
+	dbPath        = "zarf/data/duck-ex13-step3.db" // ":memory:"
+	chunksFile    = "zarf/data/book.chunks"
+	dimentions    = 768
 )
 
 func main() {
@@ -48,7 +49,7 @@ func run() error {
 		return fmt.Errorf("unable to install system: %w", err)
 	}
 
-	krnEmbed, err := newKronk(infoEmbed, 0)
+	krnEmbed, err := newKronk(infoEmbed)
 	if err != nil {
 		return fmt.Errorf("unable to create embedding model: %w", err)
 	}
@@ -59,8 +60,7 @@ func run() error {
 		}
 	}()
 
-	const nBatch = 32 * 1024
-	krnChat, err := newKronk(infoChat, nBatch)
+	krnChat, err := newKronk(infoChat)
 	if err != nil {
 		return fmt.Errorf("unable to create chat model: %w", err)
 	}
@@ -144,18 +144,40 @@ func run() error {
 }
 
 func installSystem() (models.Path, models.Path, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Minute)
 	defer cancel()
 
-	libs, err := libs.New()
+	libs, err := libs.New(
+		libs.WithVersion(defaults.LibVersion("")),
+	)
 	if err != nil {
-		return models.Path{}, models.Path{}, fmt.Errorf("unable to create libs api: %w", err)
+		return models.Path{}, models.Path{}, err
 	}
 
-	_, err = libs.Download(ctx, kronk.FmtLogger)
-	if err != nil {
+	if _, err := libs.Download(ctx, kronk.FmtLogger); err != nil {
 		return models.Path{}, models.Path{}, fmt.Errorf("unable to install llama.cpp: %w", err)
 	}
+
+	// -------------------------------------------------------------------------
+	// This is not mandatory if you won't be using models from the catalog. That
+	// being said, if you are using a model that is part of the catalog with
+	// a corrected jinja file, having the catalog system up to date will allow
+	// the system to pull that jinja file.
+
+	templates, err := templates.New()
+	if err != nil {
+		return models.Path{}, models.Path{}, fmt.Errorf("unable to create template system: %w", err)
+	}
+
+	if err := templates.Download(ctx); err != nil {
+		return models.Path{}, models.Path{}, fmt.Errorf("unable to download templates: %w", err)
+	}
+
+	if err := templates.Catalog().Download(ctx); err != nil {
+		return models.Path{}, models.Path{}, fmt.Errorf("unable to download catalog: %w", err)
+	}
+
+	// -------------------------------------------------------------------------
 
 	mdls, err := models.New()
 	if err != nil {
@@ -175,32 +197,36 @@ func installSystem() (models.Path, models.Path, error) {
 	return infoEmbed, infoChat, nil
 }
 
-func newKronk(info models.Path, nBatch int) (*kronk.Kronk, error) {
+func newKronk(mp models.Path) (*kronk.Kronk, error) {
 	if err := kronk.Init(); err != nil {
 		return nil, fmt.Errorf("unable to init kronk: %w", err)
 	}
 
-	krn, err := kronk.New(model.Config{
-		ModelFiles: info.ModelFiles,
-		NBatch:     nBatch,
-	})
+	cfg := model.Config{
+		ContextWindow:     32 * 1024,
+		ModelFiles:        mp.ModelFiles,
+		CacheTypeK:        model.GGMLTypeQ8_0,
+		CacheTypeV:        model.GGMLTypeQ8_0,
+		NSeqMax:           2,
+		SystemPromptCache: true,
+	}
+
+	krn, err := kronk.New(cfg)
 
 	if err != nil {
 		return nil, fmt.Errorf("unable to create inference model: %w", err)
 	}
 
-	if !krn.ModelInfo().IsEmbedModel {
-		fmt.Print("- system info:\n\t")
-		for k, v := range krn.SystemInfo() {
-			fmt.Printf("%s:%v, ", k, v)
-		}
-		fmt.Println()
+	fmt.Print("- system info:\n\t")
+	for k, v := range krn.SystemInfo() {
+		fmt.Printf("%s:%v, ", k, v)
 	}
+	fmt.Println()
 
-	fmt.Println("- modelID.       :", krn.ModelInfo().ID)
-	fmt.Println("  - contextWindow:", krn.ModelConfig().ContextWindow)
-	fmt.Println("  - embeddings   :", krn.ModelInfo().IsEmbedModel)
-	fmt.Println("  - isGPT        :", krn.ModelInfo().IsGPTModel)
+	fmt.Println("- contextWindow:", krn.ModelConfig().ContextWindow)
+	fmt.Println("- embeddings   :", krn.ModelInfo().IsEmbedModel)
+	fmt.Println("- isGPT        :", krn.ModelInfo().IsGPTModel)
+	fmt.Println("- template     :", krn.ModelInfo().Template.FileName)
 
 	return krn, nil
 }
@@ -304,7 +330,7 @@ loop:
 	for resp := range ch {
 		lr = resp
 
-		switch resp.Choice[0].FinishReason {
+		switch resp.Choice[0].FinishReason() {
 		case model.FinishReasonError:
 			return messages, fmt.Errorf("error from model: %s", resp.Choice[0].Delta.Content)
 

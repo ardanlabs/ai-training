@@ -38,9 +38,8 @@ import (
 )
 
 const (
-	modelChatURL       = "https://huggingface.co/Qwen/Qwen3-8B-GGUF/resolve/main/Qwen3-8B-Q8_0.gguf?download=true"
-	modelEmbedURL      = "https://huggingface.co/ggml-org/embeddinggemma-300m-qat-q8_0-GGUF/resolve/main/embeddinggemma-300m-qat-Q8_0.gguf?download=true"
-	modelInstances     = 1
+	modelChatURL       = "unsloth/gpt-oss-20b-GGUF/gpt-oss-20b-Q8_0.gguf"
+	modelEmbedURL      = "ggml-org/embeddinggemma-300m-qat-q8_0-GGUF/embeddinggemma-300m-qat-Q8_0.gguf?download=true"
 	dbPath             = "zarf/data/duck-ex13-step3.db" // ":memory:"
 	chunksFile         = "zarf/data/book.chunks"
 	dimentions         = 768

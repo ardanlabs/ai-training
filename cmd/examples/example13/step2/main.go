@@ -16,15 +16,16 @@ import (
 
 	"github.com/ardanlabs/kronk/sdk/kronk"
 	"github.com/ardanlabs/kronk/sdk/kronk/model"
+	"github.com/ardanlabs/kronk/sdk/tools/defaults"
 	"github.com/ardanlabs/kronk/sdk/tools/libs"
 	"github.com/ardanlabs/kronk/sdk/tools/models"
+	"github.com/ardanlabs/kronk/sdk/tools/templates"
 )
 
 const (
-	modelURL       = "https://huggingface.co/ggml-org/Qwen2.5-VL-3B-Instruct-GGUF/resolve/main/Qwen2.5-VL-3B-Instruct-Q8_0.gguf"
-	projURL        = "https://huggingface.co/ggml-org/Qwen2.5-VL-3B-Instruct-GGUF/resolve/main/mmproj-Qwen2.5-VL-3B-Instruct-Q8_0.gguf"
-	imageFile      = "zarf/samples/gallery/giraffe.jpg"
-	modelInstances = 1
+	modelURL  = "ggml-org/Qwen2.5-VL-3B-Instruct-GGUF/Qwen2.5-VL-3B-Instruct-Q8_0.gguf"
+	projURL   = "ggml-org/Qwen2.5-VL-3B-Instruct-GGUF/mmproj-Qwen2.5-VL-3B-Instruct-Q8_0.gguf"
+	imageFile = "zarf/samples/gallery/giraffe.jpg"
 )
 
 func main() {
@@ -44,6 +45,7 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("unable to init kronk: %w", err)
 	}
+
 	defer func() {
 		fmt.Println("\nUnloading Kronk")
 		if err := krn.Unload(context.Background()); err != nil {
@@ -51,48 +53,58 @@ func run() error {
 		}
 	}()
 
-	// -------------------------------------------------------------------------
-
-	question := "What is in this picture?"
-
-	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
-	defer cancel()
-
-	ch, err := performChat(ctx, krn, question, imageFile)
-	if err != nil {
-		return fmt.Errorf("perform chat: %w", err)
-	}
-
-	if err := modelResponse(krn, ch); err != nil {
-		return fmt.Errorf("model response: %w", err)
+	if err := vision(krn); err != nil {
+		return err
 	}
 
 	return nil
 }
 
 func installSystem() (models.Path, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
 	defer cancel()
 
-	libs, err := libs.New()
+	libs, err := libs.New(
+		libs.WithVersion(defaults.LibVersion("")),
+	)
 	if err != nil {
-		return models.Path{}, fmt.Errorf("unable to create libs api: %w", err)
+		return models.Path{}, err
 	}
 
-	_, err = libs.Download(ctx, kronk.FmtLogger)
-	if err != nil {
+	if _, err := libs.Download(ctx, kronk.FmtLogger); err != nil {
 		return models.Path{}, fmt.Errorf("unable to install llama.cpp: %w", err)
 	}
 
+	// -------------------------------------------------------------------------
+
+	templates, err := templates.New()
+	if err != nil {
+		return models.Path{}, fmt.Errorf("unable to create template system: %w", err)
+	}
+
+	if err := templates.Download(ctx); err != nil {
+		return models.Path{}, fmt.Errorf("unable to download templates: %w", err)
+	}
+
+	if err := templates.Catalog().Download(ctx); err != nil {
+		return models.Path{}, fmt.Errorf("unable to download catalog: %w", err)
+	}
+
+	// -------------------------------------------------------------------------
+
 	mdls, err := models.New()
 	if err != nil {
-		return models.Path{}, fmt.Errorf("unable to create models api: %w", err)
+		return models.Path{}, fmt.Errorf("unable to install llama.cpp: %w", err)
 	}
 
 	mp, err := mdls.Download(ctx, kronk.FmtLogger, modelURL, projURL)
 	if err != nil {
 		return models.Path{}, fmt.Errorf("unable to install model: %w", err)
 	}
+
+	// -------------------------------------------------------------------------
+	// You could also download this model using the catalog system.
+	// templates.Catalog().DownloadModel("Qwen2.5-VL-3B-Instruct-Q8_0")
 
 	return mp, nil
 }
@@ -103,8 +115,13 @@ func newKronk(mp models.Path) (*kronk.Kronk, error) {
 	}
 
 	krn, err := kronk.New(model.Config{
-		ModelFiles: mp.ModelFiles,
-		ProjFile:   mp.ProjFile,
+		ModelFiles:    mp.ModelFiles,
+		ProjFile:      mp.ProjFile,
+		ContextWindow: 8192,
+		NBatch:        2048,
+		NUBatch:       2048,
+		CacheTypeK:    model.GGMLTypeQ8_0,
+		CacheTypeV:    model.GGMLTypeQ8_0,
 	})
 
 	if err != nil {
@@ -120,8 +137,27 @@ func newKronk(mp models.Path) (*kronk.Kronk, error) {
 	fmt.Println("- contextWindow:", krn.ModelConfig().ContextWindow)
 	fmt.Println("- embeddings   :", krn.ModelInfo().IsEmbedModel)
 	fmt.Println("- isGPT        :", krn.ModelInfo().IsGPTModel)
+	fmt.Println("- template     :", krn.ModelInfo().Template.FileName)
 
 	return krn, nil
+}
+
+func vision(krn *kronk.Kronk) error {
+	question := "What is in this picture?"
+
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+
+	ch, err := performChat(ctx, krn, question, imageFile)
+	if err != nil {
+		return fmt.Errorf("perform chat: %w", err)
+	}
+
+	if err := modelResponse(krn, ch); err != nil {
+		return fmt.Errorf("model response: %w", err)
+	}
+
+	return nil
 }
 
 func performChat(ctx context.Context, krn *kronk.Kronk, question string, imageFile string) (<-chan model.ChatResponse, error) {
@@ -158,7 +194,7 @@ loop:
 	for resp := range ch {
 		lr = resp
 
-		switch resp.Choice[0].FinishReason {
+		switch resp.Choice[0].FinishReason() {
 		case model.FinishReasonStop:
 			break loop
 

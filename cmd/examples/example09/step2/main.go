@@ -1,5 +1,4 @@
-// This example shows you how to add a system prompt and better UI formatting
-// from the chat agent in step 1.
+// This example shows you the workflow and mechanics for tool calling.
 //
 // # Running the example:
 //
@@ -12,29 +11,27 @@
 package main
 
 import (
-	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
-	"strings"
-	"time"
 
 	"github.com/ardanlabs/ai-training/foundation/client"
 )
 
 var (
 	url   = "http://localhost:8080/v1/chat/completions"
-	model = "Qwen3-8B-Q8_0"
+	model = "gpt-oss-20b-Q8_0"
 )
 
 func init() {
-	if v := os.Getenv("KRONK_SERVER"); v != "" {
+	if v := os.Getenv("LLM_SERVER"); v != "" {
 		url = v
 	}
 
-	if v := os.Getenv("KRONK_MODEL"); v != "" {
+	if v := os.Getenv("LLM_MODEL"); v != "" {
 		model = v
 	}
 }
@@ -48,168 +45,213 @@ func main() {
 }
 
 func run() error {
-	scanner := bufio.NewScanner(os.Stdin)
-	getUserMessage := func() (string, bool) {
-		if !scanner.Scan() {
-			return "", false
-		}
-		return scanner.Text(), true
+	if err := weatherQuestion(context.TODO()); err != nil {
+		return fmt.Errorf("weatherQuestion: %w", err)
 	}
 
-	agent, err := NewAgent(getUserMessage)
-	if err != nil {
-		return fmt.Errorf("failed to create agent: %w", err)
-	}
-
-	return agent.Run(context.TODO())
+	return nil
 }
 
-// =============================================================================
+func weatherQuestion(ctx context.Context) error {
+	cln := client.NewSSE[client.ChatSSE](client.StdoutLogger)
 
-type Agent struct {
-	sseClient      *client.SSEClient[client.ChatSSE]
-	getUserMessage func() (string, bool)
-}
+	// -------------------------------------------------------------------------
+	// Start by asking what the weather is like in New York City
 
-func NewAgent(getUserMessage func() (string, bool)) (*Agent, error) {
-	agent := Agent{
-		sseClient:      client.NewSSE[client.ChatSSE](client.StdoutLogger),
-		getUserMessage: getUserMessage,
-	}
+	q := "What is the weather like in New York City?"
 
-	return &agent, nil
-}
+	fmt.Printf("\nQuestion:\n\n%s\n", q)
 
-// WE WILL ADD A SYSTEM PROMPT TO THE AGENT TO HELP WITH CLARIFYING INSTRUCTIONS.
-
-const systemPrompt = `You are a helpful coding assistant that has tools to assist
-you in coding.
-
-Reasoning: high
-`
-
-func (a *Agent) Run(ctx context.Context) error {
-	var conversation []client.D
-
-	// WE WILL ADD THE SYSTEM PROMPT TO THE CONVERSATION.
-	conversation = append(conversation, client.D{
-		"role":    "system",
-		"content": systemPrompt,
-	})
-
-	fmt.Printf("\nChat with %s (use 'ctrl-c' to quit)\n", model)
-
-	for {
-		fmt.Print("\u001b[94m\nYou\u001b[0m: ")
-		userInput, ok := a.getUserMessage()
-		if !ok {
-			break
-		}
-
-		conversation = append(conversation, client.D{
+	conversation := []client.D{
+		{
 			"role":    "user",
-			"content": userInput,
-		})
+			"content": q,
+		},
+	}
 
-		d := client.D{
-			"model":       model,
-			"messages":    conversation,
-			"temperature": 0.0,
-			"top_p":       0.1,
-			"top_k":       1,
-			"stream":      true,
+	toolName := "tool_get_weather"
+
+	d := client.D{
+		"model":       model,
+		"messages":    conversation,
+		"temperature": 0.1,
+		"top_p":       0.1,
+		"top_k":       50,
+		"max_tokens":  32 * 1024,
+		"stream":      true,
+		"tools": []client.D{
+			{
+				"type": "function",
+				"function": client.D{
+					"name":        toolName,
+					"description": "Get the current weather for a location",
+					"parameters": client.D{
+						"type": "object",
+						"properties": client.D{
+							"location": client.D{
+								"type":        "string",
+								"description": "The location to get the weather for, e.g. San Francisco, CA",
+							},
+						},
+						"required": []string{"location"},
+					},
+				},
+			},
+		},
+		"tool_selection": "auto",
+	}
+
+	ch := make(chan client.ChatSSE, 100)
+	if err := cln.Do(ctx, http.MethodPost, url, d, ch); err != nil {
+		return fmt.Errorf("do: %w", err)
+	}
+
+	// -------------------------------------------------------------------------
+	// The model will respond asking us to make the get_current_weather function
+	// call. We will make the call and then send the response back to the model.
+
+	fmt.Print("\n")
+
+	for resp := range ch {
+		switch {
+		case len(resp.Choices[0].Delta.ToolCalls) > 0:
+			toolCall := resp.Choices[0].Delta.ToolCalls[0]
+
+			fmt.Printf("\n\n\u001b[92mModel Asking For Tool Call:\n\nToolID[%s]: %s(%s)\u001b[0m\n\n",
+				toolCall.ID,
+				toolCall.Function.Name,
+				toolCall.Function.Arguments)
+
+			argsJSON, _ := json.Marshal(toolCall.Function.Arguments)
+			conversation = append(conversation, client.D{
+				"role": "assistant",
+				"tool_calls": []client.D{
+					{
+						"id":   toolCall.ID,
+						"type": "function",
+						"function": client.D{
+							"name":      toolCall.Function.Name,
+							"arguments": string(argsJSON),
+						},
+					},
+				},
+			})
+
+			resp := GetWeatherTool(ctx, toolCall)
+			conversation = append(conversation, resp)
+
+			fmt.Printf("%s\n\n", resp)
+
+		case resp.Choices[0].Delta.Content != "":
+			fmt.Print(resp.Choices[0].Delta.Content)
+
+		case resp.Choices[0].Delta.Reasoning != "":
+			fmt.Printf("\u001b[91m%s\u001b[0m", resp.Choices[0].Delta.Reasoning)
 		}
+	}
 
-		fmt.Printf("\u001b[93m\n%s\u001b[0m: ", model)
+	// -------------------------------------------------------------------------
+	// Send the result of the tool call back to the model
 
-		ch := make(chan client.ChatSSE, 100)
-		ctx, cancelContext := context.WithTimeout(ctx, time.Minute*5)
+	d = client.D{
+		"model":       model,
+		"messages":    conversation,
+		"temperature": 0.1,
+		"top_p":       0.1,
+		"top_k":       50,
+		"max_tokens":  32 * 1024,
+		"stream":      true,
+		"tools": []client.D{
+			{
+				"type": "function",
+				"function": client.D{
+					"name":        toolName,
+					"description": "Get the current weather for a location",
+					"parameters": client.D{
+						"type": "object",
+						"properties": client.D{
+							"location": client.D{
+								"type":        "string",
+								"description": "The location to get the weather for, e.g. San Francisco, CA",
+							},
+						},
+						"required": []string{"location"},
+					},
+				},
+			},
+		},
+		"tool_selection": "auto",
+	}
 
-		if err := a.sseClient.Do(ctx, http.MethodPost, url, d, ch); err != nil {
-			cancelContext()
-			fmt.Printf("\n\n\u001b[91mERROR:%s\u001b[0m\n\n", err)
-			continue
-		}
+	ch = make(chan client.ChatSSE, 100)
+	if err := cln.Do(ctx, http.MethodPost, url, d, ch); err != nil {
+		return fmt.Errorf("do: %w", err)
+	}
 
-		var chunks []string
+	// -------------------------------------------------------------------------
+	// The model should provide the answer based on the tool call
 
-		// WE WILL CREATE FLAGS TO KNOW WHEN WE ARE PROCESSING REASONING CONTENT.
+	fmt.Print("Final Result:\n\n")
 
-		reasonThinking := false  // GPT models provide a Reasoning field.
-		contentThinking := false // Other reasoning models use <think> tags.
+	var reasoning bool
 
-		// WE WILL ADD SOME IMPROVED FORMATTING.
-		fmt.Print("\n")
-
-		for resp := range ch {
-			if len(resp.Choices) == 0 {
-				continue
+	for resp := range ch {
+		switch {
+		case resp.Choices[0].Delta.Content != "":
+			if reasoning {
+				fmt.Print("\n\n")
+				reasoning = false
 			}
 
-			switch {
-			case resp.Choices[0].Delta.Content != "":
+			fmt.Print(resp.Choices[0].Delta.Content)
 
-				// WE NEED TO RESET THE REASONING FLAG ONCE THE MODEL IS
-				// DONE REASONING.
-				if reasonThinking {
-					reasonThinking = false
-					fmt.Print("\n\n")
-				}
-
-				// WE NEED TO CHECK IF THE REASONING IS HAPPENING VIA
-				// <think> TAGS.
-				switch resp.Choices[0].Delta.Content {
-				case "<think>":
-					contentThinking = true
-					continue
-				case "</think>":
-					contentThinking = false
-					continue
-				}
-
-				// WE NEED TO ADJUST OUR ORIGINAL SWITCH TO TAKE INTO ACCOUNT
-				// WE MIGHT HAVE BEEN PROCESSING <think> TAGS.
-				switch {
-				case !contentThinking:
-					fmt.Print(resp.Choices[0].Delta.Content)
-					chunks = append(chunks, resp.Choices[0].Delta.Content)
-
-				case contentThinking:
-					fmt.Printf("\u001b[91m%s\u001b[0m", resp.Choices[0].Delta.Content)
-				}
-
-			// WE NEED TO CHECK IF THE MODEL IS THINKING VIA THIS REASONING
-			// FIELD AND FORMAT THE RESPONSE PROPERLY.
-			case resp.Choices[0].Delta.Reasoning != "":
-				if !reasonThinking {
-					fmt.Print("\n")
-				}
-
-				reasonThinking = true
-
-				fmt.Printf("\u001b[91m%s\u001b[0m", resp.Choices[0].Delta.Reasoning)
-			}
-		}
-
-		cancelContext()
-
-		if len(chunks) > 0 {
-			fmt.Print("\n")
-
-			// REMOVING <think> TAGS FROM THE CONTENT WILL LEAVE EXTRA CRLF
-			// CHARACTERS WE NEED TO REMOVE.
-			content := strings.Join(chunks, " ")
-			content = strings.TrimLeft(content, "\n")
-
-			// WE NEED TO CHECK IF THE CONTENT IS EMPTY AFTER REMOVING CRLF.
-			if content != "" {
-				conversation = append(conversation, client.D{
-					"role":    "assistant",
-					"content": strings.Join(chunks, " "),
-				})
-			}
+		case resp.Choices[0].Delta.Reasoning != "":
+			reasoning = true
+			fmt.Printf("\u001b[91m%s\u001b[0m", resp.Choices[0].Delta.Reasoning)
 		}
 	}
 
 	return nil
+}
+
+// =============================================================================
+
+// GetWeatherTool is the function that is called by the agent to get the weather
+// when the model requests the tool with the specified parameters.
+func GetWeatherTool(ctx context.Context, toolCall client.ToolCall) (resp client.D) {
+
+	// We are going to hardcode a result for now so we can test the tool.
+
+	location := toolCall.Function.Arguments["location"].(string)
+
+	info := struct {
+		Status string         `json:"status"`
+		Data   map[string]any `json:"data"`
+	}{
+		Status: "SUCCESS",
+		Data: map[string]any{
+			"temperature": 28,
+			"humidity":    80,
+			"wind_speed":  10,
+			"description": fmt.Sprintln("The weather in", location, "is hot and humid"),
+		},
+	}
+
+	// Return the weather information as structured data using JSON which is
+	// easier for the model to interpret.
+
+	d, err := json.Marshal(info)
+	if err != nil {
+		return client.D{
+			"role":         "tool",
+			"tool_call_id": toolCall.ID,
+			"content":      fmt.Sprintf(`{"status": "FAILED", "data": "%s"}`, err),
+		}
+	}
+
+	return client.D{
+		"role":         "tool",
+		"tool_call_id": toolCall.ID,
+		"content":      string(d),
+	}
 }

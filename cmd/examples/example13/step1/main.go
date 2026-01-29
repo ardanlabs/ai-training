@@ -21,16 +21,13 @@ import (
 
 	"github.com/ardanlabs/kronk/sdk/kronk"
 	"github.com/ardanlabs/kronk/sdk/kronk/model"
+	"github.com/ardanlabs/kronk/sdk/tools/defaults"
 	"github.com/ardanlabs/kronk/sdk/tools/libs"
 	"github.com/ardanlabs/kronk/sdk/tools/models"
 	"github.com/ardanlabs/kronk/sdk/tools/templates"
 )
 
-const (
-	modelURL = "https://huggingface.co/Qwen/Qwen3-8B-GGUF/resolve/main/Qwen3-8B-Q8_0.gguf"
-	//modelURL       = "https://huggingface.co/unsloth/gpt-oss-20b-GGUF/resolve/main/gpt-oss-20b-Q8_0.gguf"
-	modelInstances = 1
-)
+const modelURL = "unsloth/gpt-oss-120b-GGUF/gpt-oss-120b-F16.gguf"
 
 func main() {
 	if err := run(); err != nil {
@@ -40,27 +37,146 @@ func main() {
 }
 
 func run() error {
-	info, err := installSystem()
+	mp, err := installSystem()
 	if err != nil {
-		return fmt.Errorf("run:unable to installation system: %w", err)
+		return fmt.Errorf("run: unable to installation system: %w", err)
 	}
 
-	krn, err := newKronk(info)
+	krn, err := newKronk(mp)
 	if err != nil {
 		return fmt.Errorf("unable to init kronk: %w", err)
 	}
+
 	defer func() {
 		fmt.Println("\nUnloading Kronk")
 		if err := krn.Unload(context.Background()); err != nil {
-			fmt.Printf("run:failed to unload model: %v", err)
+			fmt.Printf("run: failed to unload model: %v", err)
 		}
 	}()
 
+	if err := chat(krn); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func installSystem() (models.Path, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Minute)
+	defer cancel()
+
+	libs, err := libs.New(
+		libs.WithVersion(defaults.LibVersion("")),
+	)
+	if err != nil {
+		return models.Path{}, err
+	}
+
+	if _, err := libs.Download(ctx, kronk.FmtLogger); err != nil {
+		return models.Path{}, fmt.Errorf("unable to install llama.cpp: %w", err)
+	}
+
+	// -------------------------------------------------------------------------
+	// This is not mandatory if you won't be using models from the catalog. That
+	// being said, if you are using a model that is part of the catalog with
+	// a corrected jinja file, having the catalog system up to date will allow
+	// the system to pull that jinja file.
+
+	templates, err := templates.New()
+	if err != nil {
+		return models.Path{}, fmt.Errorf("unable to create template system: %w", err)
+	}
+
+	if err := templates.Download(ctx); err != nil {
+		return models.Path{}, fmt.Errorf("unable to download templates: %w", err)
+	}
+
+	if err := templates.Catalog().Download(ctx); err != nil {
+		return models.Path{}, fmt.Errorf("unable to download catalog: %w", err)
+	}
+
 	// -------------------------------------------------------------------------
 
+	mdls, err := models.New()
+	if err != nil {
+		return models.Path{}, fmt.Errorf("unable to install llama.cpp: %w", err)
+	}
+
+	mp, err := mdls.Download(ctx, kronk.FmtLogger, modelURL, "")
+	if err != nil {
+		return models.Path{}, fmt.Errorf("unable to install model: %w", err)
+	}
+
+	// -------------------------------------------------------------------------
+	// You could also download this model using the catalog system.
+	// templates.Catalog().DownloadModel("Qwen3-8B-Q8_0")
+
+	return mp, nil
+}
+
+func newKronk(mp models.Path) (*kronk.Kronk, error) {
+	if err := kronk.Init(); err != nil {
+		return nil, fmt.Errorf("unable to init kronk: %w", err)
+	}
+
+	// The catalog package has an API that can retrieve defaults for
+	// models in the catalog system and/or a model_config file.
+	// cfg, err := c.templates.Catalog().RetrieveModelConfig(modelID)
+	// if err != nil {
+	// 	return nil, fmt.Errorf("unable to retrieve model config: %w", err)
+	// }
+
+	cfg := model.Config{
+		ModelFiles:        mp.ModelFiles,
+		CacheTypeK:        model.GGMLTypeQ8_0,
+		CacheTypeV:        model.GGMLTypeQ8_0,
+		NSeqMax:           2,
+		SystemPromptCache: true,
+	}
+
+	krn, err := kronk.New(cfg)
+
+	if err != nil {
+		return nil, fmt.Errorf("unable to create inference model: %w", err)
+	}
+
+	fmt.Print("- system info:\n\t")
+	for k, v := range krn.SystemInfo() {
+		fmt.Printf("%s:%v, ", k, v)
+	}
+	fmt.Println()
+
+	fmt.Println("- contextWindow:", krn.ModelConfig().ContextWindow)
+	fmt.Println("- embeddings   :", krn.ModelInfo().IsEmbedModel)
+	fmt.Println("- isGPT        :", krn.ModelInfo().IsGPTModel)
+	fmt.Println("- template     :", krn.ModelInfo().Template.FileName)
+
+	return krn, nil
+}
+
+func chat(krn *kronk.Kronk) error {
 	messages := model.DocumentArray()
 
+	var systemPrompt = `
+		You are a helpful AI assistant. You are designed to help users answer
+		questions, create content, and provide information in a helpful and
+		accurate manner. Always follow the user's instructions carefully and
+		respond with clear, concise, and well-structured answers. You are a
+		helpful AI assistant. You are designed to help users answer questions,
+		create content, and provide information in a helpful and accurate manner.
+		Always follow the user's instructions carefully and respond with clear,
+		concise, and well-structured answers. You are a helpful AI assistant.
+		You are designed to help users answer questions, create content, and
+		provide information in a helpful and accurate manner. Always follow the
+		user's instructions carefully and respond with clear, concise, and
+		well-structured answers.`
+
+	messages = append(messages,
+		model.TextMessage(model.RoleSystem, systemPrompt),
+	)
+
 	for {
+		var err error
 		messages, err = userInput(messages)
 		if err != nil {
 			if errors.Is(err, io.EOF) {
@@ -78,93 +194,27 @@ func run() error {
 				"tools":       toolDocuments(),
 				"max_tokens":  2048,
 				"temperature": 0.7,
-				"top_p":       0.9,
-				"top_k":       40,
+				"top_p":       0.8,
+				"top_k":       20,
 			}
 
 			ch, err := performChat(ctx, krn, d)
 			if err != nil {
-				return nil, fmt.Errorf("run:unable to perform chat: %w", err)
+				return nil, fmt.Errorf("run: unable to perform chat: %w", err)
 			}
 
 			messages, err = modelResponse(krn, messages, ch)
 			if err != nil {
-				return nil, fmt.Errorf("run:model response: %w", err)
+				return nil, fmt.Errorf("run: model response: %w", err)
 			}
 
 			return messages, nil
 		}()
 
 		if err != nil {
-			return fmt.Errorf("run:unable to perform chat: %w", err)
+			return fmt.Errorf("run: unable to perform chat: %w", err)
 		}
 	}
-}
-
-func installSystem() (models.Path, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-	defer cancel()
-
-	libs, err := libs.New()
-	if err != nil {
-		return models.Path{}, fmt.Errorf("unable to create libs api: %w", err)
-	}
-
-	_, err = libs.Download(ctx, kronk.FmtLogger)
-	if err != nil {
-		return models.Path{}, fmt.Errorf("unable to install llama.cpp: %w", err)
-	}
-
-	mdls, err := models.New()
-	if err != nil {
-		return models.Path{}, fmt.Errorf("unable to create models api: %w", err)
-	}
-
-	mp, err := mdls.Download(ctx, kronk.FmtLogger, modelURL, "")
-	if err != nil {
-		return models.Path{}, fmt.Errorf("unable to install model: %w", err)
-	}
-
-	templates, err := templates.New()
-	if err != nil {
-		return models.Path{}, fmt.Errorf("unable to create template system: %w", err)
-	}
-
-	if err := templates.Download(ctx); err != nil {
-		return models.Path{}, fmt.Errorf("unable to download templates: %w", err)
-	}
-
-	if err := templates.Catalog().Download(ctx); err != nil {
-		return models.Path{}, fmt.Errorf("unable to download catalog: %w", err)
-	}
-
-	return mp, nil
-}
-
-func newKronk(mp models.Path) (*kronk.Kronk, error) {
-	if err := kronk.Init(); err != nil {
-		return nil, fmt.Errorf("unable to init kronk: %w", err)
-	}
-
-	krn, err := kronk.New(model.Config{
-		ModelFiles: mp.ModelFiles,
-	})
-
-	if err != nil {
-		return nil, fmt.Errorf("unable to create inference model: %w", err)
-	}
-
-	fmt.Print("- system info:\n\t")
-	for k, v := range krn.SystemInfo() {
-		fmt.Printf("%s:%v, ", k, v)
-	}
-	fmt.Println()
-
-	fmt.Println("- contextWindow:", krn.ModelConfig().ContextWindow)
-	fmt.Println("- embeddings   :", krn.ModelInfo().IsEmbedModel)
-	fmt.Println("- isGPT        :", krn.ModelInfo().IsGPTModel)
-
-	return krn, nil
 }
 
 func userInput(messages []model.D) ([]model.D, error) {
@@ -182,7 +232,7 @@ func userInput(messages []model.D) ([]model.D, error) {
 	}
 
 	messages = append(messages,
-		model.TextMessage("user", userInput),
+		model.TextMessage(model.RoleUser, userInput),
 	)
 
 	return messages, nil
@@ -204,23 +254,6 @@ func toolDocuments() []model.D {
 						},
 					},
 					"required": []any{"location"},
-				},
-			},
-		},
-		model.D{
-			"type": "function",
-			"function": model.D{
-				"name":        "invoke_cli_command",
-				"description": "Use this anytime you need to run a CLI command of any kind",
-				"parameters": model.D{
-					"type": "object",
-					"properties": model.D{
-						"call": model.D{
-							"type":        "string",
-							"description": "The full set of parameters to pass to the CLI command",
-						},
-					},
-					"required": []any{"call"},
 				},
 			},
 		},
@@ -246,7 +279,7 @@ loop:
 	for resp := range ch {
 		lr = resp
 
-		switch resp.Choice[0].FinishReason {
+		switch resp.Choice[0].FinishReason() {
 		case model.FinishReasonError:
 			return messages, fmt.Errorf("error from model: %s", resp.Choice[0].Delta.Content)
 

@@ -136,7 +136,9 @@ func loadChunks(db *sql.DB, krn *kronk.Kronk, chunksFile string) error {
 			defer cancel()
 
 			d := model.D{
-				"input": chunk,
+				"input":              chunk,
+				"truncate":           true,
+				"truncate_direction": "right",
 			}
 
 			resp, err := krn.Embeddings(ctx, d)

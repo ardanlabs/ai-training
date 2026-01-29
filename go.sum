@@ -53,8 +53,8 @@ github.com/apache/thrift v0.22.0/go.mod h1:1e7J/O1Ae6ZQMTYdy9xa3w9k+XHWPfRvdPyJe
 github.com/araddon/dateparse v0.0.0-20180729174819-cfd92a431d0e/go.mod h1:SLqhdZcd+dF3TEVL2RMoob5bBP5R1P1qkox+HtCBgGI=
 github.com/araddon/dateparse v0.0.0-20210429162001-6b43995a97de h1:FxWPpzIjnTlhPwqqXc4/vE0f7GvRjuAsbW+HOIe8KnA=
 github.com/araddon/dateparse v0.0.0-20210429162001-6b43995a97de/go.mod h1:DCaWoUhZrYW9p1lxo/cm8EmUOOzAPSEZNGF2DK1dJgw=
-github.com/ardanlabs/kronk v1.16.2 h1:ktImBMd7C/TC+sDmgglm4Sfa1G8l4AqHh2rXCIyDnXg=
-github.com/ardanlabs/kronk v1.16.2/go.mod h1:FJJyYkqZf+NsG+PfymnRRp6KMFBroWtmZd2pURKbDnI=
+github.com/ardanlabs/kronk v1.16.4 h1:eFLphk7AW7kDscttga7UI2l1wteQWYzvb6zxzOXxHm0=
+github.com/ardanlabs/kronk v1.16.4/go.mod h1:FJJyYkqZf+NsG+PfymnRRp6KMFBroWtmZd2pURKbDnI=
 github.com/aws/aws-sdk-go-v2 v1.41.1 h1:ABlyEARCDLN034NhxlRUSZr4l71mh+T5KAeGh6cerhU=
 github.com/aws/aws-sdk-go-v2 v1.41.1/go.mod h1:MayyLB8y+buD9hZqkCW3kX1AKq07Y5pXxtgB+rRFhz0=
 github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.4 h1:489krEF9xIGkOaaX3CE/Be2uWjiXrkCH6gUX+bZA/BU=

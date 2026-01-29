@@ -4,7 +4,7 @@ go 1.25.3
 
 require (
 	code.sajari.com/docconv/v2 v2.0.0-pre.4
-	github.com/ardanlabs/kronk v1.16.2
+	github.com/ardanlabs/kronk v1.16.4
 	github.com/dlclark/regexp2 v1.11.5
 	github.com/duckdb/duckdb-go/v2 v2.5.5
 	github.com/google/uuid v1.6.0

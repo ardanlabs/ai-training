@@ -38,6 +38,13 @@ services:
     environment:
       - WEBUI_AUTH=false
       - GLOBAL_LOG_LEVEL="DEBUG"
+      - ENABLE_PERSISTENT_CONFIG=false
+      - OPENAI_API_BASE_URL=http://host.docker.internal:8080/v1
+      - OFFLINE_MODE=true
+      - HF_HUB_OFFLINE=1
+      - RAG_EMBEDDING_MODEL_AUTO_UPDATE=false
+      - RAG_RERANKING_MODEL_AUTO_UPDATE=false
+      - WHISPER_MODEL_AUTO_UPDATE=false
     extra_hosts:
       - host.docker.internal:host-gateway
     ports:

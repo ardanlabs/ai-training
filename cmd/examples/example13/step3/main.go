@@ -22,15 +22,15 @@ import (
 	"github.com/ardanlabs/ai-training/cmd/examples/example13/duck"
 	"github.com/ardanlabs/kronk/sdk/kronk"
 	"github.com/ardanlabs/kronk/sdk/kronk/model"
+	"github.com/ardanlabs/kronk/sdk/tools/catalog"
 	"github.com/ardanlabs/kronk/sdk/tools/defaults"
 	"github.com/ardanlabs/kronk/sdk/tools/libs"
 	"github.com/ardanlabs/kronk/sdk/tools/models"
-	"github.com/ardanlabs/kronk/sdk/tools/templates"
 )
 
 const (
 	modelChatURL  = "unsloth/gpt-oss-20b-GGUF/gpt-oss-20b-Q8_0.gguf"
-	modelEmbedURL = "ggml-org/embeddinggemma-300m-qat-q8_0-GGUF/embeddinggemma-300m-qat-Q8_0.gguf?download=true"
+	modelEmbedURL = "ggml-org/embeddinggemma-300m-qat-q8_0-GGUF/embeddinggemma-300m-qat-Q8_0.gguf"
 	dbPath        = "zarf/data/duck-ex13-step3.db" // ":memory:"
 	chunksFile    = "zarf/data/book.chunks"
 	dimentions    = 768
@@ -164,16 +164,12 @@ func installSystem() (models.Path, models.Path, error) {
 	// a corrected jinja file, having the catalog system up to date will allow
 	// the system to pull that jinja file.
 
-	templates, err := templates.New()
+	ctlg, err := catalog.New()
 	if err != nil {
-		return models.Path{}, models.Path{}, fmt.Errorf("unable to create template system: %w", err)
+		return models.Path{}, models.Path{}, fmt.Errorf("unable to create catalog system: %w", err)
 	}
 
-	if err := templates.Download(ctx); err != nil {
-		return models.Path{}, models.Path{}, fmt.Errorf("unable to download templates: %w", err)
-	}
-
-	if err := templates.Catalog().Download(ctx); err != nil {
+	if err := ctlg.Download(ctx); err != nil {
 		return models.Path{}, models.Path{}, fmt.Errorf("unable to download catalog: %w", err)
 	}
 
@@ -335,7 +331,6 @@ loop:
 			return messages, fmt.Errorf("error from model: %s", resp.Choice[0].Delta.Content)
 
 		case model.FinishReasonStop:
-			messages = append(messages, model.TextMessage("assistant", resp.Choice[0].Delta.Content))
 			break loop
 
 		case model.FinishReasonTool:

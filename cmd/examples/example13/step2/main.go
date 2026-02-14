@@ -16,10 +16,10 @@ import (
 
 	"github.com/ardanlabs/kronk/sdk/kronk"
 	"github.com/ardanlabs/kronk/sdk/kronk/model"
+	"github.com/ardanlabs/kronk/sdk/tools/catalog"
 	"github.com/ardanlabs/kronk/sdk/tools/defaults"
 	"github.com/ardanlabs/kronk/sdk/tools/libs"
 	"github.com/ardanlabs/kronk/sdk/tools/models"
-	"github.com/ardanlabs/kronk/sdk/tools/templates"
 )
 
 const (
@@ -77,16 +77,12 @@ func installSystem() (models.Path, error) {
 
 	// -------------------------------------------------------------------------
 
-	templates, err := templates.New()
+	ctlg, err := catalog.New()
 	if err != nil {
-		return models.Path{}, fmt.Errorf("unable to create template system: %w", err)
+		return models.Path{}, fmt.Errorf("unable to create catalog system: %w", err)
 	}
 
-	if err := templates.Download(ctx); err != nil {
-		return models.Path{}, fmt.Errorf("unable to download templates: %w", err)
-	}
-
-	if err := templates.Catalog().Download(ctx); err != nil {
+	if err := ctlg.Download(ctx); err != nil {
 		return models.Path{}, fmt.Errorf("unable to download catalog: %w", err)
 	}
 
@@ -104,26 +100,27 @@ func installSystem() (models.Path, error) {
 
 	// -------------------------------------------------------------------------
 	// You could also download this model using the catalog system.
-	// templates.Catalog().DownloadModel("Qwen2.5-VL-3B-Instruct-Q8_0")
+	// mp, err := templates.Catalog().DownloadModel(ctx, kronk.FmtLogger, "Qwen2.5-VL-3B-Instruct-Q8_0")
+	// if err != nil {
+	// 	return models.Path{}, fmt.Errorf("unable to download model: %w", err)
+	// }
 
 	return mp, nil
 }
 
 func newKronk(mp models.Path) (*kronk.Kronk, error) {
+	fmt.Println("loading model...")
+
 	if err := kronk.Init(); err != nil {
 		return nil, fmt.Errorf("unable to init kronk: %w", err)
 	}
 
-	krn, err := kronk.New(model.Config{
-		ModelFiles:    mp.ModelFiles,
-		ProjFile:      mp.ProjFile,
-		ContextWindow: 8192,
-		NBatch:        2048,
-		NUBatch:       2048,
-		CacheTypeK:    model.GGMLTypeQ8_0,
-		CacheTypeV:    model.GGMLTypeQ8_0,
-	})
+	cfg := model.Config{
+		ModelFiles: mp.ModelFiles,
+		ProjFile:   mp.ProjFile,
+	}
 
+	krn, err := kronk.New(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("unable to create inference model: %w", err)
 	}
@@ -135,6 +132,9 @@ func newKronk(mp models.Path) (*kronk.Kronk, error) {
 	fmt.Println()
 
 	fmt.Println("- contextWindow:", krn.ModelConfig().ContextWindow)
+	fmt.Printf("- k/v          : %s/%s\n", krn.ModelConfig().CacheTypeK, krn.ModelConfig().CacheTypeV)
+	fmt.Println("- nBatch       :", krn.ModelConfig().NBatch)
+	fmt.Println("- nuBatch      :", krn.ModelConfig().NUBatch)
 	fmt.Println("- embeddings   :", krn.ModelInfo().IsEmbedModel)
 	fmt.Println("- isGPT        :", krn.ModelInfo().IsGPTModel)
 	fmt.Println("- template     :", krn.ModelInfo().Template.FileName)

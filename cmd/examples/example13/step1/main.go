@@ -21,13 +21,13 @@ import (
 
 	"github.com/ardanlabs/kronk/sdk/kronk"
 	"github.com/ardanlabs/kronk/sdk/kronk/model"
+	"github.com/ardanlabs/kronk/sdk/tools/catalog"
 	"github.com/ardanlabs/kronk/sdk/tools/defaults"
 	"github.com/ardanlabs/kronk/sdk/tools/libs"
 	"github.com/ardanlabs/kronk/sdk/tools/models"
-	"github.com/ardanlabs/kronk/sdk/tools/templates"
 )
 
-const modelURL = "unsloth/gpt-oss-120b-GGUF/gpt-oss-120b-F16.gguf"
+const modelURL = "https://huggingface.co/unsloth/gpt-oss-120b-GGUF/resolve/main/gpt-oss-120b-F16.gguf"
 
 func main() {
 	if err := run(); err != nil {
@@ -82,16 +82,12 @@ func installSystem() (models.Path, error) {
 	// a corrected jinja file, having the catalog system up to date will allow
 	// the system to pull that jinja file.
 
-	templates, err := templates.New()
+	ctlg, err := catalog.New()
 	if err != nil {
-		return models.Path{}, fmt.Errorf("unable to create template system: %w", err)
+		return models.Path{}, fmt.Errorf("unable to create catalog system: %w", err)
 	}
 
-	if err := templates.Download(ctx); err != nil {
-		return models.Path{}, fmt.Errorf("unable to download templates: %w", err)
-	}
-
-	if err := templates.Catalog().Download(ctx); err != nil {
+	if err := ctlg.Download(ctx); err != nil {
 		return models.Path{}, fmt.Errorf("unable to download catalog: %w", err)
 	}
 
@@ -108,34 +104,28 @@ func installSystem() (models.Path, error) {
 	}
 
 	// -------------------------------------------------------------------------
+
 	// You could also download this model using the catalog system.
-	// templates.Catalog().DownloadModel("Qwen3-8B-Q8_0")
+	// mp, err := ctlg.DownloadModel(ctx, kronk.FmtLogger, "Qwen3-8B-Q8_0")
+	// if err != nil {
+	// 	return models.Path{}, fmt.Errorf("unable to download model: %w", err)
+	// }
 
 	return mp, nil
 }
 
 func newKronk(mp models.Path) (*kronk.Kronk, error) {
+	fmt.Println("loading model...")
+
 	if err := kronk.Init(); err != nil {
 		return nil, fmt.Errorf("unable to init kronk: %w", err)
 	}
 
-	// The catalog package has an API that can retrieve defaults for
-	// models in the catalog system and/or a model_config file.
-	// cfg, err := c.templates.Catalog().RetrieveModelConfig(modelID)
-	// if err != nil {
-	// 	return nil, fmt.Errorf("unable to retrieve model config: %w", err)
-	// }
-
 	cfg := model.Config{
-		ModelFiles:        mp.ModelFiles,
-		CacheTypeK:        model.GGMLTypeQ8_0,
-		CacheTypeV:        model.GGMLTypeQ8_0,
-		NSeqMax:           2,
-		SystemPromptCache: true,
+		ModelFiles: mp.ModelFiles,
 	}
 
 	krn, err := kronk.New(cfg)
-
 	if err != nil {
 		return nil, fmt.Errorf("unable to create inference model: %w", err)
 	}
@@ -147,9 +137,13 @@ func newKronk(mp models.Path) (*kronk.Kronk, error) {
 	fmt.Println()
 
 	fmt.Println("- contextWindow:", krn.ModelConfig().ContextWindow)
+	fmt.Printf("- k/v          : %s/%s\n", krn.ModelConfig().CacheTypeK, krn.ModelConfig().CacheTypeV)
+	fmt.Println("- nBatch       :", krn.ModelConfig().NBatch)
+	fmt.Println("- nuBatch      :", krn.ModelConfig().NUBatch)
 	fmt.Println("- embeddings   :", krn.ModelInfo().IsEmbedModel)
 	fmt.Println("- isGPT        :", krn.ModelInfo().IsGPTModel)
 	fmt.Println("- template     :", krn.ModelInfo().Template.FileName)
+	fmt.Println("- grammar      :", krn.ModelConfig().DefaultParams.Grammar != "")
 
 	return krn, nil
 }
@@ -190,12 +184,9 @@ func chat(krn *kronk.Kronk) error {
 			defer cancel()
 
 			d := model.D{
-				"messages":    messages,
-				"tools":       toolDocuments(),
-				"max_tokens":  2048,
-				"temperature": 0.7,
-				"top_p":       0.8,
-				"top_k":       20,
+				"messages":   messages,
+				"tools":      toolDocuments(),
+				"max_tokens": 2048,
 			}
 
 			ch, err := performChat(ctx, krn, d)
@@ -279,14 +270,15 @@ loop:
 	for resp := range ch {
 		lr = resp
 
+		if len(resp.Choice) == 0 {
+			continue
+		}
+
 		switch resp.Choice[0].FinishReason() {
 		case model.FinishReasonError:
 			return messages, fmt.Errorf("error from model: %s", resp.Choice[0].Delta.Content)
 
 		case model.FinishReasonStop:
-			messages = append(messages,
-				model.TextMessage("assistant", resp.Choice[0].Delta.Content),
-			)
 			break loop
 
 		case model.FinishReasonTool:

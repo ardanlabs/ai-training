@@ -68,14 +68,14 @@ func RegisterReadFileTool(mcpServer *mcp.Server) string {
 
 // ReadFileToolParams represents the parameters for this tool call.
 type ReadFileToolParams struct {
-	Path string `json:"path" jsonschema:"a possible filter to use"`
+	Path *string `json:"path,omitempty" jsonschema:"The relative path of a file in the working directory."`
 }
 
 // ReadFileHandler reads the contents of a given file path.
 func ReadFileHandler(ctx context.Context, req *mcp.CallToolRequest, params ReadFileToolParams) (*mcp.CallToolResult, any, error) {
 	dir := "."
-	if params.Path != "" {
-		dir = params.Path
+	if params.Path != nil && *params.Path != "" {
+		dir = *params.Path
 	}
 
 	content, err := os.ReadFile(dir)
@@ -115,21 +115,26 @@ func RegisterSearchFilesTool(mcpServer *mcp.Server) string {
 
 // SearchFilesToolParams represents the parameters for this tool call.
 type SearchFilesToolParams struct {
-	Path     string `json:"path" jsonschema:"Relative path to search files from. Defaults to current directory if not provided."`
-	Filter   string `json:"filter" jsonschema:"The filter to apply to the file names. It supports golang regex syntax. If not provided, will filtering with take place. If provided, only return files that match the filter."`
-	Contains string `json:"contains" jsonschema:"A string to search for inside files. It supports golang regex syntax. If not provided, no search will be performed. If provided, only return files that contain the string."`
+	Path     *string `json:"path,omitempty" jsonschema:"Relative path to search files from. Defaults to current directory if not provided."`
+	Filter   *string `json:"filter,omitempty" jsonschema:"The filter to apply to the file names. It supports golang regex syntax. If not provided, will filtering with take place. If provided, only return files that match the filter."`
+	Contains *string `json:"contains,omitempty" jsonschema:"A string to search for inside files. It supports golang regex syntax. If not provided, no search will be performed. If provided, only return files that contain the string."`
 }
 
 // SearchFilesHandler searches for files in a given directory that match a
 // given filter and contain a given string.
 func SearchFilesHandler(ctx context.Context, req *mcp.CallToolRequest, params SearchFilesToolParams) (*mcp.CallToolResult, any, error) {
 	dir := "."
-	if params.Path != "" {
-		dir = params.Path
+	if params.Path != nil && *params.Path != "" {
+		dir = *params.Path
 	}
 
-	filter := params.Filter
-	contains := params.Contains
+	var filter, contains string
+	if params.Filter != nil {
+		filter = *params.Filter
+	}
+	if params.Contains != nil {
+		contains = *params.Contains
+	}
 
 	var files []string
 	err := filepath.WalkDir(dir, func(path string, info fs.DirEntry, err error) error {
@@ -226,18 +231,18 @@ func RegisterCreateFileTool(mcpServer *mcp.Server) string {
 
 // CreateFileToolParams represents the parameters for this tool call.
 type CreateFileToolParams struct {
-	Path string `json:"path" jsonschema:"Relative path and name of the file to create."`
+	Path *string `json:"path,omitempty" jsonschema:"Relative path and name of the file to create."`
 }
 
 // CreateFileHandler creates a new file at the specified path.
 func CreateFileHandler(ctx context.Context, req *mcp.CallToolRequest, params CreateFileToolParams) (*mcp.CallToolResult, any, error) {
 	filePath := "."
-	if params.Path != "" {
-		filePath = params.Path
+	if params.Path != nil && *params.Path != "" {
+		filePath = *params.Path
 	}
 
 	if _, err := os.Stat(filePath); !os.IsNotExist(err) {
-		return nil, nil, err
+		return nil, nil, errors.New("file already exists")
 	}
 
 	dir := path.Dir(filePath)
@@ -283,24 +288,29 @@ func RegisterGoCodeEditorTool(mcpServer *mcp.Server) string {
 
 // GoCodeEditorToolParams represents the parameters for this tool call.
 type GoCodeEditorToolParams struct {
-	Path       string `json:"path" jsonschema:"Relative path and name of the file to create."`
-	LineNumber int    `json:"line_number" jsonschema:"Relative path and name of the Golang file"`
-	TypeChange string `json:"type_change" jsonschema:"Type of change to make to the file."`
-	LineChange string `json:"line_change" jsonschema:"Line of code to add, replace, or delete."`
+	Path       *string `json:"path,omitempty" jsonschema:"Relative path and name of the Golang file"`
+	LineNumber int    `json:"line_number" jsonschema:"The line number for the code change"`
+	TypeChange *string `json:"type_change,omitempty" jsonschema:"The type of change to make: add, replace, delete"`
+	LineChange *string `json:"line_change,omitempty" jsonschema:"The text to add, replace, delete"`
 }
 
 // GoCodeEditorHandler can make add, updates, and deletes to go code.
 func GoCodeEditorHandler(ctx context.Context, req *mcp.CallToolRequest, params GoCodeEditorToolParams) (*mcp.CallToolResult, any, error) {
-	path := "."
-	if params.Path != "" {
-		path = params.Path
+	filePath := "."
+	if params.Path != nil && *params.Path != "" {
+		filePath = *params.Path
 	}
 
 	lineNumber := params.LineNumber
-	typeChange := strings.TrimSpace(params.TypeChange)
-	lineChange := strings.TrimSpace(params.LineChange)
+	var typeChange, lineChange string
+	if params.TypeChange != nil {
+		typeChange = strings.TrimSpace(*params.TypeChange)
+	}
+	if params.LineChange != nil {
+		lineChange = strings.TrimSpace(*params.LineChange)
+	}
 
-	content, err := os.ReadFile(path)
+	content, err := os.ReadFile(filePath)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -336,7 +346,7 @@ func GoCodeEditorHandler(ctx context.Context, req *mcp.CallToolRequest, params G
 
 	modifiedContent := strings.Join(lines, "\n")
 
-	_, err = parser.ParseFile(fset, path, modifiedContent, parser.ParseComments)
+	_, err = parser.ParseFile(fset, filePath, modifiedContent, parser.ParseComments)
 	if err != nil {
 		return nil, nil, fmt.Errorf("syntax error after modification: %s, please inform the user", err)
 	}
@@ -346,7 +356,7 @@ func GoCodeEditorHandler(ctx context.Context, req *mcp.CallToolRequest, params G
 		formattedContent = []byte(modifiedContent)
 	}
 
-	err = os.WriteFile(path, formattedContent, 0644)
+	err = os.WriteFile(filePath, formattedContent, 0644)
 	if err != nil {
 		return nil, nil, fmt.Errorf("write file: %s", err)
 	}

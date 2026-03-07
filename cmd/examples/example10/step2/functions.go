@@ -33,14 +33,16 @@ func (cln *mcpClient) Call(ctx context.Context, transport *mcp.SSEClientTranspor
 	}
 	defer session.Close()
 
-	fmt.Printf("\u001b[92mtool: calling tool: %s(%v)\u001b[0m\n\n", params.Name, params.Arguments)
+	fmt.Printf("\u001b[92mtool: calling tool: %s(%v)\u001b[0m\n", params.Name, params.Arguments)
 
 	res, err := session.CallTool(ctx, params)
 	if err != nil {
+		fmt.Printf("\u001b[91mtool: error calling tool: %v\u001b[0m\n", err)
 		return nil, fmt.Errorf("failed to call tool: %w", err)
 	}
 
 	if res.IsError {
+		fmt.Printf("\u001b[91mtool: result is error\u001b[0m\n")
 		return nil, fmt.Errorf("tool call failed: %s", res.Content)
 	}
 
@@ -152,12 +154,12 @@ func (rf *ReadFile) Call(ctx context.Context, tool client.ToolCall) (resp client
 		}
 	}()
 
-	params := &mcp.CallToolParams{
+	params := mcp.CallToolParams{
 		Name:      rf.name,
 		Arguments: tool.Function.Arguments,
 	}
 
-	results, err := rf.mcpClient.Call(ctx, rf.transport, params)
+	results, err := rf.mcpClient.Call(ctx, rf.transport, &params)
 	if err != nil {
 		return toolErrorResponse(tool.ID, fmt.Errorf("failed to call tool: %w", err))
 	}
@@ -243,12 +245,12 @@ func (sf *SearchFiles) Call(ctx context.Context, tool client.ToolCall) (resp cli
 		}
 	}()
 
-	params := &mcp.CallToolParams{
+	params := mcp.CallToolParams{
 		Name:      sf.name,
 		Arguments: tool.Function.Arguments,
 	}
 
-	results, err := sf.mcpClient.Call(ctx, sf.transport, params)
+	results, err := sf.mcpClient.Call(ctx, sf.transport, &params)
 	if err != nil {
 		return toolErrorResponse(tool.ID, fmt.Errorf("failed to call tool: %w", err))
 	}
@@ -326,12 +328,12 @@ func (cf *CreateFile) Call(ctx context.Context, tool client.ToolCall) (resp clie
 		}
 	}()
 
-	params := &mcp.CallToolParams{
+	params := mcp.CallToolParams{
 		Name:      cf.name,
 		Arguments: tool.Function.Arguments,
 	}
 
-	results, err := cf.mcpClient.Call(ctx, cf.transport, params)
+	results, err := cf.mcpClient.Call(ctx, cf.transport, &params)
 	if err != nil {
 		return toolErrorResponse(tool.ID, fmt.Errorf("failed to call tool: %w", err))
 	}
@@ -421,12 +423,12 @@ func (gce *GoCodeEditor) Call(ctx context.Context, tool client.ToolCall) (resp c
 		}
 	}()
 
-	params := &mcp.CallToolParams{
+	params := mcp.CallToolParams{
 		Name:      gce.name,
 		Arguments: tool.Function.Arguments,
 	}
 
-	results, err := gce.mcpClient.Call(ctx, gce.transport, params)
+	results, err := gce.mcpClient.Call(ctx, gce.transport, &params)
 	if err != nil {
 		return toolErrorResponse(tool.ID, fmt.Errorf("failed to call tool: %w", err))
 	}

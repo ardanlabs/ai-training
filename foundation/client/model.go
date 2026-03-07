@@ -91,7 +91,7 @@ type ToolCall struct {
 type ChatDeltaSSE struct {
 	Role      string     `json:"role"`
 	Content   string     `json:"content"`
-	Reasoning string     `json:"reasoning"`
+	Reasoning string     `json:"reasoning_content"`
 	ToolCalls []ToolCall `json:"tool_calls,omitempty"`
 }
 
@@ -101,13 +101,22 @@ type ChatChoiceSSE struct {
 	FinishReason string       `json:"finish_reason"`
 }
 
+type Usage struct {
+	PromptTokens     int     `json:"prompt_tokens"`
+	CompletionTokens int     `json:"completion_tokens"`
+	TotalTokens      int     `json:"total_tokens"`
+	ReasoningTokens  int     `json:"reasoning_tokens,omitempty"`
+	OutputTokens     int     `json:"output_tokens,omitempty"`
+	TokensPerSecond  float64 `json:"tokens_per_second,omitempty"`
+}
+
 type ChatSSE struct {
 	ID      string          `json:"id"`
 	Object  string          `json:"object"`
 	Created Time            `json:"created"`
 	Model   string          `json:"model"`
 	Choices []ChatChoiceSSE `json:"choices"`
-	Error   string          `json:"error"`
+	Usage   *Usage          `json:"usage,omitempty"`
 }
 
 // =============================================================================

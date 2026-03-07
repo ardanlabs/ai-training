@@ -138,6 +138,11 @@ func (cln *SSEClient[T]) Do(ctx context.Context, method string, endpoint string,
 				continue
 			}
 
+			// Skip lines that don't start with "data: " (e.g., keep-alive lines like "-alive")
+			if len(line) < 6 || line[:5] != "data:" {
+				continue
+			}
+
 			var v T
 			if err := json.Unmarshal([]byte(line[6:]), &v); err != nil {
 				cln.log(ctx, "sseclient: rawRequest:", "Unmarshal", err, "line", line[6:])

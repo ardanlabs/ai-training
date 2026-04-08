@@ -326,9 +326,9 @@ loop:
 	for resp := range ch {
 		lr = resp
 
-		switch resp.Choice[0].FinishReason() {
+		switch resp.Choices[0].FinishReason() {
 		case model.FinishReasonError:
-			return messages, fmt.Errorf("error from model: %s", resp.Choice[0].Delta.Content)
+			return messages, fmt.Errorf("error from model: %s", resp.Choices[0].Delta.Content)
 
 		case model.FinishReasonStop:
 			break loop
@@ -340,23 +340,23 @@ loop:
 			}
 
 			fmt.Printf("\u001b[92mModel Asking For Tool Call:\nToolID[%s]: %s(%s)\u001b[0m\n",
-				resp.Choice[0].Delta.ToolCalls[0].ID,
-				resp.Choice[0].Delta.ToolCalls[0].Function.Name,
-				resp.Choice[0].Delta.ToolCalls[0].Function.Arguments,
+				resp.Choices[0].Delta.ToolCalls[0].ID,
+				resp.Choices[0].Delta.ToolCalls[0].Function.Name,
+				resp.Choices[0].Delta.ToolCalls[0].Function.Arguments,
 			)
 
 			messages = append(messages,
 				model.TextMessage("tool", fmt.Sprintf("Tool call %s: %s(%v)",
-					resp.Choice[0].Delta.ToolCalls[0].ID,
-					resp.Choice[0].Delta.ToolCalls[0].Function.Name,
-					resp.Choice[0].Delta.ToolCalls[0].Function.Arguments),
+					resp.Choices[0].Delta.ToolCalls[0].ID,
+					resp.Choices[0].Delta.ToolCalls[0].Function.Name,
+					resp.Choices[0].Delta.ToolCalls[0].Function.Arguments),
 				),
 			)
 			break loop
 
 		default:
-			if resp.Choice[0].Delta.Reasoning != "" {
-				fmt.Printf("\u001b[91m%s\u001b[0m", resp.Choice[0].Delta.Reasoning)
+			if resp.Choices[0].Delta.Reasoning != "" {
+				fmt.Printf("\u001b[91m%s\u001b[0m", resp.Choices[0].Delta.Reasoning)
 				reasoning = true
 				continue
 			}
@@ -370,7 +370,7 @@ loop:
 				}
 			}
 
-			fmt.Printf("%s", resp.Choice[0].Delta.Content)
+			fmt.Printf("%s", resp.Choices[0].Delta.Content)
 		}
 	}
 

@@ -1,6 +1,5 @@
-// This example shows you how to use yzma to execute a simple prompt
-// against a vision model using llama.cpp directly via yzma and a native Go
-// application.
+// This example shows you how to use kronk to execute a simple prompt
+// against a vision model using kronk and a native Go application.
 //
 // # Running the example:
 //

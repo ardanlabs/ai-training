@@ -15,7 +15,8 @@
 //
 // # CURL call
 //
-//	$ make example13-step4-curl
+//	$ make example13-step4-curl1
+//	$ make example13-step4-curl2
 
 package main
 

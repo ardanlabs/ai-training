@@ -130,6 +130,8 @@ install-models:
 	@echo
 	kronk model pull --local "Qwen/Qwen3-8B-GGUF/Qwen3-8B-Q8_0.gguf"
 	@echo
+	kronk model pull --local "unsloth/gpt-oss-20b-GGUF/gpt-oss-20b-Q8_0.gguf"
+	@echo
 	kronk model pull --local "ggml-org/embeddinggemma-300m-qat-q8_0-GGUF/embeddinggemma-300m-qat-Q8_0.gguf"
 	@echo
 	kronk model pull --local "bartowski/cerebras_Qwen3-Coder-REAP-25B-A3B-GGUF/cerebras_Qwen3-Coder-REAP-25B-A3B-Q8_0.gguf"
@@ -157,7 +159,7 @@ example06:
 	go run cmd/examples/example06/main.go
 
 example07:
-	go run cmd/examples/example07/*.go
+	go run cmd/examples/example07/main.go cmd/examples/example07/sql.go
 
 example08-step1:
 	go run cmd/examples/example08/step1/main.go
@@ -181,7 +183,7 @@ example09-step2:
 	go run cmd/examples/example09/step2/main.go
 
 example09-step3:
-	go run cmd/examples/example09/step3/main.go
+	go run cmd/examples/example09/step3/*.go
 
 example09-step4:
 	go run cmd/examples/example09/step4/*.go
@@ -226,7 +228,7 @@ example13-step4-npm-run:
 	cd cmd/examples/example13/step4/react/app && npm run dev
 
 example13-step4-curl1:
-	curl -i -X POST http://0.0.0.0:11435/chat \
+	curl -i -X POST http://0.0.0.0:8080/chat \
      -H "Content-Type: application/json" \
      -d '{ \
 		"messages": [ \
@@ -238,7 +240,7 @@ example13-step4-curl1:
     }'
 
 example13-step4-curl2:
-	curl -i -X POST http://0.0.0.0:11435/chat \
+	curl -i -X POST http://0.0.0.0:8080/chat \
      -H "Content-Type: application/json" \
      -d '{ \
 		"messages": [ \

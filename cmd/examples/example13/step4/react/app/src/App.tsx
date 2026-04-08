@@ -101,7 +101,7 @@ function App() {
         max_tokens: maxTokens,
       };
 
-      const response = await fetch("http://localhost:11435/chat", {
+      const response = await fetch("http://localhost:8080/chat", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

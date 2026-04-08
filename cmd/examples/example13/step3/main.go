@@ -1,6 +1,6 @@
 // This example shows you a complete RAG application using DuckDB as an embedding
 // DB and an embedding model to generate embeddings, and a chat model for
-// answering a question using llama.cpp directly via yzma and a native Go application.
+// answering a question using Kronk.
 //
 // # Running the example:
 //

@@ -101,7 +101,7 @@ install:
 	brew install uv
 	brew install pkgconf
 	brew install whisper-cpp
-	brew install homebrew-ffmpeg/ffmpeg/ffmpeg --with-whisper-cpp --HEAD
+	brew install homebrew-ffmpeg/ffmpeg/ffmpeg --with-whisper-cpp
 	go install github.com/janpfeifer/gonb@latest
 	go install github.com/ardanlabs/kronk/cmd/kronk@latest
 
@@ -226,7 +226,7 @@ example13-step4-npm-run:
 	cd cmd/examples/example13/step4/react/app && npm run dev
 
 example13-step4-curl1:
-	curl -i -X POST http://0.0.0.0:8080/chat \
+	curl -i -X POST http://0.0.0.0:11435/chat \
      -H "Content-Type: application/json" \
      -d '{ \
 		"messages": [ \
@@ -238,7 +238,7 @@ example13-step4-curl1:
     }'
 
 example13-step4-curl2:
-	curl -i -X POST http://0.0.0.0:8080/chat \
+	curl -i -X POST http://0.0.0.0:11435/chat \
      -H "Content-Type: application/json" \
      -d '{ \
 		"messages": [ \
@@ -461,12 +461,12 @@ curl-tooling:
 # This will establish a SSE session and this is where we will get the sessionID
 # and the results of the call.
 curl-mcp-get-session:
-	curl -N -H "Accept: text/event-stream" http://localhost:8080/tool_list_files
+	curl -N -H "Accept: text/event-stream" http://localhost:11435/tool_list_files
 
 # Once we have the sessionID, we can initialize the session.
 # Replace the sessionID with the one you get from the SSE session.
 curl-mcp-init:
-	curl -X POST http://localhost:8080/tool_list_files?sessionid=$(SESSIONID) \
+	curl -X POST http://localhost:11435/tool_list_files?sessionid=$(SESSIONID) \
 	-H "Content-Type: application/json" \
 	-d '{ \
 		"jsonrpc": "2.0", \
@@ -482,7 +482,7 @@ curl-mcp-init:
 # Then we can make the actual tool call. The response will be streamed in the
 # session call. Replace the sessionID with the one you get from the SSE session.
 curl-mcp-tool-call:
-	curl -X POST http://localhost:8080/tool_list_files?sessionid=$(SESSIONID) \
+	curl -X POST http://localhost:11435/tool_list_files?sessionid=$(SESSIONID) \
 	-H "Content-Type: application/json" \
 	-d '{ \
 		"jsonrpc": "2.0", \

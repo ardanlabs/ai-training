@@ -30,9 +30,9 @@ import (
 )
 
 var (
-	urlTextEmbed   = "http://localhost:8080/v1/embeddings"
+	urlTextEmbed   = "http://localhost:11435/v1/embeddings"
 	modelTextEmbed = "embeddinggemma-300m-qat-Q8_0"
-	urlChat        = "http://localhost:8080/v1/chat/completions"
+	urlChat        = "http://localhost:11435/v1/chat/completions"
 	modelChat      = "cerebras_Qwen3-Coder-REAP-25B-A3B-Q8_0"
 	contextWindow  = 32 * 1024
 )

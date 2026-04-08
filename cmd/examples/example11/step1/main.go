@@ -37,9 +37,9 @@ import (
 )
 
 var (
-	urlVision        = "http://localhost:8080/v1/chat/completions"
+	urlVision        = "http://localhost:11435/v1/chat/completions"
 	modelVision      = "Qwen2.5-VL-3B-Instruct-Q8_0"
-	urlTextEmbed     = "http://localhost:8080/v1/embeddings"
+	urlTextEmbed     = "http://localhost:11435/v1/embeddings"
 	modelTextEmbed   = "embeddinggemma-300m-qat-Q8_0"
 	chunkSize        = 60
 	frameDescTimeout = time.Second * 300

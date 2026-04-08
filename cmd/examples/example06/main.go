@@ -31,8 +31,8 @@ import (
 )
 
 var (
-	urlChat    = "http://localhost:8080/v1/chat/completions"
-	urlEmbed   = "http://localhost:8080/v1/embeddings"
+	urlChat    = "http://localhost:11435/v1/chat/completions"
+	urlEmbed   = "http://localhost:11435/v1/embeddings"
 	modelChat  = "Qwen3-8B-Q8_0"
 	modelEmbed = "embeddinggemma-300m-qat-Q8_0"
 

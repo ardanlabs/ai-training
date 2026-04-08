@@ -44,7 +44,7 @@ import (
 )
 
 var (
-	url   = "http://localhost:8080/v1/embeddings"
+	url   = "http://localhost:11435/v1/embeddings"
 	model = "embeddinggemma-300m-qat-Q8_0"
 
 	dbName     = "example06"

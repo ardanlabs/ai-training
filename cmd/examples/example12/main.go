@@ -26,7 +26,7 @@ import (
 )
 
 var (
-	urlModel      = "http://localhost:8080/v1/chat/completions"
+	urlModel      = "http://localhost:11435/v1/chat/completions"
 	model         = "cerebras_Qwen3-Coder-REAP-25B-A3B-Q8_0"
 	urlDocling    = "http://localhost:5001/v1/convert/file"
 	documentPath  = "zarf/samples/docs/dinner_menu.pdf"

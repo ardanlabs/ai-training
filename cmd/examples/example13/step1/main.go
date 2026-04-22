@@ -1,6 +1,6 @@
 // This example shows you how to create a simple chat application against an
-// inference model using kronk. Thanks to Kronk and yzma, reasoning and tool
-// calling is enabled.
+// inference model using the kronk SDK. Thanks to Kronk and yzma, reasoning and
+// tool calling is enabled.
 //
 // The first time you run this program the system will download and install
 // the model and libraries.

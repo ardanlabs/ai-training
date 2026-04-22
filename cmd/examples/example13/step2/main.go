@@ -1,4 +1,4 @@
-// This example shows you how to use kronk to execute a simple prompt
+// This example shows you how to use the kronk SDK to execute a simple prompt
 // against a vision model using kronk and a native Go application.
 //
 // # Running the example:

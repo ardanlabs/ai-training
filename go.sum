@@ -53,8 +53,8 @@ github.com/araddon/dateparse v0.0.0-20210429162001-6b43995a97de h1:FxWPpzIjnTlhP
 github.com/araddon/dateparse v0.0.0-20210429162001-6b43995a97de/go.mod h1:DCaWoUhZrYW9p1lxo/cm8EmUOOzAPSEZNGF2DK1dJgw=
 github.com/ardanlabs/jinja v1.1.0 h1:SZtVrV+1szfSBXBKQA5FoJtOabUxkJu5IvEX+ADUtcM=
 github.com/ardanlabs/jinja v1.1.0/go.mod h1:onVec/ZOYPqNm7TRiNfJBnW+t9VxSi2gkARWhgP9qwQ=
-github.com/ardanlabs/kronk v1.23.3 h1:hyuX3SBBqHle+XzhaqiUvXphGY3TJWlCXFEY3A2Xpyc=
-github.com/ardanlabs/kronk v1.23.3/go.mod h1:XySHylv6heKvG7F8sN42Ek8JreMNLy+gwryNKG65RtY=
+github.com/ardanlabs/kronk v1.23.4 h1:2xoA9H3J38WGgB6stGPkUcY+RNkYo3PRO/pnIkU5OAY=
+github.com/ardanlabs/kronk v1.23.4/go.mod h1:XySHylv6heKvG7F8sN42Ek8JreMNLy+gwryNKG65RtY=
 github.com/aws/aws-sdk-go-v2 v1.41.6 h1:1AX0AthnBQzMx1vbmir3Y4WsnJgiydmnJjiLu+LvXOg=
 github.com/aws/aws-sdk-go-v2 v1.41.6/go.mod h1:dy0UzBIfwSeot4grGvY1AqFWN5zgziMmWGzysDnHFcQ=
 github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.9 h1:adBsCIIpLbLmYnkQU+nAChU5yhVTvu5PerROm+/Kq2A=

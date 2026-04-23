@@ -101,6 +101,7 @@ install:
 	brew install uv
 	brew install pkgconf
 	brew install whisper-cpp
+	brew tap homebrew-ffmpeg/ffmpeg/ffmpeg
 	brew install homebrew-ffmpeg/ffmpeg/ffmpeg --with-whisper-cpp
 	go install github.com/janpfeifer/gonb@latest
 	go install github.com/ardanlabs/kronk/cmd/kronk@latest

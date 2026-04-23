@@ -199,12 +199,7 @@ func newKronk(mp models.Path) (*kronk.Kronk, error) {
 	}
 
 	cfg := model.Config{
-		ContextWindow:     32 * 1024,
-		ModelFiles:        mp.ModelFiles,
-		CacheTypeK:        model.GGMLTypeQ8_0,
-		CacheTypeV:        model.GGMLTypeQ8_0,
-		NSeqMax:           2,
-		SystemPromptCache: true,
+		ModelFiles: mp.ModelFiles,
 	}
 
 	krn, err := kronk.New(cfg)

@@ -114,10 +114,10 @@ func newKronk(mp models.Path) (*kronk.Kronk, error) {
 		return nil, fmt.Errorf("unable to init kronk: %w", err)
 	}
 
-	cfg := model.Config{
-		ModelFiles: mp.ModelFiles,
-		ProjFile:   mp.ProjFile,
-	}
+	cfg := model.NewConfig(
+		model.WithModelFiles(mp.ModelFiles),
+		model.WithProjFile(mp.ProjFile),
+	)
 
 	krn, err := kronk.New(cfg)
 	if err != nil {
@@ -130,10 +130,10 @@ func newKronk(mp models.Path) (*kronk.Kronk, error) {
 	}
 	fmt.Println()
 
-	fmt.Println("- contextWindow:", krn.ModelConfig().ContextWindow)
+	fmt.Println("- contextWindow:", krn.ModelConfig().ContextWindow())
 	fmt.Printf("- k/v          : %s/%s\n", krn.ModelConfig().CacheTypeK, krn.ModelConfig().CacheTypeV)
-	fmt.Println("- nBatch       :", krn.ModelConfig().NBatch)
-	fmt.Println("- nuBatch      :", krn.ModelConfig().NUBatch)
+	fmt.Println("- nBatch       :", krn.ModelConfig().NBatch())
+	fmt.Println("- nuBatch      :", krn.ModelConfig().NUBatch())
 	fmt.Println("- embeddings   :", krn.ModelInfo().IsEmbedModel)
 	fmt.Println("- isGPT        :", krn.ModelInfo().IsGPTModel)
 	fmt.Println("- template     :", krn.ModelInfo().Template.FileName)
@@ -218,7 +218,7 @@ loop:
 	// -------------------------------------------------------------------------
 
 	contextTokens := lr.Usage.PromptTokens + lr.Usage.CompletionTokens
-	contextWindow := krn.ModelConfig().ContextWindow
+	contextWindow := krn.ModelConfig().ContextWindow()
 	percentage := (float64(contextTokens) / float64(contextWindow)) * 100
 	of := float32(contextWindow) / float32(1024)
 

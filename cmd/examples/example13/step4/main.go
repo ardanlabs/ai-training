@@ -95,9 +95,9 @@ func run() error {
 		return fmt.Errorf("unable to init kronk: %w", err)
 	}
 
-	krnEmbed, err := kronk.New(model.NewConfig(
+	krnEmbed, err := kronk.New(
 		model.WithModelFiles(infoEmbed.ModelFiles),
-	))
+	)
 
 	if err != nil {
 		return fmt.Errorf("unable to create embedding model: %w", err)
@@ -109,9 +109,9 @@ func run() error {
 		}
 	}()
 
-	krnChat, err := kronk.New(model.NewConfig(
+	krnChat, err := kronk.New(
 		model.WithModelFiles(infoChat.ModelFiles),
-	))
+	)
 	if err != nil {
 		return fmt.Errorf("unable to create chat model: %w", err)
 	}

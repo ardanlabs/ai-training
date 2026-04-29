@@ -39,8 +39,8 @@ import (
 )
 
 const (
-	modelChatURL       = "unsloth/gpt-oss-20b-GGUF/gpt-oss-20b-Q8_0.gguf"
-	modelEmbedURL      = "ggml-org/embeddinggemma-300m-qat-q8_0-GGUF/embeddinggemma-300m-qat-Q8_0.gguf?download=true"
+	modelChatSource    = "unsloth/gpt-oss-20b-Q8_0"
+	modelEmbedSource   = "ggml-org/embeddinggemma-300m-qat-Q8_0"
 	dbPath             = "zarf/data/duck-ex13-step3.db" // ":memory:"
 	chunksFile         = "zarf/data/book.chunks"
 	dimentions         = 768
@@ -79,12 +79,12 @@ func run() error {
 		return fmt.Errorf("unable to create models api: %w", err)
 	}
 
-	infoEmbed, err := mdls.Download(context.Background(), kronk.FmtLogger, modelEmbedURL, "")
+	infoEmbed, err := mdls.Download(context.Background(), kronk.FmtLogger, modelEmbedSource)
 	if err != nil {
 		return fmt.Errorf("unable to install model: %w", err)
 	}
 
-	infoChat, err := mdls.Download(context.Background(), kronk.FmtLogger, modelChatURL, "")
+	infoChat, err := mdls.Download(context.Background(), kronk.FmtLogger, modelChatSource)
 	if err != nil {
 		return fmt.Errorf("unable to install model: %w", err)
 	}

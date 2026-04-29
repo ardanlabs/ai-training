@@ -6,10 +6,10 @@ import (
 	"errors"
 	"fmt"
 
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
-	"go.mongodb.org/mongo-driver/mongo/readpref"
+	"go.mongodb.org/mongo-driver/v2/bson"
+	"go.mongodb.org/mongo-driver/v2/mongo"
+	"go.mongodb.org/mongo-driver/v2/mongo/options"
+	"go.mongodb.org/mongo-driver/v2/mongo/readpref"
 )
 
 // Connect attempts to connect to a mongo db instance.
@@ -21,7 +21,7 @@ func Connect(ctx context.Context, host string, userName string, password string)
 
 	uri := options.Client().ApplyURI(host + "/?directConnection=true")
 
-	client, err := mongo.Connect(ctx, auth, uri)
+	client, err := mongo.Connect(auth, uri)
 	if err != nil {
 		return nil, fmt.Errorf("connect: %w", err)
 	}
@@ -79,7 +79,7 @@ func CreateVectorIndex(ctx context.Context, col *mongo.Collection, vectorIndexNa
 
 func lookupVectorIndex(ctx context.Context, col *mongo.Collection, vectorIndexName string) ([]Index, error) {
 	siv := col.SearchIndexes()
-	cur, err := siv.List(ctx, &options.SearchIndexesOptions{Name: &vectorIndexName})
+	cur, err := siv.List(ctx, options.SearchIndexes().SetName(vectorIndexName))
 	if err != nil {
 		return nil, fmt.Errorf("index: %w", err)
 	}

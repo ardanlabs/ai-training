@@ -7,9 +7,9 @@ import (
 	"path/filepath"
 
 	"github.com/ardanlabs/ai-training/foundation/mongodb"
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
+	"go.mongodb.org/mongo-driver/v2/bson"
+	"go.mongodb.org/mongo-driver/v2/mongo"
+	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
 
 const (
@@ -49,10 +49,9 @@ func initDB(ctx context.Context, client *mongo.Client) (*mongo.Collection, error
 		return nil, fmt.Errorf("createVectorIndex (text): %w", err)
 	}
 
-	unique := true
 	indexModel := mongo.IndexModel{
 		Keys:    bson.D{{Key: "video", Value: 1}, {Key: "chunk", Value: 1}},
-		Options: &options.IndexOptions{Unique: &unique},
+		Options: options.Index().SetUnique(true),
 	}
 	col.Indexes().CreateOne(ctx, indexModel)
 

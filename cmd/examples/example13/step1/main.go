@@ -21,13 +21,12 @@ import (
 
 	"github.com/ardanlabs/kronk/sdk/kronk"
 	"github.com/ardanlabs/kronk/sdk/kronk/model"
-	"github.com/ardanlabs/kronk/sdk/tools/catalog"
 	"github.com/ardanlabs/kronk/sdk/tools/defaults"
 	"github.com/ardanlabs/kronk/sdk/tools/libs"
 	"github.com/ardanlabs/kronk/sdk/tools/models"
 )
 
-const modelURL = "https://huggingface.co/unsloth/gpt-oss-20b-GGUF/resolve/main/gpt-oss-20b-Q8_0.gguf"
+const modelSource = "unsloth/gpt-oss-20b-Q8_0"
 
 func main() {
 	if err := run(); err != nil {
@@ -77,28 +76,13 @@ func installSystem() (models.Path, error) {
 	}
 
 	// -------------------------------------------------------------------------
-	// This is not mandatory if you won't be using models from the catalog. That
-	// being said, if you are using a model that is part of the catalog with
-	// a corrected jinja file, having the catalog system up to date will allow
-	// the system to pull that jinja file.
-
-	ctlg, err := catalog.New()
-	if err != nil {
-		return models.Path{}, fmt.Errorf("unable to create catalog system: %w", err)
-	}
-
-	if err := ctlg.Download(ctx); err != nil {
-		return models.Path{}, fmt.Errorf("unable to download catalog: %w", err)
-	}
-
-	// -------------------------------------------------------------------------
 
 	mdls, err := models.New()
 	if err != nil {
 		return models.Path{}, fmt.Errorf("unable to install llama.cpp: %w", err)
 	}
 
-	mp, err := mdls.Download(ctx, kronk.FmtLogger, modelURL, "")
+	mp, err := mdls.Download(ctx, kronk.FmtLogger, modelSource)
 	if err != nil {
 		return models.Path{}, fmt.Errorf("unable to install model: %w", err)
 	}

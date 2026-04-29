@@ -26,7 +26,7 @@ import (
 	"github.com/ardanlabs/ai-training/foundation/client"
 	"github.com/ardanlabs/ai-training/foundation/mongodb"
 	"github.com/ardanlabs/ai-training/foundation/tiktoken"
-	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/v2/mongo"
 )
 
 var (

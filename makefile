@@ -255,6 +255,84 @@ example13-step4-curl2:
 # ==============================================================================
 # Run Postgres, MongoDB, and Open WebUI
 
+# ======================================================================================================================
+# Security webinar
+
+ws-rag-full:
+	go run ./cmd/examples/example15/full/main.go
+
+ws-rag-attacker:
+	go run ./cmd/examples/example15/full/attacker.go
+
+ws-rag-step0:
+	go run ./cmd/examples/example15/step0
+
+ws-rag-step01:
+	go run ./cmd/examples/example15/step1
+
+ws-rag-step02:
+	go run ./cmd/examples/example15/step2
+
+ws-rag-step03:
+	go run ./cmd/examples/example15/step3
+
+ws-rag-step04:
+	go run ./cmd/examples/example15/step4
+
+ws-rag-step05:
+	go run ./cmd/examples/example15/step5
+
+ws-rag-step06:
+	go run ./cmd/examples/example15/step6
+
+ws-rag-step07:
+	go run ./cmd/examples/example15/step7
+
+ws-rag-step08:
+	go run ./cmd/examples/example15/step8
+
+ws-ragpipeline-full:
+	go run ./cmd/examples/example16/full/main.go
+
+ws-ragpipeline-step1:
+	go run ./cmd/examples/example16/step1
+
+ws-ragpipeline-step2:
+	go run ./cmd/examples/example16/step2
+
+ws-ragpipeline-step3:
+	go run ./cmd/examples/example16/step3
+
+ws-ragpipeline-step4:
+	go run ./cmd/examples/example16/step4
+
+ws-ragpipeline-step5:
+	go run ./cmd/examples/example16/step5
+
+ws-ragpipeline-step6:
+	go run ./cmd/examples/example16/step6
+
+ws-functions-full:
+	go run ./cmd/examples/example17/full
+
+ws-functions-step1:
+	go run ./cmd/examples/example17/step1
+
+ws-functions-step2:
+	go run ./cmd/examples/example17/step2
+
+ws-functions-step3:
+	go run ./cmd/examples/example17/step3
+
+ws-functions-step4:
+	go run ./cmd/examples/example17/step4
+
+ws-functions-step5:
+	go run ./cmd/examples/example17/step5
+
+ws-functions-step6:
+	go run ./cmd/examples/example17/step6
+
 compose-up:
 	docker compose -f zarf/docker/compose.yaml up
 

@@ -6,7 +6,11 @@
 // https://github.com/gonum/gonum
 package vector
 
-import "math"
+import (
+	"math"
+	"strconv"
+	"strings"
+)
 
 // Data represents data that can be vectorized.
 type Data interface {
@@ -167,4 +171,23 @@ func axpyUnitaryTo(dst []float64, alpha float64, x, y []float64) {
 		}
 		dst[i] = alpha*v + y[i]
 	}
+}
+
+// FormatPGVector converts a float64 slice into the pgvector text format
+// "[v0,v1,...,vN]" used for INSERT and query parameters.
+func FormatPGVector(v []float64) string {
+	var sb strings.Builder
+
+	sb.WriteByte('[')
+
+	for i, val := range v {
+		if i > 0 {
+			sb.WriteByte(',')
+		}
+		sb.WriteString(strconv.FormatFloat(val, 'f', -1, 64))
+	}
+
+	sb.WriteByte(']')
+
+	return sb.String()
 }

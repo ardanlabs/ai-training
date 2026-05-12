@@ -108,9 +108,9 @@ install:
 
 docker:
 	docker pull mongodb/mongodb-atlas-local:8.2
-	docker pull ghcr.io/open-webui/open-webui:v0.7.2
-	docker pull postgres:18.1
-	docker pull quay.io/docling-project/docling-serve:v1.9.0
+	docker pull ghcr.io/open-webui/open-webui:v0.9.5
+	docker pull postgres:18.3
+	docker pull quay.io/docling-project/docling-serve:v1.12.0
 
 install-python:
 	rm -rf .venv
@@ -125,17 +125,17 @@ install-python:
 # as the example calls for it. Just copy/paste in terminal.
 install-models:
 	@echo ========== INSTALL MODELS ==========
-	kronk model pull --local "ggml-org/Qwen2.5-VL-3B-Instruct-GGUF/Qwen2.5-VL-3B-Instruct-Q8_0.gguf" "ggml-org/Qwen2.5-VL-3B-Instruct-GGUF/mmproj-Qwen2.5-VL-3B-Instruct-Q8_0.gguf"
+	kronk model pull --local "ggml-org/Qwen2.5-VL-3B-Instruct-Q8_0.gguf"
 	@echo
-	kronk model pull --local "mradermacher/Qwen2-Audio-7B-GGUF/Qwen2-Audio-7B.Q8_0.gguf" "mradermacher/Qwen2-Audio-7B-GGUF/Qwen2-Audio-7B.mmproj-Q8_0.gguf"
+	kronk model pull --local "mradermacher/Qwen2-Audio-7B.Q8_0.gguf"
 	@echo
-	kronk model pull --local "Qwen/Qwen3-8B-GGUF/Qwen3-8B-Q8_0.gguf"
+	kronk model pull --local "Qwen/Qwen3-8B-Q8_0.gguf"
 	@echo
-	kronk model pull --local "unsloth/gpt-oss-20b-GGUF/gpt-oss-20b-Q8_0.gguf"
+	kronk model pull --local "unsloth/gpt-oss-20b-Q8_0.gguf"
 	@echo
-	kronk model pull --local "ggml-org/embeddinggemma-300m-qat-q8_0-GGUF/embeddinggemma-300m-qat-Q8_0.gguf"
+	kronk model pull --local "ggml-org/embeddinggemma-300m-qat-Q8_0.gguf"
 	@echo
-	kronk model pull --local "bartowski/cerebras_Qwen3-Coder-REAP-25B-A3B-GGUF/cerebras_Qwen3-Coder-REAP-25B-A3B-Q8_0.gguf"
+	kronk model pull --local "bartowski/cerebras_Qwen3-Coder-REAP-25B-A3B-Q8_0.gguf"
 	@echo
 
 # ==============================================================================

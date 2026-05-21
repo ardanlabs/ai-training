@@ -142,110 +142,6 @@ func run() error {
 	// endregion
 
 	// -------------------------------------------------------------------------
-	// 1) Attack: poisoned doc injection (no defenses).
-	// region 1) Attack: poisoned doc injection (no defenses).
-
-	fmt.Print("\n============================================================\n")
-	fmt.Print("1) Attack: Poisoned Document Injection (NO defenses)\n")
-	fmt.Print("============================================================\n")
-
-	results, err := searchDocs(ctx, db, embedClient, question, 5, "", 0.0)
-	if err != nil {
-		return fmt.Errorf("search: %w", err)
-	}
-
-	fmt.Printf("\nQuestion: %s\n", question)
-	fmt.Println("\nRetrieved documents (no filtering):")
-
-	for _, r := range results {
-		fmt.Printf("  [ID=%d sim=%.4f access=%s] %.80s...\n", r.ID, r.Similarity, r.AccessLevel, r.Text)
-	}
-
-	// Naive concatenation — no isolation.
-	var contextBuf strings.Builder
-	for _, r := range results {
-		contextBuf.WriteString(r.Text)
-		contextBuf.WriteString("\n\n")
-	}
-
-	unsafePrompt := fmt.Sprintf(`You are a helpful assistant. Use the following context to answer.
-
-%s
-
-Question: %s`, contextBuf.String(), question)
-
-	answer, err := chatNonStreaming(ctx, sseClient, llmURL, []client.D{
-		{"role": "user", "content": unsafePrompt},
-	})
-	if err != nil {
-		return fmt.Errorf("unsafe rag: %w", err)
-	}
-
-	fmt.Print("\n==============================\n")
-	fmt.Print("-----\n")
-	fmt.Printf("> Prompt: %s\n", unsafePrompt)
-	fmt.Print("-----\n")
-	fmt.Printf("> Response: %s\n", answer)
-	fmt.Print("-----\n")
-
-	// endregion
-
-	// -------------------------------------------------------------------------
-	// Step 02
-	// 2) Defense A: relevance threshold (similarity > 0.70).
-	// region Step 02
-
-	// Step 02
-	fmt.Print("\n============================================================\n")
-	fmt.Print("2) Defense A: Relevance Threshold (similarity > 0.70)\n")
-	fmt.Print("============================================================\n")
-
-	results, err = searchDocs(ctx, db, embedClient, question, 5, "", 0.70)
-	if err != nil {
-		return fmt.Errorf("search threshold: %w", err)
-	}
-
-	fmt.Printf("\nQuestion: %s\n", question)
-	fmt.Println("\nRetrieved documents (threshold > 0.70):")
-
-	if len(results) == 0 {
-		fmt.Println("  No documents met the threshold.")
-	}
-
-	for _, r := range results {
-		fmt.Printf("  [ID=%d sim=%.4f access=%s] %.80s...\n", r.ID, r.Similarity, r.AccessLevel, r.Text)
-	}
-
-	// Show that the legitimate answer survives once the poisoned doc is filtered.
-	var thresholdBuf strings.Builder
-	for _, r := range results {
-		thresholdBuf.WriteString(r.Text)
-		thresholdBuf.WriteString("\n\n")
-	}
-
-	thresholdPrompt := fmt.Sprintf(`You are a helpful assistant. Use the following context to answer.
-
-%s
-
-Question: %s`, thresholdBuf.String(), question)
-
-	answer, err = chatNonStreaming(ctx, sseClient, llmURL, []client.D{
-		{"role": "user", "content": thresholdPrompt},
-	})
-	if err != nil {
-		return fmt.Errorf("threshold rag: %w", err)
-	}
-
-	fmt.Print("\n==============================\n")
-	fmt.Print("-----\n")
-	fmt.Printf("> Prompt: %s\n", thresholdPrompt)
-	fmt.Print("-----\n")
-	fmt.Printf("> Response: %s\n", answer)
-	fmt.Print("-----\n")
-
-	// endregion
-
-	// -------------------------------------------------------------------------
 	// Step 03
 	// 3) Defense B: content isolation (<CONTEXT> delimiters + system prompt).
 	// region Step 03
@@ -256,7 +152,7 @@ Question: %s`, thresholdBuf.String(), question)
 	fmt.Print("============================================================\n")
 
 	// Step 03
-	results, err = searchDocs(ctx, db, embedClient, question, 5, "", 0.0)
+	results, err := searchDocs(ctx, db, embedClient, question, 5, "", 0.0)
 	if err != nil {
 		return fmt.Errorf("search isolation: %w", err)
 	}
@@ -277,7 +173,7 @@ Question: %s`, thresholdBuf.String(), question)
 	isolatedUserMsg := fmt.Sprintf("%s\n\nQuestion: %s", isolatedContext.String(), question)
 
 	// Step 03
-	answer, err = chatNonStreaming(ctx, sseClient, llmURL, []client.D{
+	answer, err := chatNonStreaming(ctx, sseClient, llmURL, []client.D{
 		{"role": "system", "content": isolatedSystem},
 		{"role": "user", "content": isolatedUserMsg},
 	})

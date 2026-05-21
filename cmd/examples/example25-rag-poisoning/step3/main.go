@@ -1,11 +1,8 @@
 // This example takes step2 and adds the remaining two defenses plus a
-// combined run. Defense B (content isolation) wraps retrieved chunks inside
-// <CONTEXT> tags and uses a system prompt that instructs the model to treat
-// the context as data only, never as instructions. Defense C (source
-// filtering) restricts retrieval to documents flagged access_level =
-// 'public', which also keeps the INTERNAL secret document out of the
-// prompt. The final section runs all three defenses together to show the
-// attack from step1 fully neutralized.
+// combined run. Defense B (source filtering) restricts retrieval to
+// documents flagged access_level = 'public', which also keeps the INTERNAL
+// secret document out of the prompt. The final section runs all three defenses
+// together to show the attack from step1 fully neutralized.
 //
 // # Running the example
 //
@@ -25,14 +22,13 @@
 //
 // # What this step adds over step2
 //
-//	Defense B (<CONTEXT> isolation with a hardened system prompt), Defense C
-//	(source filtering by access_level), and a final all-defenses-on run that
-//	combines threshold + isolation + source filter.
+// Defense B: (source filtering by access_level).
 
-// Example 25 — Step 3 — Defenses B, C, and All Combined
+// Example 25 — Step 3 — Defenses B
 package main
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"log"
@@ -52,6 +48,8 @@ const (
 	dbPassword = "postgres"
 	dbHost     = "localhost:5432"
 	dbName     = "postgres"
+
+	similarityThreshold = 0.70
 )
 
 var (
@@ -137,149 +135,83 @@ func run() error {
 		return fmt.Errorf("seed docs: %w", err)
 	}
 
-	question := "When was Go created and who designed it?"
-
 	// endregion
 
 	// -------------------------------------------------------------------------
 	// Step 03
-	// 3) Defense B: content isolation (<CONTEXT> delimiters + system prompt).
+	// Interactive loop: for each question, run Defense B, Defense C, and all
+	// defenses combined.
 	// region Step 03
 
-	// Step 03
 	fmt.Print("\n============================================================\n")
-	fmt.Print("3) Defense B: Content Isolation (<CONTEXT> delimiters)\n")
+	fmt.Print("Defenses B + C + All Combined (interactive)\n")
 	fmt.Print("============================================================\n")
 
-	// Step 03
-	results, err := searchDocs(ctx, db, embedClient, question, 5, "", 0.0)
-	if err != nil {
-		return fmt.Errorf("search isolation: %w", err)
-	}
+	fmt.Printf("\nInteractive prompt (use 'ctrl-c', 'quit', '/exit', or '/bye' to quit)\n")
+	fmt.Println("Try a benign question that retrieves the poisoned doc, e.g.:")
+	fmt.Println(`  When was Go created and who designed it?`)
 
-	// Step 03
-	var isolatedContext strings.Builder
-	isolatedContext.WriteString("<CONTEXT>\n")
-	for _, r := range results {
-		isolatedContext.WriteString(r.Text)
-		isolatedContext.WriteString("\n---\n")
-	}
-	isolatedContext.WriteString("</CONTEXT>")
+	scanner := bufio.NewScanner(os.Stdin)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 
-	// Step 03
-	fmt.Printf("\nSystem prompt instructs model to treat <CONTEXT> as data only.\n")
+	for {
+		fmt.Print("\n==============================\n")
+		fmt.Print("-----\n")
+		fmt.Print("> Prompt: ")
 
-	// Step 03
-	isolatedUserMsg := fmt.Sprintf("%s\n\nQuestion: %s", isolatedContext.String(), question)
+		if !scanner.Scan() {
+			return nil
+		}
 
-	// Step 03
-	answer, err := chatNonStreaming(ctx, sseClient, llmURL, []client.D{
-		{"role": "system", "content": isolatedSystem},
-		{"role": "user", "content": isolatedUserMsg},
-	})
-	if err != nil {
-		return fmt.Errorf("isolated rag: %w", err)
-	}
+		question := scanner.Text()
+		switch strings.ToLower(strings.TrimSpace(question)) {
+		case "", "quit", "/quit", "/exit", "/bye":
+			return nil
+		}
 
-	// Step 03
-	fmt.Print("\n==============================\n")
-	fmt.Print("-----\n")
-	fmt.Printf("> Prompt: %s\n", isolatedUserMsg)
-	fmt.Print("-----\n")
-	fmt.Printf("> Response: %s\n", answer)
-	fmt.Print("-----\n")
+		fmt.Print("-----\n")
 
-	// endregion
+		// ---------------------------------------------------------------------
+		// 3) Defense B: source filtering (access_level = 'public').
 
-	// -------------------------------------------------------------------------
-	// Step 03
-	// 4) Defense C: source filtering (access_level = 'public').
-	// region Step 03
+		fmt.Print("\n--- 4) Defense C: Source Filtering (access_level = 'public') ---\n")
 
-	// Step 03
-	fmt.Print("\n============================================================\n")
-	fmt.Print("4) Defense C: Source Filtering (access_level = 'public')\n")
-	fmt.Print("============================================================\n")
+		results, err := searchDocs(ctx, db, embedClient, question, 5, "public", similarityThreshold)
+		if err != nil {
+			return fmt.Errorf("search filtered: %w", err)
+		}
 
-	// Step 03
-	results, err = searchDocs(ctx, db, embedClient, question, 5, "public", 0.0)
-	if err != nil {
-		return fmt.Errorf("search filtered: %w", err)
-	}
+		fmt.Printf("Retrieved documents (public, similarity > %.2f):\n", similarityThreshold)
+		if len(results) == 0 {
+			fmt.Println("  No documents met all criteria.")
+		}
+		for _, r := range results {
+			fmt.Printf("  [ID=%d sim=%.4f access=%s] %.80s...\n", r.ID, r.Similarity, r.AccessLevel, r.Text)
+		}
 
-	// Step 03
-	fmt.Printf("\nQuestion: %s\n", question)
-	fmt.Println("\nRetrieved documents (public only):")
+		var safeBuf strings.Builder
+		safeBuf.WriteString("<CONTEXT>\n")
+		for _, r := range results {
+			safeBuf.WriteString(r.Text)
+			safeBuf.WriteString("\n---\n")
+		}
+		safeBuf.WriteString("</CONTEXT>")
 
-	// Step 03
-	for _, r := range results {
-		fmt.Printf("  [ID=%d sim=%.4f access=%s] %.80s...\n", r.ID, r.Similarity, r.AccessLevel, r.Text)
+		answer, err := chatNonStreaming(ctx, sseClient, llmURL, []client.D{
+			{"role": "system", "content": isolatedSystem},
+			{"role": "user", "content": safeBuf.String()},
+			{"role": "user", "content": question},
+		})
+		if err != nil {
+			return fmt.Errorf("all defenses: %w", err)
+		}
+
+		fmt.Print("-----\n")
+		fmt.Printf("> Response: %s\n", answer)
+		fmt.Print("-----\n")
 	}
 
 	// endregion
-
-	// -------------------------------------------------------------------------
-	// Step 03
-	// 5) All defenses active: threshold + isolation + source filter.
-	// region Step 03
-
-	// Step 03
-	fmt.Print("\n============================================================\n")
-	fmt.Print("5) All Defenses Active\n")
-	fmt.Print("============================================================\n")
-
-	// Step 03
-	results, err = searchDocs(ctx, db, embedClient, question, 5, "public", 0.70)
-	if err != nil {
-		return fmt.Errorf("search all defenses: %w", err)
-	}
-
-	// Step 03
-	fmt.Printf("\nQuestion: %s\n", question)
-	fmt.Println("\nRetrieved documents (public, similarity > 0.70):")
-
-	// Step 03
-	if len(results) == 0 {
-		fmt.Println("  No documents met all criteria.")
-	}
-
-	// Step 03
-	for _, r := range results {
-		fmt.Printf("  [ID=%d sim=%.4f access=%s] %.80s...\n", r.ID, r.Similarity, r.AccessLevel, r.Text)
-	}
-
-	// Step 03
-	var safeBuf strings.Builder
-	safeBuf.WriteString("<CONTEXT>\n")
-	for _, r := range results {
-		safeBuf.WriteString(r.Text)
-		safeBuf.WriteString("\n---\n")
-	}
-	safeBuf.WriteString("</CONTEXT>")
-
-	// Step 03
-	allUserMsg := fmt.Sprintf("%s\n\nQuestion: %s", safeBuf.String(), question)
-
-	// Step 03
-	answer, err = chatNonStreaming(ctx, sseClient, llmURL, []client.D{
-		{"role": "system", "content": isolatedSystem},
-		{"role": "user", "content": allUserMsg},
-	})
-	if err != nil {
-		return fmt.Errorf("all defenses: %w", err)
-	}
-
-	// Step 03
-	fmt.Print("\n==============================\n")
-	fmt.Print("-----\n")
-	fmt.Printf("> Prompt: %s\n", allUserMsg)
-	fmt.Print("-----\n")
-	fmt.Printf("> Response: %s\n", answer)
-	fmt.Print("-----\n")
-
-	// endregion
-
-	return nil
 }
 
 // =============================================================================

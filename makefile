@@ -134,7 +134,7 @@ install-models:
 	@echo
 	kronk model pull --local "mradermacher/Qwen2-Audio-7B.Q8_0"
 	@echo
-	kronk model pull --local "unsloth/gpt-oss-20b-GGUF:Q8_0"
+	kronk model pull --local "unsloth/gpt-oss-20b-Q8_0"
 	@echo
 	kronk model pull --local "bartowski/cerebras_Qwen3-Coder-REAP-25B-A3B-Q8_0"
 	@echo

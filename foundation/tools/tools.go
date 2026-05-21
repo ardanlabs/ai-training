@@ -4,13 +4,31 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"strings"
 
 	"github.com/ardanlabs/ai-training/foundation/client"
 )
 
+// PreviewMaxChars is the maximum number of characters to show in a tool
+// response preview when printing call results for educational tracing.
+const PreviewMaxChars = 150
+
 // Tool describes the features which all tools must implement.
 type Tool interface {
 	Call(ctx context.Context, toolCall client.ToolCall) client.D
+}
+
+// Preview returns a short, single-line preview of the "content" field of a
+// tool response, truncated to PreviewMaxChars with an ellipsis if cut.
+// It is intended to give learners visibility into what a tool returned to
+// the model without flooding the terminal.
+func Preview(resp client.D) string {
+	content, _ := resp["content"].(string)
+	content = strings.Join(strings.Fields(content), " ")
+	if len(content) > PreviewMaxChars {
+		return content[:PreviewMaxChars] + "…"
+	}
+	return content
 }
 
 // SuccessResponse returns a successful structured tool response.

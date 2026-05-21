@@ -1,0 +1,359 @@
+// This example takes step1 and adds PARALLEL embedding using errgroup with
+// a semaphore (concurrency limit) so multiple chunks are embedded in flight
+// at the same time. Both the sequential baseline and the parallel run are
+// executed so we can report a wall-clock speedup. The parallel results are
+// the ones stored in pgvector before running the same end-to-end RAG query.
+//
+// # Running the example
+//
+//	$ make example11-step2
+//
+// # Optional environment overrides
+//
+//	LLM_SERVER    chat completions endpoint (default: http://localhost:11435/v1/chat/completions)
+//	LLM_MODEL     chat model name           (default: Qwen3-8B-Q8_0)
+//	EMBED_SERVER  embeddings endpoint       (default: http://localhost:11435/v1/embeddings)
+//	EMBED_MODEL   embedding model name      (default: embeddinggemma-300m-qat-Q8_0)
+//
+// # Prerequisites
+//
+//	$ make compose-up
+//	$ make kronk-up
+//
+// # What this step adds over step1
+//
+// Parallel embedding with `errgroup.WithContext` + `g.SetLimit(N)` and a
+// speedup comparison against the sequential baseline.
+
+// Example 11 — Step 2 — Parallel Embedding (errgroup)
+package main
+
+import (
+	"context"
+	"fmt"
+	"log"
+	"os"
+	"regexp"
+	"strings"
+	"time"
+
+	"github.com/ardanlabs/ai-training/foundation/client"
+	"github.com/ardanlabs/ai-training/foundation/rag"
+	"github.com/ardanlabs/ai-training/foundation/sqldb"
+	"github.com/ardanlabs/ai-training/foundation/vector"
+	"github.com/jmoiron/sqlx"
+	"golang.org/x/sync/errgroup"
+)
+
+const (
+	dbUser     = "postgres"
+	dbPassword = "postgres"
+	dbHost     = "localhost:5432"
+	dbName     = "postgres"
+)
+
+var (
+	llmURL     = "http://localhost:11435/v1/chat/completions"
+	llmModel   = "Qwen3-8B-Q8_0"
+	embedURL   = "http://localhost:11435/v1/embeddings"
+	embedModel = "embeddinggemma-300m-qat-Q8_0"
+)
+
+func init() {
+	if v := os.Getenv("LLM_SERVER"); v != "" {
+		llmURL = v
+	}
+
+	if v := os.Getenv("LLM_MODEL"); v != "" {
+		llmModel = v
+	}
+
+	if v := os.Getenv("EMBED_SERVER"); v != "" {
+		embedURL = v
+	}
+
+	if v := os.Getenv("EMBED_MODEL"); v != "" {
+		embedModel = v
+	}
+}
+
+// =============================================================================
+
+func main() {
+	if err := run(); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func run() error {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+	defer cancel()
+
+	fmt.Printf("\nChat Server:\n%s\n", llmURL)
+	fmt.Printf("\nChat Model:\n%s\n", llmModel)
+	fmt.Printf("\nEmbedding Server:\n%s\n", embedURL)
+	fmt.Printf("\nEmbedding Model:\n%s\n", embedModel)
+
+	chatLLM := client.NewLLM(llmURL, llmModel)
+	embedLLM := client.NewLLM(embedURL, embedModel)
+
+	// -------------------------------------------------------------------------
+	// Connect to PostgreSQL.
+	// region Connect to PostgreSQL.
+
+	db, err := sqldb.Open(sqldb.Config{
+		User:         dbUser,
+		Password:     dbPassword,
+		Host:         dbHost,
+		Name:         dbName,
+		Schema:       "public",
+		MaxIdleConns: 2,
+		MaxOpenConns: 5,
+		DisableTLS:   true,
+	})
+	if err != nil {
+		return fmt.Errorf("open database: %w", err)
+	}
+	defer db.Close()
+
+	if err := sqldb.StatusCheck(ctx, db); err != nil {
+		return fmt.Errorf("status check: %w", err)
+	}
+
+	fmt.Print("\nPostgreSQL connected.\n")
+
+	// endregion
+
+	// -------------------------------------------------------------------------
+	// 1) Parse book chunks.
+	// region 1) Parse book chunks.
+
+	fmt.Print("\n============================================================\n")
+	fmt.Print("1) Parse Book Chunks\n")
+	fmt.Print("============================================================\n")
+
+	data, err := os.ReadFile("zarf/data/book.chunks")
+	if err != nil {
+		return fmt.Errorf("read chunks file: %w", err)
+	}
+
+	re := regexp.MustCompile(`<CHUNK>([\s\S]*?)</CHUNK>`)
+	matches := re.FindAllStringSubmatch(string(data), -1)
+
+	chunks := make([]string, len(matches))
+	for i, m := range matches {
+		chunks[i] = strings.TrimSpace(m[1])
+	}
+
+	fmt.Printf("\nTotal chunks: %d\n", len(chunks))
+
+	firstEmbedding, err := embedLLM.EmbedText(ctx, chunks[0])
+	if err != nil {
+		return fmt.Errorf("embed first chunk: %w", err)
+	}
+
+	dimensions := len(firstEmbedding)
+	fmt.Printf("\nEmbedding dimensions: %d\n", dimensions)
+
+	// endregion
+
+	// -------------------------------------------------------------------------
+	// 2) Sequential embedding (baseline).
+	// region 2) Sequential embedding (baseline).
+
+	fmt.Print("\n============================================================\n")
+	fmt.Print("2) Sequential Embedding (Baseline)\n")
+	fmt.Print("============================================================\n")
+
+	seqStart := time.Now()
+
+	seqDocs := make([]rag.Document, len(chunks))
+	seqDocs[0] = rag.Document{ID: 0, Name: fmt.Sprintf("Chunk %d", 0), Text: chunks[0], Embedding: firstEmbedding}
+
+	for i := 1; i < len(chunks); i++ {
+		embedding, err := embedLLM.EmbedText(ctx, chunks[i])
+		if err != nil {
+			return fmt.Errorf("sequential embed chunk %d: %w", i, err)
+		}
+		seqDocs[i] = rag.Document{ID: i, Name: fmt.Sprintf("Chunk %d", i), Text: chunks[i], Embedding: embedding}
+	}
+
+	seqDuration := time.Since(seqStart)
+	fmt.Printf("\nSequential: %d chunks in %s\n", len(chunks), seqDuration)
+
+	// endregion
+
+	// -------------------------------------------------------------------------
+	// 3) Parallel embedding with errgroup.
+	// region 3) Parallel embedding with errgroup.
+
+	fmt.Print("\n============================================================\n")
+	fmt.Print("3) Parallel Embedding (errgroup, concurrency=5)\n")
+	fmt.Print("============================================================\n")
+
+	const concurrency = 5
+
+	parStart := time.Now()
+
+	parDocs := make([]rag.Document, len(chunks))
+
+	g, gCtx := errgroup.WithContext(ctx)
+	g.SetLimit(concurrency)
+
+	for i := range chunks {
+		g.Go(func() error {
+			embedding, err := embedLLM.EmbedText(gCtx, chunks[i])
+			if err != nil {
+				return fmt.Errorf("parallel embed chunk %d: %w", i, err)
+			}
+			parDocs[i] = rag.Document{ID: i, Name: fmt.Sprintf("Chunk %d", i), Text: chunks[i], Embedding: embedding}
+			return nil
+		})
+	}
+
+	if err := g.Wait(); err != nil {
+		return err
+	}
+
+	parDuration := time.Since(parStart)
+	fmt.Printf("\nParallel (%d workers): %d chunks in %s\n", concurrency, len(chunks), parDuration)
+	fmt.Printf("Speedup: %.2fx\n", float64(seqDuration)/float64(parDuration))
+
+	// endregion
+
+	// -------------------------------------------------------------------------
+	// 4) Store the parallel results in pgvector.
+	// region 4) Store the parallel results in pgvector.
+
+	fmt.Print("\n============================================================\n")
+	fmt.Print("4) Store in pgvector\n")
+	fmt.Print("============================================================\n")
+
+	if err := initDB(ctx, db, dimensions); err != nil {
+		return err
+	}
+
+	if err := insertDocuments(ctx, db, parDocs); err != nil {
+		return err
+	}
+
+	fmt.Printf("\n%d documents stored.\n", len(parDocs))
+
+	// endregion
+
+	// -------------------------------------------------------------------------
+	// 5) End-to-end RAG query.
+	// region 5) End-to-end RAG query.
+
+	fmt.Print("\n============================================================\n")
+	fmt.Print("5) End-to-End RAG Query\n")
+	fmt.Print("============================================================\n")
+
+	const question = `According to the Ultimate Go Notebook, what is Bill Kennedy's "never, ever, never" rule about switching between data semantics in a call chain, and what does he say is never safe?`
+
+	results, err := rag.SearchDocuments(ctx, db, embedLLM, question, 5)
+	if err != nil {
+		return fmt.Errorf("search documents: %w", err)
+	}
+
+	printResults(results)
+
+	contextText := rag.BuildContext(results)
+
+	const prompt = `/no_think
+
+Use the following pieces of information to answer the user's question.
+If you don't know the answer, say that you don't know.
+
+Context: %s
+
+Question: %s
+
+Answer the question and provide additional helpful information, but be concise.
+
+Responses should be properly formatted to be easily read.
+`
+
+	finalPrompt := fmt.Sprintf(prompt, contextText, question)
+
+	ch, err := chatLLM.ChatCompletionsSSE(ctx, finalPrompt)
+	if err != nil {
+		return fmt.Errorf("chat completions sse: %w", err)
+	}
+
+	fmt.Print("\n==============================\n")
+	fmt.Print("-----\n")
+	fmt.Printf("> Prompt: %s\n", question)
+	fmt.Print("-----\n")
+	fmt.Print("> Response: ")
+
+	for resp := range ch {
+		if len(resp.Choices) == 0 {
+			continue
+		}
+
+		fmt.Print(resp.Choices[0].Delta.Content)
+	}
+
+	fmt.Print("\n-----\n")
+
+	// endregion
+
+	return nil
+}
+
+// =============================================================================
+
+func initDB(ctx context.Context, db *sqlx.DB, dimensions int) error {
+	if err := sqldb.ExecContext(ctx, db, `CREATE EXTENSION IF NOT EXISTS vector`); err != nil {
+		return fmt.Errorf("create extension vector: %w", err)
+	}
+
+	if err := sqldb.ExecContext(ctx, db, `DROP TABLE IF EXISTS documents`); err != nil {
+		return fmt.Errorf("drop table: %w", err)
+	}
+
+	query := fmt.Sprintf(`
+CREATE TABLE documents (
+	id        BIGINT PRIMARY KEY,
+	name      TEXT NOT NULL,
+	text      TEXT NOT NULL,
+	embedding VECTOR(%d) NOT NULL
+)`, dimensions)
+
+	if err := sqldb.ExecContext(ctx, db, query); err != nil {
+		return fmt.Errorf("create table: %w", err)
+	}
+
+	fmt.Print("\nTable 'documents' created.\n")
+
+	return nil
+}
+
+func insertDocuments(ctx context.Context, db *sqlx.DB, documents []rag.Document) error {
+	const query = `
+INSERT INTO documents (id, name, text, embedding)
+VALUES ($1, $2, $3, $4::vector)
+`
+
+	for _, doc := range documents {
+		if _, err := db.ExecContext(ctx, query, doc.ID, doc.Name, doc.Text, vector.FormatPGVector(doc.Embedding)); err != nil {
+			return fmt.Errorf("insert document %d: %w", doc.ID, err)
+		}
+	}
+
+	return nil
+}
+
+func printResults(results []rag.SearchResult) {
+	fmt.Print("\nTop matching chunks:\n\n")
+
+	for i, r := range results {
+		preview := r.Text
+		if len(preview) > 120 {
+			preview = preview[:120] + "..."
+		}
+
+		fmt.Printf("%d. %s (similarity: %.2f%%) %s\n\n", i+1, r.Name, r.Similarity*100, preview)
+	}
+}

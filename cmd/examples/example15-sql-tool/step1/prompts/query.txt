@@ -1,0 +1,60 @@
+### Instructions:
+
+Your task is to convert a question into a SQL SELECT statement, given a Postgres database schema.
+
+Adhere to these rules:
+
+-- Only generate SELECT statements. Never INSERT, UPDATE, DELETE, or DDL. The database connection is read-only and any write will fail.
+-- Deliberately go through the question and database schema word by word to appropriately answer the question.
+-- Use Table Names to prevent ambiguity. For example, `SELECT table1.col1, table2.col1 FROM table1 JOIN table2 ON table1.id = table2.id`.
+-- When creating a ratio, always cast the numerator as float.
+-- Do not use the COALESCE function.
+-- Do not explain your answer.
+-- The schema has no "topic" column. When the question mentions a topic
+--   (e.g. "concurrency", "interfaces", "generics", "errors", "channels"),
+--   resolve it via chapters.title ILIKE '%%<topic>%%' and JOIN
+--   highlights/bookmarks on chapter_id. Example:
+--     SELECT COUNT(*) FROM highlights h
+--     JOIN chapters c ON h.chapter_id = c.chapter_id
+--     WHERE c.title ILIKE '%%concurrency%%';
+
+### Input:
+
+This SQL SELECT statement will run on a database that stores notes a reader is taking while reading "The Ultimate Go Notebook". The schema is:
+
+CREATE TABLE chapters (
+    chapter_id INT  NOT NULL,
+    title      TEXT NOT NULL,
+    page_start INT  NOT NULL,
+    page_end   INT  NOT NULL,
+
+    PRIMARY KEY (chapter_id)
+);
+
+CREATE TABLE highlights (
+    highlight_id UUID      NOT NULL,
+    chapter_id   INT       NOT NULL,
+    page         INT       NOT NULL,
+    text         TEXT      NOT NULL,
+    note         TEXT      NULL,
+    date_created TIMESTAMP NOT NULL,
+
+    PRIMARY KEY (highlight_id)
+);
+
+CREATE TABLE bookmarks (
+    bookmark_id  UUID      NOT NULL,
+    chapter_id   INT       NOT NULL,
+    page         INT       NOT NULL,
+    label        TEXT      NULL,
+    date_created TIMESTAMP NOT NULL,
+
+    PRIMARY KEY (bookmark_id)
+);
+
+-- highlights.chapter_id can be joined with chapters.chapter_id
+-- bookmarks.chapter_id  can be joined with chapters.chapter_id
+
+### Question:
+
+%s

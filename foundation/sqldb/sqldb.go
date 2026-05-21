@@ -39,6 +39,7 @@ type Config struct {
 	MaxIdleConns int
 	MaxOpenConns int
 	DisableTLS   bool
+	ReadOnly     bool
 }
 
 // Open knows how to open a database connection based on the configuration.
@@ -53,6 +54,9 @@ func Open(cfg Config) (*sqlx.DB, error) {
 	q.Set("timezone", "utc")
 	if cfg.Schema != "" {
 		q.Set("search_path", cfg.Schema)
+	}
+	if cfg.ReadOnly {
+		q.Set("options", "-c default_transaction_read_only=on")
 	}
 
 	u := url.URL{
@@ -73,38 +77,48 @@ func Open(cfg Config) (*sqlx.DB, error) {
 	return db, nil
 }
 
+// ErrDBUnreachable is returned by StatusCheck when the database cannot be
+// reached within the status-check timeout. It usually means the database
+// server is not running (e.g. forgot to run `make compose-up`).
+var ErrDBUnreachable = errors.New("database is unreachable; is the server running? try `make compose-up`")
+
+// StatusCheckTimeout caps how long StatusCheck will wait for the database
+// to respond before returning ErrDBUnreachable.
+const StatusCheckTimeout = 5 * time.Second
+
 // StatusCheck returns nil if it can successfully talk to the database. It
-// returns a non-nil error otherwise.
+// returns a non-nil error otherwise. The check is bounded by
+// StatusCheckTimeout regardless of the deadline on the supplied context,
+// so a long-lived parent context will not cause the check to hang when
+// the database is down.
 func StatusCheck(ctx context.Context, db *sqlx.DB) error {
+	ctx, cancel := context.WithTimeout(ctx, StatusCheckTimeout)
+	defer cancel()
 
-	// If the user doesn't give us a deadline set 1 second.
-	if _, ok := ctx.Deadline(); !ok {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, time.Second)
-		defer cancel()
-	}
-
+	var lastErr error
 	for attempts := 1; ; attempts++ {
-		if err := db.Ping(); err == nil {
+		if err := db.PingContext(ctx); err == nil {
+			lastErr = nil
 			break
+		} else {
+			lastErr = err
 		}
 
 		time.Sleep(time.Duration(attempts) * 100 * time.Millisecond)
 
 		if ctx.Err() != nil {
-			return ctx.Err()
+			return fmt.Errorf("%w: %w", ErrDBUnreachable, lastErr)
 		}
-	}
-
-	if ctx.Err() != nil {
-		return ctx.Err()
 	}
 
 	// Run a simple query to determine connectivity.
 	// Running this query forces a round trip through the database.
 	const q = `SELECT TRUE`
 	var tmp bool
-	return db.QueryRowContext(ctx, q).Scan(&tmp)
+	if err := db.QueryRowContext(ctx, q).Scan(&tmp); err != nil {
+		return fmt.Errorf("%w: %w", ErrDBUnreachable, err)
+	}
+	return nil
 }
 
 // ExecContext is a helper function to execute a CUD operation with
@@ -117,8 +131,8 @@ func ExecContext(ctx context.Context, db sqlx.ExtContext, query string) error {
 // logging and tracing where field replacement is necessary.
 func NamedExecContext(ctx context.Context, db sqlx.ExtContext, query string, data any) (err error) {
 	if _, err := sqlx.NamedExecContext(ctx, db, query, data); err != nil {
-		var pqerr *pgconn.PgError
-		if errors.As(err, &pqerr) {
+		pqerr, ok := errors.AsType[*pgconn.PgError](err)
+		if ok {
 			switch pqerr.Code {
 			case undefinedTable:
 				return ErrUndefinedTable
@@ -288,8 +302,8 @@ func QueryMap(ctx context.Context, db sqlx.ExtContext, query string, dest *[]map
 	return nil
 }
 
-// queryString provides a pretty print version of the query and parameters.
-func queryString(query string, args any) string {
+// QueryString provides a pretty print version of the query and parameters.
+func QueryString(query string, args any) string {
 	query, params, err := sqlx.Named(query, args)
 	if err != nil {
 		return err.Error()

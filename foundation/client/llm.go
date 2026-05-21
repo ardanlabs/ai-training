@@ -149,7 +149,7 @@ func (llm *LLM) EmbedText(ctx context.Context, input string) ([]float64, error) 
 
 	var resp Embedding
 	if err := llm.cln.Do(ctx, http.MethodPost, llm.url, d, &resp); err != nil {
-		return nil, fmt.Errorf("do: %w", err)
+		return nil, fmt.Errorf("do %#v @url[%s]: %w", d, llm.url, err)
 	}
 
 	if len(resp.Data) == 0 {
@@ -157,6 +157,38 @@ func (llm *LLM) EmbedText(ctx context.Context, input string) ([]float64, error) 
 	}
 
 	return resp.Data[0].Embedding, nil
+}
+
+func (llm *LLM) EmbedTexts(ctx context.Context, inputs []string) ([][]float64, error) {
+	if len(inputs) == 0 {
+		return nil, nil
+	}
+
+	d := D{
+		"model":              llm.model,
+		"truncate":           true,
+		"truncate_direction": "right",
+		"input":              inputs,
+	}
+
+	var resp Embedding
+	if err := llm.cln.Do(ctx, http.MethodPost, llm.url, d, &resp); err != nil {
+		return nil, fmt.Errorf("do: %w", err)
+	}
+
+	if len(resp.Data) != len(inputs) {
+		return nil, fmt.Errorf("expected %d embeddings, got %d", len(inputs), len(resp.Data))
+	}
+
+	embeddings := make([][]float64, len(inputs))
+	for _, ed := range resp.Data {
+		if ed.Index < 0 || ed.Index >= len(inputs) {
+			return nil, fmt.Errorf("embedding index %d out of range [0, %d)", ed.Index, len(inputs))
+		}
+		embeddings[ed.Index] = ed.Embedding
+	}
+
+	return embeddings, nil
 }
 
 func (llm *LLM) EmbedWithImage(ctx context.Context, description string, image []byte, mimeType string) ([]float64, error) {

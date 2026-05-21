@@ -128,15 +128,15 @@ install-models:
 	@echo
 	kronk model pull --local "unsloth/Qwen3-8B-Q8_0"
 	@echo
-	kronk model pull --local "ggml-org/embeddinggemma-300m-qat-q8_0-GGUF/embeddinggemma-300m-qat-Q8_0.gguf"
+	kronk model pull --local "ggml-org/embeddinggemma-300m-qat-Q8_0"
 	@echo
-	kronk model pull --local "ggml-org/Qwen2.5-VL-3B-Instruct-GGUF/Qwen2.5-VL-3B-Instruct-Q8_0.gguf"
+	kronk model pull --local "ggml-org/Qwen2.5-VL-3B-Instruct-Q8_0"
 	@echo
-	kronk model pull --local "mradermacher/Qwen2-Audio-7B-GGUF/Qwen2-Audio-7B.Q8_0.gguf"
+	kronk model pull --local "mradermacher/Qwen2-Audio-7B.Q8_0"
 	@echo
 	kronk model pull --local "unsloth/gpt-oss-20b-GGUF:Q8_0"
 	@echo
-	kronk model pull --local "bartowski/cerebras_Qwen3-Coder-REAP-25B-A3B-GGUF/cerebras_Qwen3-Coder-REAP-25B-A3B-Q8_0.gguf"
+	kronk model pull --local "bartowski/cerebras_Qwen3-Coder-REAP-25B-A3B-Q8_0"
 	@echo
 
 # ==============================================================================

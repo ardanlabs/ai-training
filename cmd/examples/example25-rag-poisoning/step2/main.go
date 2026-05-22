@@ -26,7 +26,7 @@
 //	A second RAG run that applies a relevance threshold (similarity > 0.70)
 //	so the poisoned document is filtered out before prompt assembly.
 
-// Example 25 — Step 2 — Defense A: Relevance Threshold
+// Example 25 — Step 2 — Defense Relevance Threshold
 package main
 
 import (

@@ -1,5 +1,5 @@
 // This example takes step2 and adds the remaining two defenses plus a
-// combined run. Defense B (source filtering) restricts retrieval to
+// combined run. Defense (source filtering) restricts retrieval to
 // documents flagged access_level = 'public', which also keeps the INTERNAL
 // secret document out of the prompt. The final section runs all three defenses
 // together to show the attack from step1 fully neutralized.
@@ -22,7 +22,7 @@
 //
 // # What this step adds over step2
 //
-// Defense B: (source filtering by access_level).
+// Defense (source filtering by access_level).
 
 // Example 25 — Step 3 — Defenses B
 package main
@@ -139,12 +139,12 @@ func run() error {
 
 	// -------------------------------------------------------------------------
 	// Step 03
-	// Interactive loop: for each question, run Defense B, Defense C, and all
-	// defenses combined.
+	// Interactive loop: for each question, run Defense source filtering, and
+	// threshold filtering.
 	// region Step 03
 
 	fmt.Print("\n============================================================\n")
-	fmt.Print("Defenses B + C + All Combined (interactive)\n")
+	fmt.Print("Defenses threshold filtering + source filtering \n")
 	fmt.Print("============================================================\n")
 
 	fmt.Printf("\nInteractive prompt (use 'ctrl-c', 'quit', '/exit', or '/bye' to quit)\n")
@@ -172,9 +172,9 @@ func run() error {
 		fmt.Print("-----\n")
 
 		// ---------------------------------------------------------------------
-		// 3) Defense B: source filtering (access_level = 'public').
+		// 3) Defense: source filtering (access_level = 'public').
 
-		fmt.Print("\n--- 4) Defense C: Source Filtering (access_level = 'public') ---\n")
+		fmt.Print("\n--- 3) Defense C: Source Filtering (access_level = 'public') ---\n")
 
 		results, err := searchDocs(ctx, db, embedClient, question, 5, "public", similarityThreshold)
 		if err != nil {

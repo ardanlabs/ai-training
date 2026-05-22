@@ -23,11 +23,11 @@
 //
 // # What this step adds over step2
 //
-//	Section 3: Defense A — role separation. The chat call uses an explicit
+//	Section 3: Defense — role separation. The chat call uses an explicit
 //	system message with a strict policy and the attacker payload in a
 //	separate user message; nothing is concatenated.
 
-// Example 23 — Step 3 — Defense A: Role Separation
+// Example 23 — Step 3 — Defense: Role Separation
 package main
 
 import (
@@ -126,11 +126,11 @@ func run() error {
 
 	// -------------------------------------------------------------------------
 	// Step 03
-	// Defense A: role separation
+	// Defense: role separation
 	// region Step 03
 
 	fmt.Print("\n============================================================\n")
-	fmt.Print("3) Defense A: Role Separation — Direct Injection\n")
+	fmt.Print("3) Defense: Role Separation — Direct Injection\n")
 	fmt.Print("============================================================\n")
 
 	fmt.Println("\nSystem prompt in system role, user input in user role — never concatenated.")

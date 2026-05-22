@@ -4,8 +4,8 @@
 // and classifier see contains zero English trigger phrases, so both rule
 // the input benign. A sufficiently capable model decodes the Morse and
 // executes the embedded directive — exfiltrating data via tool_browse
-// despite Defense A (role separation), Defense B (regex sanitization),
-// and Defense C (LLM classifier) all being active.
+// despite Defense (role separation), Defense (regex sanitization),
+// and Defense (LLM classifier) all being active.
 //
 // # Running the example
 //
@@ -170,9 +170,9 @@ My question: What year was Go created?`, morsePayload)
 	fmt.Printf("\nPlain-text intent (NEVER sent to the model):\n%s\n", plainPayload)
 	fmt.Printf("\nUser message actually sent (Morse-obfuscated):\n%s\n", morseAttack)
 
-	// Defense B: Input Sanitization
+	// Defense: Input Sanitization
 	fmt.Print("\n------------------------------------------------------------\n")
-	fmt.Print("Defense B: Input Sanitization (regex blocklist)\n")
+	fmt.Print("Defense: Input Sanitization (regex blocklist)\n")
 	fmt.Print("------------------------------------------------------------\n")
 
 	morseSanitized := sanitizeInput(morseAttack)
@@ -183,9 +183,9 @@ My question: What year was Go created?`, morsePayload)
 		fmt.Printf("%s\n", morseSanitized)
 	}
 
-	// Defense C: Detection Classifier
+	// Defense: Detection Classifier
 	fmt.Print("\n------------------------------------------------------------\n")
-	fmt.Print("Defense C: Detection Classifier (LLM-based)\n")
+	fmt.Print("Defense: Detection Classifier (LLM-based)\n")
 	fmt.Print("------------------------------------------------------------\n")
 
 	flagged, err := detectInjection(ctx, chatClient, morseSanitized)
@@ -199,14 +199,14 @@ My question: What year was Go created?`, morsePayload)
 		fmt.Println("\n⛔ BYPASSED — classifier ruled the Morse-encoded message benign.")
 	}
 
-	// Defense A: Role Separation — send to the model
+	// Defense: Role Separation — send to the model
 	//
 	// Even with role separation active, a model that successfully decodes
 	// the Morse will see plain-English instructions to exfiltrate data and
 	// may obey them — the security directive only kicks in when the model
 	// recognizes the surface English of the injection as such.
 	fmt.Print("\n------------------------------------------------------------\n")
-	fmt.Print("Defense A: Role Separation — sending to model\n")
+	fmt.Print("Defense: Role Separation — sending to model\n")
 	fmt.Print("------------------------------------------------------------\n")
 
 	answer, err := chatNonStreaming(ctx, sseClient, llmURL, []client.D{

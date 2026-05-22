@@ -1,4 +1,4 @@
-// This example builds on step8 by adding Defense D: an LLM-based egress
+// This example builds on step8 by adding Defense: an LLM-based egress
 // analyzer that inspects every outbound tool_browse request *after* the
 // model has produced it. Step8 demonstrated that input-side defenses
 // (sanitization, classifier, role separation) can all be bypassed by a
@@ -29,13 +29,13 @@
 //
 // # What this step adds over step8
 //
-//	Section 9: Defense D — an LLM egress analyzer (analyzeEgress) that
+//	Section 9: Defense — an LLM egress analyzer (analyzeEgress) that
 //	classifies outbound tool_browse requests as benign or exfiltration,
 //	plus safeToolBrowse, a wrapper around toolBrowse that consults the
 //	analyzer and blocks flagged requests. The Morse attack from step8
 //	is replayed through safeToolBrowse and is now stopped.
 
-// Example 23 — Step 9 — Defense D: LLM Egress Analyzer
+// Example 23 — Step 9 — Defense: LLM Egress Analyzer
 package main
 
 import (
@@ -137,11 +137,11 @@ func run() error {
 
 	// -------------------------------------------------------------------------
 	// Step 09
-	// Defense D: LLM egress analyzer
+	// Defense: LLM egress analyzer
 	// region Step 09
 
 	fmt.Print("\n============================================================\n")
-	fmt.Print("9) Defense D: LLM Egress Analyzer\n")
+	fmt.Print("9) Defense: LLM Egress Analyzer\n")
 	fmt.Print("============================================================\n")
 
 	fmt.Println("\nA model response carrying a tool_browse exfil call is routed through")

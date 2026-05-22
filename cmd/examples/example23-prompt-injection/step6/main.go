@@ -25,7 +25,7 @@
 //	Section 6: run the detection classifier on the poisoned context block
 //	captured during the indirect-injection step.
 
-// Example 23 — Step 6 — Defense C: Detection Classifier (Indirect)
+// Example 23 — Step 6 — Defense: Detection Classifier (Indirect)
 package main
 
 import (
@@ -127,7 +127,7 @@ func run() error {
 	// region Step 06
 
 	fmt.Print("\n============================================================\n")
-	fmt.Print("6) Defense C: Detection Classifier — Indirect Injection\n")
+	fmt.Print("6) Defense: Detection Classifier — Indirect Injection\n")
 	fmt.Print("============================================================\n")
 
 	// Build the poisoned context the same way the indirect-injection step

@@ -425,6 +425,10 @@ example25-step2:
 	@echo $@ > $(WORKSHOP_STATE)
 	go run ./cmd/examples/example25-rag-poisoning/step2
 
+example25-step3:
+	@echo $@ > $(WORKSHOP_STATE)
+	go run ./cmd/examples/example25-rag-poisoning/step3
+
 example26-step1:
 	@echo $@ > $(WORKSHOP_STATE)
 	go run ./cmd/examples/example26-output-sanitization/step1

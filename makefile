@@ -401,6 +401,10 @@ example23-step9:
 	@echo $@ > $(WORKSHOP_STATE)
 	go run ./cmd/examples/example23-prompt-injection/step9
 
+example23-step10:
+	@echo $@ > $(WORKSHOP_STATE)
+	go run ./cmd/examples/example23-prompt-injection/step10
+
 example24-step1:
 	@echo $@ > $(WORKSHOP_STATE)
 	go run ./cmd/examples/example24-tool-security/step1

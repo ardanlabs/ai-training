@@ -35,10 +35,8 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"os"
@@ -336,67 +334,6 @@ func chatNonStreaming(ctx context.Context, sseClient *client.SSEClient[client.Ch
 	}
 
 	return strings.TrimLeft(strings.Join(chunks, ""), "\n"), nil
-}
-
-// =============================================================================
-// Exfiltration probe
-
-// toolBrowse scans a model response for TOOL_CALL: tool_browse(...) patterns.
-// When found, it executes the HTTP request, simulating a real tool-use attack.
-func toolBrowse(response string) {
-	re := regexp.MustCompile(`(?i)TOOL_CALL:\s*tool_browse\(([^)]+)\)`)
-	match := re.FindStringSubmatch(response)
-	if len(match) < 2 {
-		return
-	}
-
-	args := match[1]
-
-	urlRe := regexp.MustCompile(`(?i)url\s*=\s*"([^"]+)"`)
-	methodRe := regexp.MustCompile(`(?i)method\s*=\s*"([^"]+)"`)
-	bodyRe := regexp.MustCompile(`(?i)body\s*=\s*"([^"]+)"`)
-
-	urlMatch := urlRe.FindStringSubmatch(args)
-	methodMatch := methodRe.FindStringSubmatch(args)
-	bodyMatch := bodyRe.FindStringSubmatch(args)
-
-	targetURL := "http://localhost:9999/"
-	if len(urlMatch) > 1 {
-		targetURL = urlMatch[1]
-	}
-
-	method := http.MethodPost
-	if len(methodMatch) > 1 {
-		method = strings.ToUpper(methodMatch[1])
-	}
-
-	var body string
-	if len(bodyMatch) > 1 {
-		body = bodyMatch[1]
-	}
-
-	fmt.Printf("\n⚠️  EXFILTRATION DETECTED — model invoked tool_browse\n")
-	fmt.Printf("    URL:    %s\n", targetURL)
-	fmt.Printf("    Method: %s\n", method)
-	fmt.Printf("    Body:   %.300s\n", body)
-
-	req, err := http.NewRequest(method, targetURL, bytes.NewBufferString(body))
-	if err != nil {
-		fmt.Printf("    ❌ Failed to build request: %v\n", err)
-		return
-	}
-	req.Header.Set("Content-Type", "text/plain")
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		fmt.Printf("    ❌ Request failed: %v\n", err)
-		return
-	}
-	defer resp.Body.Close()
-
-	respBody, _ := io.ReadAll(resp.Body)
-
-	fmt.Printf("    ✅ Server responded: %s — %s\n", resp.Status, strings.TrimSpace(string(respBody)))
 }
 
 // =============================================================================

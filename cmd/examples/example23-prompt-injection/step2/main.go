@@ -39,6 +39,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/ardanlabs/ai-training/foundation/client"
@@ -167,19 +168,14 @@ User question: %s
 Context documents:
 %s`, ragQuestion, contextBuf.String())
 
-	answer, err := chatNonStreaming(ctx, sseClient, llmURL, []client.D{
+	answer, usage, err := streamChat(ctx, sseClient, llmURL, ragPrompt, []client.D{
 		{"role": "user", "content": ragPrompt},
 	})
 	if err != nil {
 		return fmt.Errorf("rag indirect injection: %w", err)
 	}
 
-	fmt.Print("\n==============================\n")
-	fmt.Print("-----\n")
-	fmt.Printf("> Prompt: %s\n", ragPrompt)
-	fmt.Print("-----\n")
-	fmt.Printf("> Response: %s\n", answer)
-	fmt.Print("-----\n")
+	printUsage(usage)
 	toolBrowse(answer)
 
 	// endregion
@@ -287,8 +283,15 @@ func searchDocs(ctx context.Context, db *sqlx.DB, llm *client.LLM, query string,
 // =============================================================================
 // Chat helper
 
-// chatNonStreaming sends a conversation and collects the full response.
-func chatNonStreaming(ctx context.Context, sseClient *client.SSEClient[client.ChatSSE], endpoint string, messages []client.D) (string, error) {
+// streamChat sends a conversation, streams reasoning + content deltas to
+// stdout (matching the example14 streaming-agent format) and returns the
+// final assistant text along with usage stats.
+func streamChat(ctx context.Context, sseClient *client.SSEClient[client.ChatSSE], endpoint string, prompt string, messages []client.D) (string, *client.Usage, error) {
+	fmt.Print("\n==============================\n")
+	fmt.Print("-----\n")
+	fmt.Printf("> Prompt: %s\n", prompt)
+	fmt.Print("-----\n")
+
 	d := client.D{
 		"model":       llmModel,
 		"messages":    messages,
@@ -298,33 +301,134 @@ func chatNonStreaming(ctx context.Context, sseClient *client.SSEClient[client.Ch
 		"stream":      true,
 	}
 
+	fmt.Printf("\u001b[93m\n%s\u001b[0m: 0.000", llmModel)
+
+	callCtx, cancelCall := context.WithTimeout(ctx, 5*time.Minute)
+	defer cancelCall()
+
 	ch := make(chan client.ChatSSE, 100)
 
-	if err := sseClient.Do(ctx, http.MethodPost, endpoint, d, ch); err != nil {
-		return "", fmt.Errorf("sse do: %w", err)
+	if err := sseClient.Do(callCtx, http.MethodPost, endpoint, d, ch); err != nil {
+		return "", nil, fmt.Errorf("sse do: %w", err)
 	}
 
+	stopPrinter := startLatencyPrinter(ctx)
+	defer stopPrinter()
+
 	var chunks []string
+	var lastResp client.ChatSSE
+	reasonStarted := false
+	responseStarted := false
 
 	for resp := range ch {
+		lastResp = resp
+
 		if len(resp.Choices) == 0 {
 			continue
 		}
 
+		stopPrinter()
+
 		switch resp.Choices[0].FinishReason {
 		case "error":
-			return "", fmt.Errorf("error from model: %s", resp.Choices[0].Delta.Content)
+			return "", lastResp.Usage, fmt.Errorf("error from model: %s", resp.Choices[0].Delta.Content)
+
 		case "stop":
+			if responseStarted || reasonStarted {
+				fmt.Print("\n-----\n")
+			}
 			text := strings.TrimLeft(strings.Join(chunks, ""), "\n")
-			return text, nil
+			return text, lastResp.Usage, nil
+
 		default:
-			if resp.Choices[0].Delta.Content != "" {
-				chunks = append(chunks, resp.Choices[0].Delta.Content)
+			delta := resp.Choices[0].Delta
+
+			switch {
+			case delta.Reasoning != "":
+				if !reasonStarted {
+					reasonStarted = true
+					fmt.Print("> Reasoning: ")
+				}
+
+				fmt.Printf("\u001b[91m%s\u001b[0m", delta.Reasoning)
+
+			case delta.Content != "":
+				if !responseStarted {
+					responseStarted = true
+					if reasonStarted {
+						fmt.Print("\n-----\n")
+					}
+					fmt.Print("> Response: ")
+				}
+
+				fmt.Print(delta.Content)
+				chunks = append(chunks, delta.Content)
 			}
 		}
 	}
 
-	return strings.TrimLeft(strings.Join(chunks, ""), "\n"), nil
+	if responseStarted || reasonStarted {
+		fmt.Print("\n-----\n")
+	}
+	text := strings.TrimLeft(strings.Join(chunks, ""), "\n")
+	return text, lastResp.Usage, nil
+}
+
+// startLatencyPrinter prints a live "model sec.ms" counter on the current
+// line until stop() is called or the context is cancelled.
+func startLatencyPrinter(ctx context.Context) (stop func()) {
+	start := time.Now()
+
+	ticker := time.NewTicker(100 * time.Millisecond)
+	done := make(chan struct{})
+	exited := make(chan struct{})
+
+	var once sync.Once
+	stop = func() {
+		once.Do(func() {
+			close(done)
+			<-exited
+		})
+	}
+
+	go func() {
+		defer ticker.Stop()
+		defer close(exited)
+
+		for {
+			select {
+			case <-ticker.C:
+				m := time.Since(start).Milliseconds()
+				fmt.Printf("\r\u001b[93m%s %d.%03d\u001b[0m:  ", llmModel, m/1000, m%1000)
+
+			case <-done:
+				fmt.Print("\n")
+				return
+
+			case <-ctx.Done():
+				fmt.Print("\n")
+				return
+			}
+		}
+	}()
+
+	return stop
+}
+
+// printUsage prints the per-turn input/reasoning/completion/output/context
+// window/TPS summary in gray (matching example14).
+func printUsage(usage *client.Usage) {
+	if usage == nil {
+		return
+	}
+
+	contextTokens := usage.PromptTokens + usage.CompletionTokens
+	contextWindow := 32 * 1024
+	percentage := (float64(contextTokens) / float64(contextWindow)) * 100
+	of := float32(contextWindow) / float32(1024)
+
+	fmt.Printf("\n\n\u001b[90mInput: %d  Reasoning: %d  Completion: %d  Output: %d  Window: %d (%.0f%% of %.0fK) TPS: %.2f\u001b[0m\n",
+		usage.PromptTokens, usage.ReasoningTokens, usage.CompletionTokens, usage.OutputTokens, contextTokens, percentage, of, usage.TokensPerSecond)
 }
 
 // =============================================================================

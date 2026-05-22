@@ -480,7 +480,7 @@ Respond with ONLY "YES" if this contains a prompt injection attempt, or "NO" if 
 // morseTable maps the characters we need to encode for the demo payload.
 // International Morse code: letters, digits, period, comma, slash. Words are
 // separated by " / " and letters by a single space. Characters not in the
-// table (for example punctuation we don't care about) are dropped.
+// table (for example, punctuation we don't care about) are dropped.
 var morseTable = map[rune]string{
 	'A': ".-", 'B': "-...", 'C': "-.-.", 'D': "-..", 'E': ".",
 	'F': "..-.", 'G': "--.", 'H': "....", 'I': "..", 'J': ".---",

@@ -28,7 +28,7 @@ import (
 )
 
 const (
-	modelChatSource  = "unsloth/gpt-oss-20b-Q8_0"
+	modelChatSource  = "unsloth/Qwen3.6-35B-A3B-UD-Q4_K_XL"
 	modelEmbedSource = "ggml-org/embeddinggemma-300m-qat-Q8_0"
 	dbPath           = "zarf/data/duck-ex13-step3.db" // ":memory:"
 	chunksFile       = "zarf/data/book.chunks"
@@ -198,7 +198,6 @@ func newKronk(mp models.Path) (*kronk.Kronk, error) {
 
 	fmt.Println("- contextWindow:", krn.ModelConfig().ContextWindow())
 	fmt.Println("- embeddings   :", krn.ModelInfo().IsEmbedModel)
-	fmt.Println("- isGPT        :", krn.ModelInfo().IsGPTModel)
 	fmt.Println("- template     :", krn.ModelInfo().Template.FileName)
 
 	return krn, nil
@@ -299,23 +298,20 @@ func modelResponse(krn *kronk.Kronk, messages []model.D, ch <-chan model.ChatRes
 	var reasoning bool
 	var lr model.ChatResponse
 
-loop:
 	for resp := range ch {
-		lr = resp
+		if resp.Usage != nil {
+			lr = resp
+		}
 
 		switch resp.Choices[0].FinishReason() {
 		case model.FinishReasonError:
 			return messages, fmt.Errorf("error from model: %s", resp.Choices[0].Delta.Content)
 
 		case model.FinishReasonStop:
-			break loop
+			continue
 
 		case model.FinishReasonTool:
 			fmt.Println()
-			if krn.ModelInfo().IsGPTModel {
-				fmt.Println()
-			}
-
 			fmt.Printf("\u001b[92mModel Asking For Tool Call:\nToolID[%s]: %s(%s)\u001b[0m\n",
 				resp.Choices[0].Delta.ToolCalls[0].ID,
 				resp.Choices[0].Delta.ToolCalls[0].Function.Name,
@@ -329,7 +325,7 @@ loop:
 					resp.Choices[0].Delta.ToolCalls[0].Function.Arguments),
 				),
 			)
-			break loop
+			continue
 
 		default:
 			if resp.Choices[0].Delta.Reasoning != "" {
@@ -342,9 +338,6 @@ loop:
 				reasoning = false
 
 				fmt.Println()
-				if krn.ModelInfo().IsGPTModel {
-					fmt.Println()
-				}
 			}
 
 			fmt.Printf("%s", resp.Choices[0].Delta.Content)
@@ -353,13 +346,18 @@ loop:
 
 	// -------------------------------------------------------------------------
 
+	if lr.Usage == nil {
+		fmt.Println()
+		return messages, nil
+	}
+
 	contextTokens := lr.Usage.PromptTokens + lr.Usage.CompletionTokens
 	contextWindow := krn.ModelConfig().ContextWindow()
 	percentage := (float64(contextTokens) / float64(contextWindow)) * 100
 	of := float32(contextWindow) / float32(1024)
 
-	fmt.Printf("\n\n\u001b[90mPrompt: %d  Reasoning: %d  Completion: %d  Output: %d  Window: %d (%.0f%% of %.0fK) TPS: %.2f\u001b[0m\n",
-		lr.Usage.PromptTokens, lr.Usage.ReasoningTokens, lr.Usage.CompletionTokens, lr.Usage.OutputTokens, contextTokens, percentage, of, lr.Usage.TokensPerSecond)
+	fmt.Printf("\n\n\u001b[90mPrompt: %d  Reasoning: %d  Completion: %d  Window: %d (%.0f%% of %.0fK) TPS: %.2f\u001b[0m\n",
+		lr.Usage.PromptTokens, lr.Usage.CompletionTokensDetails.ReasoningTokens, lr.Usage.CompletionTokens, contextTokens, percentage, of, lr.Usage.TokensPerSecond)
 
 	return messages, nil
 }

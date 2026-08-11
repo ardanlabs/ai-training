@@ -1,15 +1,44 @@
 services:
   postgres:
-    image: postgres:18.3
+    image: postgres:18.4-alpine3.24
     container_name: postgres
     restart: always
-    pull_policy: never
     ports:
       - "5432:5432"
     environment:
       - POSTGRES_PASSWORD=postgres
+    # A named volume, not a host directory. On macOS the shared filesystem
+    # cannot back a Postgres data directory: the server fails at random with
+    # "could not open file ...: Operation not permitted". Postgres 18 also
+    # wants a single mount at /var/lib/postgresql and places the cluster in a
+    # version subdirectory below it, so that is the mount point.
     volumes:
-      - ./sql-data:/var/lib/postgresql/18/docker
+      - sql-data:/var/lib/postgresql
+
+  # Postgres with Apache AGE and pgvector, for example16. It runs on 5433 so it
+  # can sit beside the stock postgres above.
+  postgres-age:
+    build:
+      context: .
+      dockerfile: dockerfile.age
+    image: ai-training/postgres-age:pg18
+    container_name: postgres-age
+    restart: always
+    # This is the one service that is built rather than pulled, because no
+    # published image carries both AGE and pgvector. Compose builds it on the
+    # first `up` and uses the cached image after that.
+    ports:
+      - "5433:5432"
+    environment:
+      - POSTGRES_PASSWORD=postgres
+    # AGE has to be loaded into a session before any cypher() call in that
+    # session works. Preloading it here means the Go code never has to issue
+    # LOAD 'age' itself, which a pooled *sql.DB cannot do reliably because it
+    # hands out a different connection each time.
+    command: ["postgres", "-c", "session_preload_libraries=age"]
+    # A named volume, for the same reason as the postgres service above.
+    volumes:
+      - age-data:/var/lib/postgresql
 
   mongodb:
     image: mongodb/mongodb-atlas-local:8.2
@@ -17,24 +46,23 @@ services:
     hostname: mongodb
     privileged: true
     restart: always
-    pull_policy: never
     environment:
       - MONGODB_INITDB_ROOT_USERNAME=ardan
       - MONGODB_INITDB_ROOT_PASSWORD=ardan
       - MONGODB_REPLICA_SET_NAME=rs0
     ports:
       - "27017-27019:27017-27019"
+    # One mount for the whole /data tree. The image creates db/, configdb/ and
+    # the replica-set keyfile itself on first start, so it has to run as its own
+    # user: a uid override that does not match the host directory owner leaves
+    # it unable to write the keyfile and the container restart-loops.
     volumes:
-      - ./mongodb:/data/
-      - ./mongodb/db:/data/db
-      - ./mongodb/configdb:/data/configdb
-    user: "${UID:-503}:${GID:-20}"
+      - ./mongodb:/data
 
   openwebui:
     image: ghcr.io/open-webui/open-webui:v0.9.5
     container_name: openwebui
     restart: always
-    pull_policy: never
     environment:
       - WEBUI_AUTH=false
       - GLOBAL_LOG_LEVEL="DEBUG"
@@ -56,7 +84,6 @@ services:
     image: quay.io/docling-project/docling-serve:v1.12.0
     container_name: docling
     restart: always
-    pull_policy: never
     environment:
       - DOCLING_SERVE_ENABLE_UI=1
     extra_hosts:
@@ -67,6 +94,13 @@ services:
       - ./docling:/scratch
 
 volumes:
+  # Compose creates and owns these two. `make compose-clean-sql` and
+  # `make age-compose-clean` remove them to start a cluster over.
+  sql-data:
+    name: ai-training-sql-data
+  age-data:
+    name: ai-training-age-data
+
   postgres:
     external: true
     name: postgres

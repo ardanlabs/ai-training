@@ -17,8 +17,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"maps"
 	"net/http"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -28,7 +30,7 @@ import (
 
 var (
 	url     = "http://localhost:11435/v1/chat/completions"
-	model   = "gpt-oss-20b-Q8_0"
+	model   = "Qwen3.6-35B-A3B-UD-Q4_K_XL"
 	mcpHost = "localhost:8082"
 )
 
@@ -251,6 +253,14 @@ func (a *Agent) streamModelTurn(ctx context.Context, conversation []client.D) (s
 	reasonFirstChunk := true
 	reasonThinking := false
 
+	// A streaming tool call arrives across several chunks: an opening chunk with
+	// the id and the function name, then chunks carrying the arguments and keyed
+	// only by index, and finally the chunk whose finish reason is "tool_calls"
+	// and whose delta holds no tool calls at all. Reading the calls off that last
+	// chunk returns nothing, so they are accumulated here and assembled on the
+	// way out.
+	pending := make(map[int]*pendingCall)
+
 	for resp := range ch {
 		lastResp = resp
 
@@ -261,6 +271,24 @@ func (a *Agent) streamModelTurn(ctx context.Context, conversation []client.D) (s
 		// On the first real chunk, stop the latency printer.
 		stopPrinter()
 
+		for _, tc := range resp.Choices[0].Delta.ToolCalls {
+			p, ok := pending[tc.Index]
+			if !ok {
+				p = &pendingCall{args: make(map[string]any)}
+				pending[tc.Index] = p
+			}
+
+			if tc.ID != "" {
+				p.id = tc.ID
+			}
+
+			if tc.Function.Name != "" {
+				p.name = tc.Function.Name
+			}
+
+			maps.Copy(p.args, tc.Function.Arguments)
+		}
+
 		switch resp.Choices[0].FinishReason {
 		case "error":
 			return "", nil, lastResp.Usage, fmt.Errorf("error from model: %s", resp.Choices[0].Delta.Content)
@@ -270,7 +298,7 @@ func (a *Agent) streamModelTurn(ctx context.Context, conversation []client.D) (s
 			return text, nil, lastResp.Usage, nil
 
 		case "tool_calls":
-			return "", resp.Choices[0].Delta.ToolCalls, lastResp.Usage, nil
+			return "", assembleToolCalls(pending), lastResp.Usage, nil
 
 		default:
 			delta := resp.Choices[0].Delta
@@ -300,7 +328,36 @@ func (a *Agent) streamModelTurn(ctx context.Context, conversation []client.D) (s
 
 	// Stream ended without an explicit finish reason.
 	text := strings.TrimLeft(strings.Join(chunks, " "), "\n")
-	return text, nil, lastResp.Usage, nil
+	return text, assembleToolCalls(pending), lastResp.Usage, nil
+}
+
+// pendingCall accumulates one streaming tool call as its pieces arrive.
+type pendingCall struct {
+	id   string
+	name string
+	args map[string]any
+}
+
+// assembleToolCalls orders the accumulated calls by index.
+func assembleToolCalls(pending map[int]*pendingCall) []client.ToolCall {
+	if len(pending) == 0 {
+		return nil
+	}
+
+	toolCalls := make([]client.ToolCall, 0, len(pending))
+
+	for _, index := range slices.Sorted(maps.Keys(pending)) {
+		p := pending[index]
+
+		toolCalls = append(toolCalls, client.ToolCall{
+			ID:       p.id,
+			Index:    index,
+			Type:     "function",
+			Function: client.Function{Name: p.name, Arguments: p.args},
+		})
+	}
+
+	return toolCalls
 }
 
 // startLatencyPrinter starts a goroutine that displays elapsed time while

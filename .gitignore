@@ -22,6 +22,7 @@ zarf/samples/videos/frames/*
 zarf/data/book.embeddings
 zarf/data/example3.*
 zarf/data/duck*
+zarf/docker/age-data/
 zarf/docker/mongodb/
 zarf/docker/openwebui/
 zarf/docker/sql-data/

@@ -39,7 +39,7 @@ import (
 )
 
 const (
-	modelChatSource    = "unsloth/gpt-oss-20b-Q8_0"
+	modelChatSource    = "unsloth/Qwen3.6-35B-A3B-UD-Q4_K_XL"
 	modelEmbedSource   = "ggml-org/embeddinggemma-300m-qat-Q8_0"
 	dbPath             = "zarf/data/duck-ex13-step3.db" // ":memory:"
 	chunksFile         = "zarf/data/book.chunks"
@@ -129,7 +129,6 @@ func run() error {
 
 	fmt.Println("- contextWindow:", krnChat.ModelConfig().ContextWindow())
 	fmt.Println("- embeddings   :", krnChat.ModelInfo().IsEmbedModel)
-	fmt.Println("- isGPT        :", krnChat.ModelInfo().IsGPTModel)
 
 	// -------------------------------------------------------------------------
 

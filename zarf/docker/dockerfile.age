@@ -1,0 +1,85 @@
+# Postgres with both Apache AGE and pgvector.
+#
+# No published image carries both, and the examples need both in one database:
+# the graph holds the structure, an ordinary table holds the chunk text and its
+# embedding, and a single question queries both. So this image is built.
+#
+# Both extensions are compiled against the server headers of the base image, so
+# the postgres tag below is the one thing that must not drift: AGE is tagged per
+# major version (PG18/v1.8.0-rc0 here) and a build against the wrong headers
+# either fails or produces an extension the server refuses to load.
+#
+# The build stage carries a compiler, flex, bison and a git checkout, which is
+# several hundred megabytes that a running database has no use for. Only the
+# built artifacts are copied into the final image.
+
+FROM postgres:18.3 AS builder
+
+ARG AGE_TAG=PG18/v1.8.0-rc0
+ARG PGVECTOR_TAG=v0.8.6
+
+# postgresql-server-dev-18 comes from the PGDG repository the base image already
+# configures. flex and bison are AGE's own requirement: its Cypher parser is
+# generated at build time.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential \
+        ca-certificates \
+        git \
+        flex \
+        bison \
+        libreadline-dev \
+        zlib1g-dev \
+        postgresql-server-dev-18 \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV PG_CONFIG=/usr/lib/postgresql/18/bin/pg_config
+
+# -------------------------------------------------------------------------
+# Apache AGE. --depth 1 on the tag: the history is large and none of it is
+# needed to compile.
+
+RUN git clone --depth 1 --branch "${AGE_TAG}" https://github.com/apache/age.git /tmp/age \
+    && cd /tmp/age \
+    && make PG_CONFIG="${PG_CONFIG}" \
+    && make PG_CONFIG="${PG_CONFIG}" install \
+    && rm -rf /tmp/age
+
+# -------------------------------------------------------------------------
+# pgvector. OPTFLAGS is empty on purpose: the default enables -march=native,
+# which bakes the build machine's instruction set into the image and crashes
+# with an illegal instruction on any host that lacks it.
+
+RUN git clone --depth 1 --branch "${PGVECTOR_TAG}" https://github.com/pgvector/pgvector.git /tmp/pgvector \
+    && cd /tmp/pgvector \
+    && make OPTFLAGS="" PG_CONFIG="${PG_CONFIG}" \
+    && make OPTFLAGS="" PG_CONFIG="${PG_CONFIG}" install \
+    && rm -rf /tmp/pgvector
+
+# =============================================================================
+
+FROM postgres:18.3
+
+# The shared libraries and, in share/, the control and SQL files CREATE
+# EXTENSION reads. Both are needed; a library on its own is not an extension.
+COPY --from=builder /usr/lib/postgresql/18/lib/age.so       /usr/lib/postgresql/18/lib/
+COPY --from=builder /usr/lib/postgresql/18/lib/vector.so    /usr/lib/postgresql/18/lib/
+COPY --from=builder /usr/share/postgresql/18/extension/age* /usr/share/postgresql/18/extension/
+COPY --from=builder /usr/share/postgresql/18/extension/vector* /usr/share/postgresql/18/extension/
+
+# Both extensions are created on first boot, in a fresh cluster. The Go code
+# assumes they are there: it calls ag_catalog.create_graph and declares vector
+# columns, neither of which will parse without them.
+#
+# This runs only when the data directory is empty. An existing cluster keeps
+# whatever it already has, so a database created before this image gained an
+# extension has to be given it by hand:
+#
+#	docker exec -it postgres-age psql -U postgres \
+#	    -c 'CREATE EXTENSION IF NOT EXISTS age' \
+#	    -c 'CREATE EXTENSION IF NOT EXISTS vector'
+# printf rather than a heredoc, so the build does not depend on a Dockerfile
+# frontend version.
+RUN printf '%s\n' \
+        'CREATE EXTENSION IF NOT EXISTS age;' \
+        'CREATE EXTENSION IF NOT EXISTS vector;' \
+        > /docker-entrypoint-initdb.d/10-extensions.sql

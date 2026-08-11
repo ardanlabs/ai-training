@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"maps"
 	"net/http"
 	"os"
 
@@ -23,7 +24,7 @@ import (
 
 var (
 	url   = "http://localhost:11435/v1/chat/completions"
-	model = "gpt-oss-20b-Q8_0"
+	model = "Qwen3.6-35B-A3B-UD-Q4_K_XL"
 )
 
 func init() {
@@ -112,43 +113,77 @@ func weatherQuestion(ctx context.Context) error {
 
 	fmt.Print("\n")
 
+	// A streaming tool call does not arrive in one piece. The server sends an
+	// opening chunk carrying the call id and the function name with an empty
+	// argument string, then one or more chunks carrying the arguments and
+	// identified only by index. Acting on the first chunk that mentions a tool
+	// call hands you the name with no arguments, so the call has to be
+	// accumulated and used once the stream has finished.
+	var toolCall client.ToolCall
+	var asked bool
+
 	for resp := range ch {
+		if len(resp.Choices) == 0 {
+			continue
+		}
+
+		delta := resp.Choices[0].Delta
+
+		for _, tc := range delta.ToolCalls {
+			asked = true
+
+			if tc.ID != "" {
+				toolCall.ID = tc.ID
+			}
+
+			if tc.Function.Name != "" {
+				toolCall.Function.Name = tc.Function.Name
+			}
+
+			if toolCall.Function.Arguments == nil {
+				toolCall.Function.Arguments = make(map[string]any)
+			}
+
+			maps.Copy(toolCall.Function.Arguments, tc.Function.Arguments)
+		}
+
 		switch {
-		case len(resp.Choices[0].Delta.ToolCalls) > 0:
-			toolCall := resp.Choices[0].Delta.ToolCalls[0]
+		case delta.Content != "":
+			fmt.Print(delta.Content)
 
-			fmt.Printf("\n\n\u001b[92mModel Asking For Tool Call:\n\nToolID[%s]: %s(%s)\u001b[0m\n\n",
-				toolCall.ID,
-				toolCall.Function.Name,
-				toolCall.Function.Arguments)
-
-			argsJSON, _ := json.Marshal(toolCall.Function.Arguments)
-			conversation = append(conversation, client.D{
-				"role": "assistant",
-				"tool_calls": []client.D{
-					{
-						"id":   toolCall.ID,
-						"type": "function",
-						"function": client.D{
-							"name":      toolCall.Function.Name,
-							"arguments": string(argsJSON),
-						},
-					},
-				},
-			})
-
-			resp := GetWeatherTool(ctx, toolCall)
-			conversation = append(conversation, resp)
-
-			fmt.Printf("%s\n\n", resp)
-
-		case resp.Choices[0].Delta.Content != "":
-			fmt.Print(resp.Choices[0].Delta.Content)
-
-		case resp.Choices[0].Delta.Reasoning != "":
-			fmt.Printf("\u001b[91m%s\u001b[0m", resp.Choices[0].Delta.Reasoning)
+		case delta.Reasoning != "":
+			fmt.Printf("\u001b[91m%s\u001b[0m", delta.Reasoning)
 		}
 	}
+
+	if !asked {
+		return fmt.Errorf("the model did not ask for a tool call")
+	}
+
+	fmt.Printf("\n\n\u001b[92mModel Asking For Tool Call:\n\nToolID[%s]: %s(%v)\u001b[0m\n\n",
+		toolCall.ID,
+		toolCall.Function.Name,
+		toolCall.Function.Arguments)
+
+	argsJSON, _ := json.Marshal(toolCall.Function.Arguments)
+	conversation = append(conversation, client.D{
+		"role": "assistant",
+		"tool_calls": []client.D{
+			{
+				"id":   toolCall.ID,
+				"type": "function",
+				"function": client.D{
+					"name":      toolCall.Function.Name,
+					"arguments": string(argsJSON),
+				},
+			},
+		},
+	})
+
+	toolResp := GetWeatherTool(ctx, toolCall)
+	conversation = append(conversation, toolResp)
+
+	fmt.Printf("%s\n\n", toolResp)
 
 	// -------------------------------------------------------------------------
 	// Send the result of the tool call back to the model

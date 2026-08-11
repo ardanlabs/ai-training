@@ -127,15 +127,13 @@ install-models:
 	@echo ========== INSTALL MODELS ==========
 	kronk model pull --local "ggml-org/Qwen2.5-VL-3B-Instruct-Q8_0.gguf"
 	@echo
-	kronk model pull --local "mradermacher/Qwen2-Audio-7B.Q8_0.gguf"
-	@echo
 	kronk model pull --local "Qwen/Qwen3-8B-Q8_0.gguf"
 	@echo
-	kronk model pull --local "unsloth/gpt-oss-20b-Q8_0.gguf"
+	kronk model pull --local "unsloth/Qwen3.6-35B-A3B-UD-Q4_K_XL"
 	@echo
 	kronk model pull --local "ggml-org/embeddinggemma-300m-qat-Q8_0.gguf"
 	@echo
-	kronk model pull --local "bartowski/cerebras_Qwen3-Coder-REAP-25B-A3B-Q8_0.gguf"
+	kronk model pull --local "gpustack/bge-reranker-v2-m3-Q8_0"
 	@echo
 
 # ==============================================================================
@@ -257,42 +255,48 @@ example13-step4-curl2:
 
 # ======================================================================================================================
 # Security webinar
+#
+# Teaching order: run the attacker listener in a second terminal, then walk
+# step1 through step6. Morse is step6 and it is the punchline - do not preview
+# it earlier.
+#
+#	step1  recon, what the system gives away for free
+#	step2  the attack lands, direct and via a poisoned document
+#	step3  the content-side defenses, one at a time, and they hold
+#	step4  a second channel: poisoned tool output (no database needed)
+#	step5  the structural defenses, against the plain-English payload
+#	step6  the same attack in Morse code, and the content stack cannot see it
+#
+# example15-matrix is the full 5x7 grid and takes ~30 minutes - run it before
+# the session rather than in front of the room, and keep the summary table for
+# the closing.
+#
+# Steps 1 and 4 need only kronk-up. The rest also need compose-up for pgvector.
 
-ws-rag-full:
-	go run ./cmd/examples/example15/full/main.go
+# The exfiltration listener. Start this FIRST, in its own terminal.
+example15-attacker:
+	go run ./cmd/examples/example15/attacker
 
-ws-rag-attacker:
-	go run ./cmd/examples/example15/full/attacker.go
-
-ws-rag-step0:
-	go run ./cmd/examples/example15/step0
-
-ws-rag-step01:
+example15-step1:
 	go run ./cmd/examples/example15/step1
 
-ws-rag-step02:
+example15-step2:
 	go run ./cmd/examples/example15/step2
 
-ws-rag-step03:
+example15-step3:
 	go run ./cmd/examples/example15/step3
 
-ws-rag-step04:
+example15-step4:
 	go run ./cmd/examples/example15/step4
 
-ws-rag-step05:
+example15-step5:
 	go run ./cmd/examples/example15/step5
 
-ws-rag-step06:
+example15-step6:
 	go run ./cmd/examples/example15/step6
 
-ws-rag-step07:
-	go run ./cmd/examples/example15/step7
-
-ws-rag-step08:
-	go run ./cmd/examples/example15/step8
-
-ws-ragpipeline-full:
-	go run ./cmd/examples/example16/full/main.go
+example15-matrix:
+	go run ./cmd/examples/example15/matrix
 
 ws-ragpipeline-step1:
 	go run ./cmd/examples/example16/step1
@@ -306,32 +310,34 @@ ws-ragpipeline-step3:
 ws-ragpipeline-step4:
 	go run ./cmd/examples/example16/step4
 
+ws-ragpipeline-step4-stats:
+	go run ./cmd/examples/example16/step4 -stats
+
 ws-ragpipeline-step5:
 	go run ./cmd/examples/example16/step5
 
-ws-ragpipeline-step6:
-	go run ./cmd/examples/example16/step6
+ws-ragpipeline-step5-stats:
+	go run ./cmd/examples/example16/step5 -stats
 
-ws-functions-full:
-	go run ./cmd/examples/example17/full
+# Aliases using the exampleNN naming convention.
+example16-step1: ws-ragpipeline-step1
+example16-step2: ws-ragpipeline-step2
+example16-step3: ws-ragpipeline-step3
+example16-step4: ws-ragpipeline-step4
+example16-step4-stats: ws-ragpipeline-step4-stats
+example16-step5: ws-ragpipeline-step5
+example16-step5-stats: ws-ragpipeline-step5-stats
 
-ws-functions-step1:
-	go run ./cmd/examples/example17/step1
-
-ws-functions-step2:
-	go run ./cmd/examples/example17/step2
-
-ws-functions-step3:
-	go run ./cmd/examples/example17/step3
-
-ws-functions-step4:
-	go run ./cmd/examples/example17/step4
-
-ws-functions-step5:
-	go run ./cmd/examples/example17/step5
-
-ws-functions-step6:
-	go run ./cmd/examples/example17/step6
+# Render what one step adds to the step before it. BASE defaults to STEP-1, so
+# a different base has to be asked for:
+#
+#	make stepdiff EX=16 STEP=4
+#	make stepdiff EX=16 STEP=4 BASE=2
+stepdiff: BASE ?= $(shell expr $(STEP) - 1)
+stepdiff:
+	@git --no-pager diff --no-index -- \
+		cmd/examples/example$(EX)/step$(BASE) \
+		cmd/examples/example$(EX)/step$(STEP) || true
 
 compose-up:
 	docker compose -f zarf/docker/compose.yaml up
@@ -345,7 +351,7 @@ compose-clean-mongo:
 	chmod -R 777 zarf/docker/mongodb
 
 compose-clean-sql:
-	rm -rf zarf/docker/sql-data
+	docker volume rm -f ai-training-sql-data
 
 compose-logs:
 	docker compose logs -n 100
@@ -375,6 +381,19 @@ docling-browse:
 	open -a "Google Chrome" http://localhost:5001/ui/
 
 # ==============================================================================
+# Running the Apache AGE database only, on 5433. Example16 needs it.
+
+age-compose-up:
+	docker compose -f zarf/docker/compose.yaml up postgres-age
+
+age-compose-down:
+	docker compose -f zarf/docker/compose.yaml down postgres-age
+
+# Throws away the graph and every embedded chunk, so ingest starts over.
+age-compose-clean:
+	docker volume rm -f ai-training-age-data
+
+# ==============================================================================
 # Running Mongo only
 
 mongo-compose-up:
@@ -387,8 +406,7 @@ mongo-compose-down:
 # Kronk tooling
 
 kronk-up:
-	export KRONK_CACHE_MODEL_CONFIG_FILE=zarf/kms/model_config.yaml && \
-	kronk server start
+	kronk server start --model-config-file=$$PWD/zarf/kms/model_config.yaml
 
 kronk-logs:
 	kronk server logs

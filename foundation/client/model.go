@@ -68,9 +68,18 @@ func (f *Function) UnmarshalJSON(b []byte) error {
 		return err
 	}
 
+	// A streaming tool call arrives in pieces. The opening chunk carries the id
+	// and the function name with "arguments" set to the empty string, and the
+	// arguments themselves follow in later chunks keyed only by index. Treating
+	// an empty string as a decode failure rejects that opening chunk, and
+	// because the SSE reader abandons the response on a malformed line, the
+	// whole completion is lost - the model asks for a tool and the caller sees
+	// an empty answer. An absent argument list is a valid state, not an error.
 	arguments := make(map[string]any)
-	if err := json.Unmarshal([]byte(tmp.RawArguments), &arguments); err != nil {
-		return err
+	if tmp.RawArguments != "" {
+		if err := json.Unmarshal([]byte(tmp.RawArguments), &arguments); err != nil {
+			return err
+		}
 	}
 
 	*f = Function{

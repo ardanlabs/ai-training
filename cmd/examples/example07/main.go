@@ -26,7 +26,7 @@ import (
 
 var (
 	url   = "http://localhost:11435/v1/chat/completions"
-	model = "cerebras_Qwen3-Coder-REAP-25B-A3B-Q8_0"
+	model = "Qwen3.6-35B-A3B-UD-Q4_K_XL"
 )
 
 func init() {

@@ -27,7 +27,7 @@ import (
 
 var (
 	urlModel      = "http://localhost:11435/v1/chat/completions"
-	model         = "cerebras_Qwen3-Coder-REAP-25B-A3B-Q8_0"
+	model         = "Qwen3.6-35B-A3B-UD-Q4_K_XL"
 	urlDocling    = "http://localhost:5001/v1/convert/file"
 	documentPath  = "zarf/samples/docs/dinner_menu.pdf"
 	contextWindow = 32 * 1024

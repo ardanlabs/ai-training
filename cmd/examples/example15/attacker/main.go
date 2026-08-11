@@ -1,13 +1,14 @@
-// This program runs a simple HTTP server that accepts POST requests on any path
-// and dumps the request body to standard out. It is used to simulate an
-// attacker-controlled endpoint for the prompt injection demo.
+// This program is the attacker's server. It accepts a request on any path and
+// dumps the body to standard out, which is how the exfiltrated data becomes
+// visible in the room.
 //
-// # Running:
+// All three security steps POST to http://localhost:9999/ when an injection
+// succeeds. Run this in a second terminal before running them; without it the
+// exfiltration still happens, it just has nowhere to land.
 //
-//	$ go run attacker.go
-
-//go:build ignore
-
+// # Running the example:
+//
+//	$ make example15-attacker
 package main
 
 import (

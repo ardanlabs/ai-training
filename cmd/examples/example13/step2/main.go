@@ -9,6 +9,7 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"os"
 	"time"
@@ -120,7 +121,6 @@ func newKronk(mp models.Path) (*kronk.Kronk, error) {
 	fmt.Println("- nBatch       :", krn.ModelConfig().NBatch())
 	fmt.Println("- nuBatch      :", krn.ModelConfig().NUBatch())
 	fmt.Println("- embeddings   :", krn.ModelInfo().IsEmbedModel)
-	fmt.Println("- isGPT        :", krn.ModelInfo().IsGPTModel)
 	fmt.Println("- template     :", krn.ModelInfo().Template.FileName)
 
 	return krn, nil
@@ -152,8 +152,29 @@ func performChat(ctx context.Context, krn *kronk.Kronk, question string, imageFi
 
 	fmt.Printf("\nQuestion: %s\n", question)
 
+	// The image travels inside the message as a base64 data URL using the
+	// OpenAI multipart shape. Kronk decodes and validates the payload before
+	// it reaches the model.
+	messages := []model.D{
+		{
+			"role": "user",
+			"content": []model.D{
+				{
+					"type": "text",
+					"text": question,
+				},
+				{
+					"type": "image_url",
+					"image_url": model.D{
+						"url": fmt.Sprintf("data:image/jpeg;base64,%s", base64.StdEncoding.EncodeToString(image)),
+					},
+				},
+			},
+		},
+	}
+
 	d := model.D{
-		"messages":    model.RawMediaMessage(question, image),
+		"messages":    messages,
 		"temperature": 0.7,
 		"top_p":       0.9,
 		"top_k":       40,
@@ -174,13 +195,14 @@ func modelResponse(krn *kronk.Kronk, ch <-chan model.ChatResponse) error {
 	var reasoning bool
 	var lr model.ChatResponse
 
-loop:
 	for resp := range ch {
-		lr = resp
+		if resp.Usage != nil {
+			lr = resp
+		}
 
 		switch resp.Choices[0].FinishReason() {
 		case model.FinishReasonStop:
-			break loop
+			continue
 
 		case model.FinishReasonError:
 			return fmt.Errorf("error from model: %s", resp.Choices[0].Delta.Content)
@@ -202,13 +224,18 @@ loop:
 
 	// -------------------------------------------------------------------------
 
+	if lr.Usage == nil {
+		fmt.Println()
+		return nil
+	}
+
 	contextTokens := lr.Usage.PromptTokens + lr.Usage.CompletionTokens
 	contextWindow := krn.ModelConfig().ContextWindow()
 	percentage := (float64(contextTokens) / float64(contextWindow)) * 100
 	of := float32(contextWindow) / float32(1024)
 
-	fmt.Printf("\n\n\u001b[90mInput: %d  Reasoning: %d  Completion: %d  Output: %d  Window: %d (%.0f%% of %.0fK) TPS: %.2f\u001b[0m\n",
-		lr.Usage.PromptTokens, lr.Usage.ReasoningTokens, lr.Usage.CompletionTokens, lr.Usage.OutputTokens, contextTokens, percentage, of, lr.Usage.TokensPerSecond)
+	fmt.Printf("\n\n\u001b[90mInput: %d  Reasoning: %d  Completion: %d  Window: %d (%.0f%% of %.0fK) TPS: %.2f\u001b[0m\n",
+		lr.Usage.PromptTokens, lr.Usage.CompletionTokensDetails.ReasoningTokens, lr.Usage.CompletionTokens, contextTokens, percentage, of, lr.Usage.TokensPerSecond)
 
 	return nil
 }

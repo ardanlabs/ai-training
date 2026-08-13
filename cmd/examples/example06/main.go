@@ -171,6 +171,11 @@ func questionResponse(ctx context.Context, question string, results []searchResu
 	fmt.Print("Model Response:\n\n")
 
 	for resp := range ch {
+		// A chunk can arrive with no choices at all, so never index blindly.
+		if len(resp.Choices) == 0 {
+			continue
+		}
+
 		fmt.Print(resp.Choices[0].Delta.Content)
 	}
 

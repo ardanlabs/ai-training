@@ -99,7 +99,7 @@ func weatherQuestion(ctx context.Context) error {
 				},
 			},
 		},
-		"tool_selection": "auto",
+		"tool_choice": "auto",
 	}
 
 	ch := make(chan client.ChatSSE, 100)
@@ -215,7 +215,7 @@ func weatherQuestion(ctx context.Context) error {
 				},
 			},
 		},
-		"tool_selection": "auto",
+		"tool_choice": "auto",
 	}
 
 	ch = make(chan client.ChatSSE, 100)
@@ -231,6 +231,10 @@ func weatherQuestion(ctx context.Context) error {
 	var reasoning bool
 
 	for resp := range ch {
+		if len(resp.Choices) == 0 {
+			continue
+		}
+
 		switch {
 		case resp.Choices[0].Delta.Content != "":
 			if reasoning {
@@ -255,9 +259,20 @@ func weatherQuestion(ctx context.Context) error {
 // when the model requests the tool with the specified parameters.
 func GetWeatherTool(ctx context.Context, toolCall client.ToolCall) (resp client.D) {
 
-	// We are going to hardcode a result for now so we can test the tool.
+	// The model chooses the arguments, so never assume they arrived in the
+	// shape the tool document asked for. A missing or mistyped argument is a
+	// FAILED tool response, not a panic.
 
-	location := toolCall.Function.Arguments["location"].(string)
+	location, ok := toolCall.Function.Arguments["location"].(string)
+	if !ok {
+		return client.D{
+			"role":         "tool",
+			"tool_call_id": toolCall.ID,
+			"content":      `{"status": "FAILED", "data": "the location argument is missing or not a string"}`,
+		}
+	}
+
+	// We are going to hardcode a result for now so we can test the tool.
 
 	info := struct {
 		Status string         `json:"status"`

@@ -179,6 +179,12 @@ func performChat(ctx context.Context, krn *kronk.Kronk, question string, imageFi
 		"top_p":       0.9,
 		"top_k":       40,
 		"max_tokens":  2048,
+
+		// Without this, a streaming call reports no usage at all and the token
+		// accounting below never runs.
+		"stream_options": model.D{
+			"include_usage": true,
+		},
 	}
 
 	ch, err := krn.ChatStreaming(ctx, d)
@@ -198,6 +204,12 @@ func modelResponse(krn *kronk.Kronk, ch <-chan model.ChatResponse) error {
 	for resp := range ch {
 		if resp.Usage != nil {
 			lr = resp
+		}
+
+		// The usage report arrives as its own response carrying no choices, so
+		// it has to be picked up before anything indexes into them.
+		if len(resp.Choices) == 0 {
+			continue
 		}
 
 		switch resp.Choices[0].FinishReason() {

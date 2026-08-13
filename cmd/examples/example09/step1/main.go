@@ -200,7 +200,7 @@ func (a *Agent) streamModelTurn(ctx context.Context, conversation []client.D) (s
 			return "", lastResp.Usage, fmt.Errorf("error from model: %s", resp.Choices[0].Delta.Content)
 
 		case "stop":
-			text := strings.TrimLeft(strings.Join(chunks, " "), "\n")
+			text := strings.TrimLeft(strings.Join(chunks, ""), "\n")
 			return text, lastResp.Usage, nil
 
 		default:
@@ -230,7 +230,7 @@ func (a *Agent) streamModelTurn(ctx context.Context, conversation []client.D) (s
 	}
 
 	// Stream ended without an explicit finish reason.
-	text := strings.TrimLeft(strings.Join(chunks, " "), "\n")
+	text := strings.TrimLeft(strings.Join(chunks, ""), "\n")
 	return text, lastResp.Usage, nil
 }
 

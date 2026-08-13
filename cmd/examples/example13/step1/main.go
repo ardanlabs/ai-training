@@ -168,6 +168,12 @@ func chat(krn *kronk.Kronk) error {
 				"messages":   messages,
 				"tools":      toolDocuments(),
 				"max_tokens": 2048,
+
+				// Without this, a streaming call reports no usage at all and
+				// the token accounting below never runs.
+				"stream_options": model.D{
+					"include_usage": true,
+				},
 			}
 
 			ch, err := performChat(ctx, krn, d)
@@ -267,7 +273,14 @@ func modelResponse(krn *kronk.Kronk, messages []model.D, ch <-chan model.ChatRes
 			fmt.Println()
 			fmt.Printf("\u001b[92mModel Asking For Tool Calls:\n\u001b[0m")
 
-			for _, tool := range resp.Choices[0].Delta.ToolCalls {
+			// The response carrying the tool finish reason has an empty delta.
+			// The completed calls live on the message instead, so reading them
+			// off the delta finds nothing every time.
+			if resp.Choices[0].Message == nil {
+				continue
+			}
+
+			for _, tool := range resp.Choices[0].Message.ToolCalls {
 				fmt.Printf("\u001b[92mToolID[%s]: %s(%s)\n\u001b[0m",
 					tool.ID,
 					tool.Function.Name,

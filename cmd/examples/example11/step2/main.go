@@ -16,6 +16,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"maps"
 	"net/http"
 	"os"
 	"slices"
@@ -231,15 +232,15 @@ func (a *Agent) Run(ctx context.Context) error {
 		// tool call or providing a user request.
 
 		d := client.D{
-			"model":          modelChat,
-			"messages":       conversation,
-			"max_tokens":     contextWindow,
-			"temperature":    0.0,
-			"top_p":          0.1,
-			"top_k":          1,
-			"stream":         true,
-			"tools":          a.toolDocuments,
-			"tool_selection": "auto",
+			"model":       modelChat,
+			"messages":    conversation,
+			"max_tokens":  contextWindow,
+			"temperature": 0.0,
+			"top_p":       0.1,
+			"top_k":       1,
+			"stream":      true,
+			"tools":       a.toolDocuments,
+			"tool_choice": "auto",
 		}
 
 		fmt.Printf("\u001b[93m\n%s\u001b[0m: 0.000", modelChat)
@@ -268,6 +269,9 @@ func (a *Agent) Run(ctx context.Context) error {
 
 		waitingForResponse := true
 
+		pending := make(map[int]*pendingCall)
+		var order []int
+
 		for resp := range ch {
 			if len(resp.Choices) == 0 {
 				continue
@@ -281,27 +285,34 @@ func (a *Agent) Run(ctx context.Context) error {
 				wg.Wait()
 			}
 
-			switch {
-
-			// Did the model ask us to execute a tool call?
-			case len(resp.Choices[0].Delta.ToolCalls) > 0:
-				fmt.Print("\n\n")
-
-				toolCall := resp.Choices[0].Delta.ToolCalls[0]
-
-				conversation = a.addToConversation(reasonContent, conversation, client.D{
-					"role": "assistant",
-					"content": fmt.Sprintf("Tool call %s: %s(%v)",
-						toolCall.ID,
-						toolCall.Function.Name,
-						toolCall.Function.Arguments),
-				})
-
-				results := a.callTools(ctx, resp.Choices[0].Delta.ToolCalls)
-				if len(results) > 0 {
-					conversation = a.addToConversation(reasonContent, conversation, results...)
-					inToolCall = true
+			// Did the model ask us to execute a tool call? A tool call does not
+			// arrive in one piece. The opening chunk carries the id and the
+			// function name with an empty argument string, the chunks after it
+			// carry the arguments and are identified only by index, and the
+			// chunk that ends the call has an empty delta. So acting on the
+			// first chunk that mentions a tool call gets a name with no
+			// arguments. The pieces are merged here and the calls executed once
+			// the stream has finished.
+			for _, tc := range resp.Choices[0].Delta.ToolCalls {
+				p, ok := pending[tc.Index]
+				if !ok {
+					p = &pendingCall{args: make(map[string]any)}
+					pending[tc.Index] = p
+					order = append(order, tc.Index)
 				}
+
+				if tc.ID != "" {
+					p.id = tc.ID
+				}
+
+				if tc.Function.Name != "" {
+					p.name = tc.Function.Name
+				}
+
+				maps.Copy(p.args, tc.Function.Arguments)
+			}
+
+			switch {
 
 			// Did we get content? With some models a <think> tag could exist to
 			// indicate reasoning. We need to filter that out and display it as
@@ -345,6 +356,47 @@ func (a *Agent) Run(ctx context.Context) error {
 			}
 		}
 
+		// ---------------------------------------------------------------------
+		// The stream is done, so any tool calls the model asked for are now
+		// complete and can be executed. This runs before the call context is
+		// cancelled since the tools need it.
+
+		if len(order) > 0 {
+			fmt.Print("\n\n")
+
+			toolCalls := make([]client.ToolCall, 0, len(order))
+
+			for _, index := range order {
+				p := pending[index]
+
+				toolCall := client.ToolCall{
+					ID:    p.id,
+					Index: index,
+					Type:  "function",
+					Function: client.Function{
+						Name:      p.name,
+						Arguments: p.args,
+					},
+				}
+
+				toolCalls = append(toolCalls, toolCall)
+
+				conversation = a.addToConversation(reasonContent, conversation, client.D{
+					"role": "assistant",
+					"content": fmt.Sprintf("Tool call %s: %s(%v)",
+						toolCall.ID,
+						toolCall.Function.Name,
+						toolCall.Function.Arguments),
+				})
+			}
+
+			results := a.callTools(ctx, toolCalls)
+			if len(results) > 0 {
+				conversation = a.addToConversation(reasonContent, conversation, results...)
+				inToolCall = true
+			}
+		}
+
 		cancelDoCall()
 
 		// ---------------------------------------------------------------------
@@ -354,7 +406,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		if !inToolCall && len(chunks) > 0 {
 			fmt.Print("\n")
 
-			content := strings.Join(chunks, " ")
+			content := strings.Join(chunks, "")
 			content = strings.TrimLeft(content, "\n")
 
 			if content != "" {
@@ -492,12 +544,29 @@ func (a *Agent) addToConversation(reasoning []string, conversation []client.D, n
 }
 
 // callTools will lookup a requested tool by name and call it.
+// pendingCall accumulates one streaming tool call as its pieces arrive.
+type pendingCall struct {
+	id   string
+	name string
+	args map[string]any
+}
+
+// callTools looks up requested tools by name and executes them.
 func (a *Agent) callTools(ctx context.Context, toolCalls []client.ToolCall) []client.D {
 	var resps []client.D
 
 	for _, toolCall := range toolCalls {
+		// Every tool call the model made needs an answer in the conversation,
+		// even the ones we can't service, or the model is left waiting on a
+		// result that never arrives.
+
 		tool, exists := a.tools[toolCall.Function.Name]
 		if !exists {
+			resps = append(resps, client.D{
+				"role":         "tool",
+				"tool_call_id": toolCall.ID,
+				"content":      fmt.Sprintf(`{"status": "FAILED", "data": {"error": "tool %q is not registered"}}`, toolCall.Function.Name),
+			})
 			continue
 		}
 

@@ -17,6 +17,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"maps"
 	"net/http"
 	"os"
 	"strings"
@@ -208,14 +209,14 @@ func (a *Agent) promptUser(conversation *[]client.D) bool {
 // response. It returns the assembled text content, any tool calls, and usage.
 func (a *Agent) streamModelTurn(ctx context.Context, conversation []client.D) (string, []client.ToolCall, *client.Usage, error) {
 	d := client.D{
-		"model":          model,
-		"messages":       conversation,
-		"temperature":    0.0,
-		"top_p":          0.1,
-		"top_k":          1,
-		"stream":         true,
-		"tools":          a.toolDocuments,
-		"tool_selection": "auto",
+		"model":       model,
+		"messages":    conversation,
+		"temperature": 0.0,
+		"top_p":       0.1,
+		"top_k":       1,
+		"stream":      true,
+		"tools":       a.toolDocuments,
+		"tool_choice": "auto",
 	}
 
 	fmt.Printf("\u001b[93m\n%s\u001b[0m: 0.000", a.modelInfo.id)
@@ -238,6 +239,15 @@ func (a *Agent) streamModelTurn(ctx context.Context, conversation []client.D) (s
 	reasonFirstChunk := true
 	reasonThinking := false
 
+	// A streaming tool call does not arrive in one piece. The server sends an
+	// opening chunk carrying the call id and the function name with an empty
+	// argument string, then one or more chunks carrying the arguments and
+	// identified only by index. The chunk that carries the "tool_calls" finish
+	// reason has an empty delta, so the calls have to be accumulated as they
+	// stream by and used once the model is done asking.
+	toolCalls := make(map[int]*client.ToolCall)
+	var toolOrder []int
+
 	for resp := range ch {
 		lastResp = resp
 
@@ -253,14 +263,18 @@ func (a *Agent) streamModelTurn(ctx context.Context, conversation []client.D) (s
 			return "", nil, lastResp.Usage, fmt.Errorf("error from model: %s", resp.Choices[0].Delta.Content)
 
 		case "stop":
-			text := strings.TrimLeft(strings.Join(chunks, " "), "\n")
+			text := strings.TrimLeft(strings.Join(chunks, ""), "\n")
 			return text, nil, lastResp.Usage, nil
 
 		case "tool_calls":
-			return "", resp.Choices[0].Delta.ToolCalls, lastResp.Usage, nil
+			return "", assembleToolCalls(toolCalls, toolOrder), lastResp.Usage, nil
 
 		default:
 			delta := resp.Choices[0].Delta
+
+			for _, tc := range delta.ToolCalls {
+				accumulateToolCall(toolCalls, &toolOrder, tc)
+			}
 
 			switch {
 			case delta.Reasoning != "":
@@ -286,8 +300,58 @@ func (a *Agent) streamModelTurn(ctx context.Context, conversation []client.D) (s
 	}
 
 	// Stream ended without an explicit finish reason.
-	text := strings.TrimLeft(strings.Join(chunks, " "), "\n")
+
+	if len(toolOrder) > 0 {
+		return "", assembleToolCalls(toolCalls, toolOrder), lastResp.Usage, nil
+	}
+
+	text := strings.TrimLeft(strings.Join(chunks, ""), "\n")
 	return text, nil, lastResp.Usage, nil
+}
+
+// accumulateToolCall merges a tool call delta into the set of calls being
+// assembled for this turn. Only the opening delta carries the id and the
+// function name, and every delta after it identifies the call by index alone,
+// so index is the key and empty fields never overwrite what has been seen.
+func accumulateToolCall(toolCalls map[int]*client.ToolCall, order *[]int, delta client.ToolCall) {
+	call, exists := toolCalls[delta.Index]
+	if !exists {
+		call = &client.ToolCall{
+			Index: delta.Index,
+			Type:  "function",
+			Function: client.Function{
+				Arguments: make(map[string]any),
+			},
+		}
+
+		toolCalls[delta.Index] = call
+		*order = append(*order, delta.Index)
+	}
+
+	if delta.ID != "" {
+		call.ID = delta.ID
+	}
+
+	if delta.Type != "" {
+		call.Type = delta.Type
+	}
+
+	if delta.Function.Name != "" {
+		call.Function.Name = delta.Function.Name
+	}
+
+	maps.Copy(call.Function.Arguments, delta.Function.Arguments)
+}
+
+// assembleToolCalls returns the accumulated tool calls in the order the model
+// asked for them.
+func assembleToolCalls(toolCalls map[int]*client.ToolCall, order []int) []client.ToolCall {
+	calls := make([]client.ToolCall, 0, len(order))
+	for _, index := range order {
+		calls = append(calls, *toolCalls[index])
+	}
+
+	return calls
 }
 
 // startLatencyPrinter starts a goroutine that displays elapsed time while
@@ -386,8 +450,13 @@ func (a *Agent) callTools(ctx context.Context, toolCalls []client.ToolCall) []cl
 	resps := make([]client.D, 0, len(toolCalls))
 
 	for _, toolCall := range toolCalls {
+		// Every tool call the model made needs an answer in the conversation,
+		// even the ones we can't service, or the model is left waiting on a
+		// result that never arrives.
+
 		tool, exists := a.tools[toolCall.Function.Name]
 		if !exists {
+			resps = append(resps, toolErrorResponse(toolCall.ID, fmt.Errorf("tool %q is not registered", toolCall.Function.Name)))
 			continue
 		}
 

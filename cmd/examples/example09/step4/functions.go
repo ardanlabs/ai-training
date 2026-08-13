@@ -405,7 +405,11 @@ func (gce *GoCodeEditor) Call(ctx context.Context, toolCall client.ToolCall) (re
 	path, _ := arg("path")
 	typeChange, _ := arg("type_change")
 	lineChange, _ := arg("line_change")
-	lineNumber := int(toolCall.Function.Arguments["line_number"].(float64))
+	number, ok := toolCall.Function.Arguments["line_number"].(float64)
+	if !ok {
+		return toolErrorResponse(toolCall.ID, fmt.Errorf("the line_number argument is missing or not a number"))
+	}
+	lineNumber := int(number)
 
 	typeChange = strings.TrimSpace(typeChange)
 	lineChange = strings.TrimSpace(lineChange)

@@ -121,6 +121,12 @@ func run() error {
 				"temperature": 0.7,
 				"top_p":       0.9,
 				"top_k":       40,
+
+				// Without this, a streaming call reports no usage at all and
+				// the token accounting below never runs.
+				"stream_options": model.D{
+					"include_usage": true,
+				},
 			}
 
 			ch, err := performChat(ctx, krnChat, d)
@@ -303,6 +309,12 @@ func modelResponse(krn *kronk.Kronk, messages []model.D, ch <-chan model.ChatRes
 			lr = resp
 		}
 
+		// The usage report arrives as its own response carrying no choices, so
+		// it has to be picked up before anything indexes into them.
+		if len(resp.Choices) == 0 {
+			continue
+		}
+
 		switch resp.Choices[0].FinishReason() {
 		case model.FinishReasonError:
 			return messages, fmt.Errorf("error from model: %s", resp.Choices[0].Delta.Content)
@@ -312,19 +324,30 @@ func modelResponse(krn *kronk.Kronk, messages []model.D, ch <-chan model.ChatRes
 
 		case model.FinishReasonTool:
 			fmt.Println()
-			fmt.Printf("\u001b[92mModel Asking For Tool Call:\nToolID[%s]: %s(%s)\u001b[0m\n",
-				resp.Choices[0].Delta.ToolCalls[0].ID,
-				resp.Choices[0].Delta.ToolCalls[0].Function.Name,
-				resp.Choices[0].Delta.ToolCalls[0].Function.Arguments,
-			)
 
-			messages = append(messages,
-				model.TextMessage("tool", fmt.Sprintf("Tool call %s: %s(%v)",
-					resp.Choices[0].Delta.ToolCalls[0].ID,
-					resp.Choices[0].Delta.ToolCalls[0].Function.Name,
-					resp.Choices[0].Delta.ToolCalls[0].Function.Arguments),
-				),
-			)
+			// The response carrying the tool finish reason has an empty delta.
+			// The completed calls live on the message instead, so reading them
+			// off the delta finds nothing every time.
+			if resp.Choices[0].Message == nil {
+				continue
+			}
+
+			for _, tool := range resp.Choices[0].Message.ToolCalls {
+				fmt.Printf("\u001b[92mModel Asking For Tool Call:\nToolID[%s]: %s(%s)\u001b[0m\n",
+					tool.ID,
+					tool.Function.Name,
+					tool.Function.Arguments,
+				)
+
+				messages = append(messages,
+					model.TextMessage("tool", fmt.Sprintf("Tool call %s: %s(%v)",
+						tool.ID,
+						tool.Function.Name,
+						tool.Function.Arguments),
+					),
+				)
+			}
+
 			continue
 
 		default:

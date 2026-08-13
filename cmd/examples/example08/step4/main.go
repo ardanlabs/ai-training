@@ -314,6 +314,11 @@ func questionResponse(ctx context.Context, llm *client.LLM, question string, res
 	fmt.Println("\nModel Response:")
 
 	for resp := range ch {
+		// A chunk can arrive with no choices at all, so never index blindly.
+		if len(resp.Choices) == 0 {
+			continue
+		}
+
 		fmt.Print(resp.Choices[0].Delta.Content)
 	}
 

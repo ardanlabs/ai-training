@@ -100,7 +100,13 @@ func (gw *GetWeather) Call(ctx context.Context, toolCall client.ToolCall) (resp 
 		}
 	}()
 
-	location := toolCall.Function.Arguments["location"].(string)
+	// The model chooses the arguments, so a missing or mistyped one is a FAILED
+	// tool response. The recover above would catch the assertion panic, but the
+	// message it produces means nothing to the model.
+	location, ok := toolCall.Function.Arguments["location"].(string)
+	if !ok {
+		return toolErrorResponse(toolCall.ID, fmt.Errorf("the location argument is missing or not a string"))
+	}
 
 	return toolSuccessResponse(toolCall.ID,
 		"temperature", 28,

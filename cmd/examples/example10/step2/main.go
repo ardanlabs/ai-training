@@ -223,14 +223,14 @@ func (a *Agent) promptUser(conversation *[]client.D) bool {
 // response. It returns the assembled text content, any tool calls, and usage.
 func (a *Agent) streamModelTurn(ctx context.Context, conversation []client.D) (string, []client.ToolCall, *client.Usage, error) {
 	d := client.D{
-		"model":          model,
-		"messages":       conversation,
-		"temperature":    0.0,
-		"top_p":          0.1,
-		"top_k":          1,
-		"stream":         true,
-		"tools":          a.toolDocuments,
-		"tool_selection": "auto",
+		"model":       model,
+		"messages":    conversation,
+		"temperature": 0.0,
+		"top_p":       0.1,
+		"top_k":       1,
+		"stream":      true,
+		"tools":       a.toolDocuments,
+		"tool_choice": "auto",
 	}
 
 	fmt.Printf("\u001b[93m\n%s\u001b[0m: 0.000", a.modelInfo.id)
@@ -294,7 +294,7 @@ func (a *Agent) streamModelTurn(ctx context.Context, conversation []client.D) (s
 			return "", nil, lastResp.Usage, fmt.Errorf("error from model: %s", resp.Choices[0].Delta.Content)
 
 		case "stop":
-			text := strings.TrimLeft(strings.Join(chunks, " "), "\n")
+			text := strings.TrimLeft(strings.Join(chunks, ""), "\n")
 			return text, nil, lastResp.Usage, nil
 
 		case "tool_calls":
@@ -327,7 +327,7 @@ func (a *Agent) streamModelTurn(ctx context.Context, conversation []client.D) (s
 	}
 
 	// Stream ended without an explicit finish reason.
-	text := strings.TrimLeft(strings.Join(chunks, " "), "\n")
+	text := strings.TrimLeft(strings.Join(chunks, ""), "\n")
 	return text, assembleToolCalls(pending), lastResp.Usage, nil
 }
 

@@ -1,6 +1,6 @@
 module github.com/ardanlabs/ai-training
 
-go 1.27.0
+go 1.27.3
 
 require (
 	code.sajari.com/docconv/v2 v2.0.0-pre.4

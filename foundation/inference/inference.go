@@ -96,8 +96,8 @@ func PrintInfo(krn *kronk.Kronk) {
 
 	fmt.Println("- contextWindow:", cfg.ContextWindow())
 	fmt.Printf("- k/v          : %s/%s\n", cfg.CacheTypeK, cfg.CacheTypeV)
-	fmt.Println("- nBatch       :", cfg.NBatch())
-	fmt.Println("- nuBatch      :", cfg.NUBatch())
+	fmt.Println("- nBatch       :", cfg.EffectiveNBatch())
+	fmt.Println("- nuBatch      :", cfg.EffectiveNUBatch())
 	fmt.Println("- embeddings   :", info.IsEmbedModel)
 	fmt.Println("- template     :", info.Template.FileName)
 	fmt.Println("- grammar      :", cfg.DefaultParams.Grammar != "")

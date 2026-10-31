@@ -120,8 +120,8 @@ func newKronk(mp models.Path) (*kronk.Kronk, error) {
 
 	fmt.Println("- contextWindow:", krn.ModelConfig().ContextWindow())
 	fmt.Printf("- k/v          : %s/%s\n", krn.ModelConfig().CacheTypeK, krn.ModelConfig().CacheTypeV)
-	fmt.Println("- nBatch       :", krn.ModelConfig().NBatch())
-	fmt.Println("- nuBatch      :", krn.ModelConfig().NUBatch())
+	fmt.Println("- nBatch       :", krn.ModelConfig().EffectiveNBatch())
+	fmt.Println("- nuBatch      :", krn.ModelConfig().EffectiveNUBatch())
 	fmt.Println("- embeddings   :", krn.ModelInfo().IsEmbedModel)
 	fmt.Println("- template     :", krn.ModelInfo().Template.FileName)
 	fmt.Println("- grammar      :", krn.ModelConfig().DefaultParams.Grammar != "")

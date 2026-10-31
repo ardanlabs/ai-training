@@ -17,9 +17,12 @@ const (
 	dimensions = 768
 )
 
+// searchResult matches the fields of the document step1 stores.
 type searchResult struct {
-	FileName  string    `bson:"file_name" json:"file_name"`
-	Duration  string    `bson:"duration" json:"duration"`
+	Video     string    `bson:"video" json:"video"`
+	Chunk     string    `bson:"chunk" json:"chunk"`
+	StartTime float64   `bson:"start_time" json:"start_time"`
+	Duration  float64   `bson:"duration" json:"duration"`
 	Text      string    `bson:"text" json:"text"`
 	Embedding []float64 `bson:"embedding" json:"-"`
 	Score     float64   `bson:"score" json:"-"`
@@ -51,7 +54,9 @@ func initDB(ctx context.Context, client *mongo.Client) (*mongo.Collection, error
 		Keys:    bson.D{{Key: "video", Value: 1}, {Key: "chunk", Value: 1}},
 		Options: options.Index().SetUnique(true),
 	}
-	col.Indexes().CreateOne(ctx, indexModel)
+	if _, err := col.Indexes().CreateOne(ctx, indexModel); err != nil {
+		return nil, fmt.Errorf("createIndex (video, chunk): %w", err)
+	}
 
 	return col, nil
 }
@@ -80,9 +85,12 @@ func vectorSearch(ctx context.Context, col *mongo.Collection, vector []float64) 
 		{{
 			Key: "$project",
 			Value: bson.M{
-				"file_name": 1,
-				"text":      1,
-				"embedding": 1,
+				"video":      1,
+				"chunk":      1,
+				"start_time": 1,
+				"duration":   1,
+				"text":       1,
+				"embedding":  1,
 				"score": bson.M{
 					"$meta": "vectorSearchScore",
 				},

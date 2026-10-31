@@ -27,6 +27,7 @@ func Connect(ctx context.Context, host string, userName string, password string)
 	}
 
 	if err := client.Ping(ctx, readpref.Primary()); err != nil {
+		client.Disconnect(ctx)
 		return nil, fmt.Errorf("ping: %w", err)
 	}
 

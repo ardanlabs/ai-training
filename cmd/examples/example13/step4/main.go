@@ -34,6 +34,7 @@ import (
 	"github.com/ardanlabs/ai-training/cmd/examples/example13/step4/website"
 	"github.com/ardanlabs/kronk/sdk/kronk"
 	"github.com/ardanlabs/kronk/sdk/kronk/model"
+	"github.com/ardanlabs/kronk/sdk/tools/defaults"
 	"github.com/ardanlabs/kronk/sdk/tools/libs"
 	"github.com/ardanlabs/kronk/sdk/tools/models"
 )
@@ -43,7 +44,7 @@ const (
 	modelEmbedSource   = "ggml-org/embeddinggemma-300m-qat-Q8_0"
 	dbPath             = "zarf/data/duck-ex13-step3.db" // ":memory:"
 	chunksFile         = "zarf/data/book.chunks"
-	dimentions         = 768
+	dimensions         = 768
 	WebReadTimeout     = 10 * time.Second
 	WebWriteTimeout    = 120 * time.Second
 	WebIdleTimeout     = 120 * time.Second
@@ -64,7 +65,9 @@ func run() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
-	libs, err := libs.New()
+	libs, err := libs.New(
+		libs.WithVersion(defaults.LibVersion("")),
+	)
 	if err != nil {
 		return fmt.Errorf("unable to create libs api: %w", err)
 	}
@@ -132,7 +135,7 @@ func run() error {
 
 	// -------------------------------------------------------------------------
 
-	db, err := duck.LoadData(dbPath, krnEmbed, dimentions, chunksFile)
+	db, err := duck.LoadData(dbPath, krnEmbed, dimensions, chunksFile)
 	if err != nil {
 		return fmt.Errorf("error connecting to database: %w", err)
 	}

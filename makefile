@@ -104,12 +104,14 @@ install:
 	brew tap homebrew-ffmpeg/ffmpeg/ffmpeg
 	brew install homebrew-ffmpeg/ffmpeg/ffmpeg --with-whisper-cpp
 	go install github.com/janpfeifer/gonb@latest
+	go install golang.org/x/tools/cmd/goimports@latest
+	go install golang.org/x/tools/gopls@latest
 	go install github.com/ardanlabs/kronk/cmd/kronk@latest
 
 docker:
 	docker pull mongodb/mongodb-atlas-local:8.2
 	docker pull ghcr.io/open-webui/open-webui:v0.9.5
-	docker pull postgres:18.3
+	docker pull postgres:18.4-alpine3.24
 	docker pull quay.io/docling-project/docling-serve:v1.12.0
 
 install-python:
@@ -119,15 +121,16 @@ install-python:
 	uv sync
 	uv pip install vllm
 	uv pip install jupyterlab
+	uv run gonb --install
 	uv pip list > pydeps.txt
 
 # Use this to install models. Needed to run examples. You can install a model
 # as the example calls for it. Just copy/paste in terminal.
 install-models:
 	@echo ========== INSTALL MODELS ==========
-	kronk model pull --local "ggml-org/Qwen2.5-VL-3B-Instruct-Q8_0.gguf"
+	kronk model pull --local "unsloth/Qwen2.5-VL-3B-Instruct-Q8_0.gguf"
 	@echo
-	kronk model pull --local "Qwen/Qwen3-8B-Q8_0.gguf"
+	kronk model pull --local "unsloth/Qwen3-8B-Q8_0.gguf"
 	@echo
 	kronk model pull --local "unsloth/Qwen3.6-35B-A3B-UD-Q4_K_XL"
 	@echo
@@ -196,7 +199,6 @@ example10-step2:
 example11-step1:
 	mkdir -p zarf/samples/videos/chunks && \
 	mkdir -p zarf/samples/videos/frames && \
-	export KRONK_CONTEXT_LENGTH=$(KRONK_CONTEXT_LENGTH) && \
 	go run ./cmd/examples/example11/step1/*.go
 
 example11-step2:
@@ -267,10 +269,6 @@ example13-step4-curl2:
 #	step5  the structural defenses, against the plain-English payload
 #	step6  the same attack in Morse code, and the content stack cannot see it
 #
-# example15-matrix is the full 5x7 grid and takes ~30 minutes - run it before
-# the session rather than in front of the room, and keep the summary table for
-# the closing.
-#
 # Steps 1 and 4 need only kronk-up. The rest also need compose-up for pgvector.
 
 # The exfiltration listener. Start this FIRST, in its own terminal.
@@ -294,9 +292,6 @@ example15-step5:
 
 example15-step6:
 	go run ./cmd/examples/example15/step6
-
-example15-matrix:
-	go run ./cmd/examples/example15/matrix
 
 ws-ragpipeline-step1:
 	go run ./cmd/examples/example16/step1
@@ -560,12 +555,12 @@ curl-tooling:
 # This will establish a SSE session and this is where we will get the sessionID
 # and the results of the call.
 curl-mcp-get-session:
-	curl -N -H "Accept: text/event-stream" http://localhost:11435/tool_list_files
+	curl -N -H "Accept: text/event-stream" http://localhost:8082/tool_list_files
 
 # Once we have the sessionID, we can initialize the session.
 # Replace the sessionID with the one you get from the SSE session.
 curl-mcp-init:
-	curl -X POST http://localhost:11435/tool_list_files?sessionid=$(SESSIONID) \
+	curl -X POST http://localhost:8082/tool_list_files?sessionid=$(SESSIONID) \
 	-H "Content-Type: application/json" \
 	-d '{ \
 		"jsonrpc": "2.0", \
@@ -581,7 +576,7 @@ curl-mcp-init:
 # Then we can make the actual tool call. The response will be streamed in the
 # session call. Replace the sessionID with the one you get from the SSE session.
 curl-mcp-tool-call:
-	curl -X POST http://localhost:11435/tool_list_files?sessionid=$(SESSIONID) \
+	curl -X POST http://localhost:8082/tool_list_files?sessionid=$(SESSIONID) \
 	-H "Content-Type: application/json" \
 	-d '{ \
 		"jsonrpc": "2.0", \

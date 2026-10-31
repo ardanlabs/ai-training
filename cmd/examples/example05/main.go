@@ -45,7 +45,7 @@ import (
 
 var (
 	url   = "http://localhost:11435/v1/embeddings"
-	model = "embeddinggemma-300m-qat-Q8_0"
+	model = "ggml-org/embeddinggemma-300m-qat-Q8_0"
 
 	dbName     = "example06"
 	colName    = "book"
@@ -96,6 +96,7 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("mongodb.Connect: %w", err)
 	}
+	defer client.Disconnect(ctx)
 
 	col, err := initDB(ctx, client)
 	if err != nil {
@@ -142,8 +143,10 @@ func createBookEmbeddings(ctx context.Context) error {
 		fmt.Print("\033[u\033[K")
 		fmt.Printf("Vectorizing Data: %d of %d", counter, len(chunks))
 
-		chunk = strings.Trim(chunk, "<CHUNK>")
-		chunk = strings.Trim(chunk, "</CHUNK>")
+		// strings.Trim would treat "<CHUNK>" as a set of characters to cut,
+		// so remove the exact tags instead.
+		chunk = strings.TrimPrefix(chunk, "<CHUNK>")
+		chunk = strings.TrimSuffix(chunk, "</CHUNK>")
 
 		// YOU WILL WANT TO KNOW HOW MANY TOKENS ARE CURRENTLY IN THE CHUNK
 		// SO YOU DON'T EXCEED THE NUMBER OF TOKENS THE MODEL WILL USE TO
@@ -206,7 +209,7 @@ func insertBookEmbeddings(ctx context.Context, col *mongo.Collection) error {
 		doc := scanner.Text()
 
 		fmt.Print("\033[u\033[K")
-		fmt.Printf("Insering Data: %d", counter)
+		fmt.Printf("Inserting Data: %d", counter)
 
 		var d document
 		if err := json.Unmarshal([]byte(doc), &d); err != nil {
@@ -219,7 +222,7 @@ func insertBookEmbeddings(ctx context.Context, col *mongo.Collection) error {
 		}
 
 		if !errors.Is(res.Err(), mongo.ErrNoDocuments) {
-			return fmt.Errorf("find: %w", err)
+			return fmt.Errorf("find: %w", res.Err())
 		}
 
 		if _, err := col.InsertOne(ctx, d); err != nil {

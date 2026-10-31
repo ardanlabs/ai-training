@@ -1,5 +1,5 @@
-// This examples takes step1 and shows you how to generate a vector embedding
-// from the image description and for the image itself.
+// This example takes step1 and shows you how to generate a vector embedding
+// from the image description.
 //
 // # Running the example:
 //
@@ -8,7 +8,6 @@
 // # This requires running the following commands:
 //
 //	$ make kronk-up
-//	$ make compose-up
 
 package main
 
@@ -26,8 +25,8 @@ import (
 var (
 	urlChat    = "http://localhost:11435/v1/chat/completions"
 	urlEmbed   = "http://localhost:11435/v1/embeddings"
-	modelChat  = "Qwen2.5-VL-3B-Instruct-Q8_0"
-	modelEmbed = "embeddinggemma-300m-qat-Q8_0"
+	modelChat  = "unsloth/Qwen2.5-VL-3B-Instruct-Q8_0"
+	modelEmbed = "ggml-org/embeddinggemma-300m-qat-Q8_0"
 
 	imagePath = "zarf/samples/gallery/roseimg.png"
 )
@@ -127,6 +126,6 @@ func readImage(fileName string) ([]byte, string, error) {
 	case "image/jpeg", "image/png":
 		return data, mimeType, nil
 	default:
-		return nil, "", fmt.Errorf("unsupported file type:%s: filename: %s", mimeType, fileName)
+		return nil, "", fmt.Errorf("unsupported file type: %s: filename: %s", mimeType, fileName)
 	}
 }

@@ -47,11 +47,25 @@ func getParams(traceID string, req Request) model.Params {
 		maxTokens = *req.MaxTokens
 	}
 
+	var thinking string
+	if req.Thinking != nil {
+		fmt.Printf("traceID: %s: getParams: thinking: %#v\n", traceID, *req.Thinking)
+		thinking = *req.Thinking
+	}
+
+	var reasoningEffort string
+	if req.ReasoningEffort != nil {
+		fmt.Printf("traceID: %s: getParams: reasoningEffort: %#v\n", traceID, *req.ReasoningEffort)
+		reasoningEffort = *req.ReasoningEffort
+	}
+
 	params := model.Params{
-		TopK:        topK,
-		TopP:        topP,
-		Temperature: temp,
-		MaxTokens:   maxTokens,
+		TopK:            topK,
+		TopP:            topP,
+		Temperature:     temp,
+		MaxTokens:       maxTokens,
+		Thinking:        thinking,
+		ReasoningEffort: reasoningEffort,
 	}
 
 	return params

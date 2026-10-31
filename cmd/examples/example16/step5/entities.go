@@ -56,7 +56,7 @@ type extraction struct {
 func buildEntities(ctx context.Context, g *age.Graph, krnChat *kronk.Kronk, chunks []chunk) error {
 	// Resumable: a chunk is logged as extracted only once its nodes and edges are
 	// in the graph, so a ctrl-c costs the chunk in flight and nothing else.
-	done, err := storedIDs(ctx, g.DB(), `SELECT chunk_id FROM extracted`)
+	done, err := storedIDs(ctx, g.DB(), `SELECT chunk_id FROM public.extracted`)
 	if err != nil {
 		return fmt.Errorf("stored ids: %w", err)
 	}
@@ -78,7 +78,7 @@ func buildEntities(ctx context.Context, g *age.Graph, krnChat *kronk.Kronk, chun
 	fmt.Print("\033[s")
 
 	const logExtracted = `
-	INSERT INTO extracted (chunk_id, entities)
+	INSERT INTO public.extracted (chunk_id, entities)
 	VALUES ($1, $2)
 	ON CONFLICT (chunk_id) DO NOTHING`
 
@@ -117,7 +117,10 @@ func buildEntities(ctx context.Context, g *age.Graph, krnChat *kronk.Kronk, chun
 				kind = "concept"
 			}
 
-			q := fmt.Sprintf(`MERGE (:Entity {name: %s, kind: %s})`,
+			// Merged on name alone. With kind in the pattern, a subject the model
+			// calls a type in one chunk and a concept in another becomes two nodes
+			// that never meet. The first kind seen sticks.
+			q := fmt.Sprintf(`MERGE (e:Entity {name: %s}) ON CREATE SET e.kind = %s`,
 				age.Quote(name), age.Quote(kind))
 
 			if err := g.Exec(ctx, q); err != nil {
@@ -259,10 +262,13 @@ func normalize(s string) string {
 // A hub subject, one a twentieth of the book mentions, joins chunks that have
 // nothing to do with each other, so it is not a hop.
 func entityHop(ctx context.Context, g *age.Graph, ids []int, perEntity int, hubs map[string]bool) (map[int]string, error) {
+	// The hits are excluded so they cannot use up a subject's cap on chunks the
+	// prompt already has, and the order makes which chunks fill it repeatable.
 	q := fmt.Sprintf(`
 		MATCH (c:Chunk)-[:MENTIONS]->(e:Entity)<-[:MENTIONS]-(n:Chunk)
-		WHERE c.id IN [%s]
-		RETURN n.id, e.name`, age.Ints(ids))
+		WHERE c.id IN [%[1]s] AND NOT n.id IN [%[1]s]
+		RETURN n.id, e.name
+		ORDER BY n.id, e.name`, age.Ints(ids))
 
 	rows, err := g.Query(ctx, q, "id agtype", "name agtype")
 	if err != nil {

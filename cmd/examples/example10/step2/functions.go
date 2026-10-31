@@ -4,6 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
+	"strconv"
+	"strings"
 
 	"github.com/ardanlabs/ai-training/foundation/client"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -41,12 +44,26 @@ func (cln *mcpClient) Call(ctx context.Context, transport *mcp.SSEClientTranspor
 		return nil, fmt.Errorf("failed to call tool: %w", err)
 	}
 
+	// A tool that fails returns the reason as text content. Printing
+	// res.Content directly would only show pointer addresses.
 	if res.IsError {
 		fmt.Printf("\u001b[91mtool: result is error\u001b[0m\n")
-		return nil, fmt.Errorf("tool call failed: %s", res.Content)
+		return nil, fmt.Errorf("tool call failed: %s", contentText(res.Content))
 	}
 
 	return res.Content, nil
+}
+
+// contentText joins the text from the content returned by a MCP tool call.
+func contentText(contents []mcp.Content) string {
+	var b strings.Builder
+	for _, c := range contents {
+		if tc, ok := c.(*mcp.TextContent); ok {
+			b.WriteString(tc.Text)
+		}
+	}
+
+	return b.String()
 }
 
 // =============================================================================
@@ -124,19 +141,19 @@ func RegisterReadFile(mcpClient *mcpClient, tools map[string]Tool) client.D {
 	return rf.toolDocument()
 }
 
-// ToolDocument defines the metadata for the tool that is provied to the model.
+// toolDocument defines the metadata for the tool that is provided to the model.
 func (rf *ReadFile) toolDocument() client.D {
 	return client.D{
 		"type": "function",
 		"function": client.D{
 			"name":        rf.name,
-			"description": "Read the contents of a given file path or search for files containing a pattern. When searching file contents, returns line numbers where the pattern is found.",
+			"description": "Read the contents of a given relative file path. Use this when you want to see what's inside a file.",
 			"parameters": client.D{
 				"type": "object",
 				"properties": client.D{
 					"path": client.D{
 						"type":        "string",
-						"description": "The relative path of a file in the working directory. If pattern is provided, this can be a directory path to search in.",
+						"description": "The relative path of a file in the working directory.",
 					},
 				},
 				"required": []string{"path"},
@@ -207,7 +224,7 @@ func RegisterSearchFiles(mcpClient *mcpClient, tools map[string]Tool) client.D {
 	return sf.toolDocument()
 }
 
-// toolDocument defines the metadata for the tool that is provied to the model.
+// toolDocument defines the metadata for the tool that is provided to the model.
 func (sf *SearchFiles) toolDocument() client.D {
 	return client.D{
 		"type": "function",
@@ -223,7 +240,7 @@ func (sf *SearchFiles) toolDocument() client.D {
 					},
 					"filter": client.D{
 						"type":        "string",
-						"description": "The filter to apply to the file names. It supports golang regex syntax. If not provided, will filtering with take place. If provided, only return files that match the filter.",
+						"description": "The filter to apply to the file names. It supports golang regex syntax. If not provided, no filtering will take place. If provided, only return files that match the filter.",
 					},
 					"contains": client.D{
 						"type":        "string",
@@ -271,7 +288,7 @@ func (sf *SearchFiles) Call(ctx context.Context, tool client.ToolCall) (resp cli
 // =============================================================================
 // CreateFile Tool
 
-// CreateFile represents a tool that can be used to search for files.
+// CreateFile represents a tool that can be used to create files.
 type CreateFile struct {
 	name      string
 	mcpClient *mcpClient
@@ -298,7 +315,7 @@ func RegisterCreateFile(mcpClient *mcpClient, tools map[string]Tool) client.D {
 	return cf.toolDocument()
 }
 
-// toolDocument defines the metadata for the tool that is provied to the model.
+// toolDocument defines the metadata for the tool that is provided to the model.
 func (cf *CreateFile) toolDocument() client.D {
 	return client.D{
 		"type": "function",
@@ -381,7 +398,7 @@ func RegisterGoCodeEditor(mcpClient *mcpClient, tools map[string]Tool) client.D 
 	return gce.toolDocument()
 }
 
-// toolDocument defines the metadata for the tool that is provied to the model.
+// toolDocument defines the metadata for the tool that is provided to the model.
 func (gce *GoCodeEditor) toolDocument() client.D {
 	return client.D{
 		"type": "function",
@@ -423,9 +440,21 @@ func (gce *GoCodeEditor) Call(ctx context.Context, tool client.ToolCall) (resp c
 		}
 	}()
 
+	// The MCP server validates the arguments against the tool's schema, which
+	// requires line_number to be an integer. Models sometimes send the line
+	// number as a string, so convert it before making the call.
+	args := maps.Clone(tool.Function.Arguments)
+	if v, ok := args["line_number"].(string); ok {
+		n, err := strconv.Atoi(strings.TrimSpace(v))
+		if err != nil {
+			return toolErrorResponse(tool.ID, fmt.Errorf("the line_number argument is not a number: %q", v))
+		}
+		args["line_number"] = n
+	}
+
 	params := mcp.CallToolParams{
 		Name:      gce.name,
-		Arguments: tool.Function.Arguments,
+		Arguments: args,
 	}
 
 	results, err := gce.mcpClient.Call(ctx, gce.transport, &params)

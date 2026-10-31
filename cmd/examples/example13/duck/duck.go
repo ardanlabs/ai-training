@@ -1,4 +1,4 @@
-// Package duck provides basic duckdb support for the
+// Package duck provides basic duckdb support for the example13 RAG examples.
 package duck
 
 import (
@@ -17,13 +17,15 @@ import (
 
 // LoadData loads the specified chunks file into a duckdb database that is
 // configured to use the VSS extension for vector similarity search.
-func LoadData(dbPath string, krn *kronk.Kronk, dimentions int, chunksFile string) (*sql.DB, error) {
+func LoadData(dbPath string, krn *kronk.Kronk, dimensions int, chunksFile string) (*sql.DB, error) {
 	connector, err := duckdb.NewConnector(dbPath, nil)
 	if err != nil {
 		return nil, fmt.Errorf("error creating connector: %w", err)
 	}
-	defer connector.Close()
 
+	// The connector must stay open for as long as the database is in use since
+	// every new pooled connection is created through it. Calling db.Close
+	// closes the connector as well.
 	db := sql.OpenDB(connector)
 
 	// -------------------------------------------------------------------------
@@ -80,7 +82,7 @@ func LoadData(dbPath string, krn *kronk.Kronk, dimentions int, chunksFile string
 		);
 	`
 
-	sql = fmt.Sprintf(sql, dimentions)
+	sql = fmt.Sprintf(sql, dimensions)
 
 	if _, err = db.Exec(sql); err != nil {
 		return nil, fmt.Errorf("error creating table: %w", err)
@@ -128,8 +130,11 @@ func loadChunks(db *sql.DB, krn *kronk.Kronk, chunksFile string) error {
 		fmt.Print("\033[u\033[K")
 		fmt.Printf("Vectorizing Data: %d of %d", counter+1, len(chunks))
 
-		chunk = strings.Trim(chunk, "<CHUNK>")
-		chunk = strings.Trim(chunk, "</CHUNK>")
+		// Trim removes a set of characters, not a prefix or suffix, so it
+		// could also eat letters from the chunk text itself.
+		chunk = strings.TrimPrefix(chunk, "<CHUNK>")
+		chunk = strings.TrimSuffix(chunk, "</CHUNK>")
+		chunk = strings.TrimSpace(chunk)
 
 		vec, err := func() ([]float32, error) {
 			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
@@ -146,7 +151,7 @@ func loadChunks(db *sql.DB, krn *kronk.Kronk, chunksFile string) error {
 				return nil, fmt.Errorf("embed: %w", err)
 			}
 
-			if len(resp.Data[0].Embedding) == 0 {
+			if len(resp.Data) == 0 || len(resp.Data[0].Embedding) == 0 {
 				return nil, fmt.Errorf("empty vector")
 			}
 
@@ -218,6 +223,10 @@ func Search(db *sql.DB, queryVector []float32, limit int) ([]Document, error) {
 		}
 
 		docs = append(docs, doc)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating rows: %w", err)
 	}
 
 	return docs, nil

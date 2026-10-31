@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/ardanlabs/kronk/sdk/kronk"
@@ -89,8 +90,9 @@ func installSystem() (models.Path, error) {
 
 	// -------------------------------------------------------------------------
 
-	// You could also download this model using the catalog system.
-	// mp, err := ctlg.DownloadModel(ctx, kronk.FmtLogger, "Qwen3-8B-Q8_0")
+	// You could also download this model by naming the HuggingFace repo and
+	// the quantization you want, or by passing the full HuggingFace URL.
+	// mp, err := mdls.Download(ctx, kronk.FmtLogger, "unsloth/Qwen3.6-35B-A3B-GGUF:UD-Q4_K_XL")
 	// if err != nil {
 	// 	return models.Path{}, fmt.Errorf("unable to download model: %w", err)
 	// }
@@ -150,9 +152,11 @@ func chat(krn *kronk.Kronk) error {
 		model.TextMessage(model.RoleSystem, systemPrompt),
 	)
 
+	reader := bufio.NewReader(os.Stdin)
+
 	for {
 		var err error
-		messages, err = userInput(messages)
+		messages, err = userInput(reader, messages)
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				return nil
@@ -195,25 +199,31 @@ func chat(krn *kronk.Kronk) error {
 	}
 }
 
-func userInput(messages []model.D) ([]model.D, error) {
-	fmt.Print("\nUSER> ")
+func userInput(reader *bufio.Reader, messages []model.D) ([]model.D, error) {
+	for {
+		fmt.Print("\nUSER> ")
 
-	reader := bufio.NewReader(os.Stdin)
+		userInput, err := reader.ReadString('\n')
+		if err != nil {
+			return messages, fmt.Errorf("unable to read user input: %w", err)
+		}
 
-	userInput, err := reader.ReadString('\n')
-	if err != nil {
-		return messages, fmt.Errorf("unable to read user input: %w", err)
+		userInput = strings.TrimSpace(userInput)
+
+		switch userInput {
+		case "":
+			continue
+
+		case "quit":
+			return nil, io.EOF
+		}
+
+		messages = append(messages,
+			model.TextMessage(model.RoleUser, userInput),
+		)
+
+		return messages, nil
 	}
-
-	if userInput == "quit\n" {
-		return nil, io.EOF
-	}
-
-	messages = append(messages,
-		model.TextMessage(model.RoleUser, userInput),
-	)
-
-	return messages, nil
 }
 
 func toolDocuments() []model.D {
@@ -266,7 +276,17 @@ func modelResponse(krn *kronk.Kronk, messages []model.D, ch <-chan model.ChatRes
 		case model.FinishReasonError:
 			return messages, fmt.Errorf("error from model: %s", resp.Choices[0].Delta.Content)
 
-		case model.FinishReasonStop:
+		case model.FinishReasonStop, model.FinishReasonLength:
+
+			// The final response carries the complete answer on the message.
+			// Keep it in the history so the model can see its own replies on
+			// the next turn.
+			if msg := resp.Choices[0].Message; msg != nil && msg.Content != "" {
+				messages = append(messages,
+					model.TextMessage(model.RoleAssistant, msg.Content),
+				)
+			}
+
 			continue
 
 		case model.FinishReasonTool:
@@ -281,7 +301,7 @@ func modelResponse(krn *kronk.Kronk, messages []model.D, ch <-chan model.ChatRes
 			}
 
 			for _, tool := range resp.Choices[0].Message.ToolCalls {
-				fmt.Printf("\u001b[92mToolID[%s]: %s(%s)\n\u001b[0m",
+				fmt.Printf("\u001b[92mToolID[%s]: %s(%v)\n\u001b[0m",
 					tool.ID,
 					tool.Function.Name,
 					tool.Function.Arguments,

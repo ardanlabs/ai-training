@@ -107,10 +107,13 @@ func run() error {
 
 	fmt.Printf("Try something like: %q\n", "How does the scheduler handle blocking system calls?")
 
-	var messages []model.D
+	reader := bufio.NewReader(os.Stdin)
 
 	for {
-		messages, err = userInput(messages)
+		// Every question retrieves on its own, so every turn starts a new
+		// conversation. Earlier questions sent without their answers or their
+		// context would only confuse the model.
+		messages, err := userInput(reader, nil)
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				return nil
@@ -216,23 +219,29 @@ func newKronk(mp models.Path, opts ...model.Option) (*kronk.Kronk, error) {
 	return krn, nil
 }
 
-func userInput(messages []model.D) ([]model.D, error) {
-	fmt.Print("\nUSER> ")
+func userInput(reader *bufio.Reader, messages []model.D) ([]model.D, error) {
+	for {
+		fmt.Print("\nUSER> ")
 
-	reader := bufio.NewReader(os.Stdin)
+		userInput, err := reader.ReadString('\n')
+		if err != nil {
+			return messages, fmt.Errorf("unable to read user input: %w", err)
+		}
 
-	userInput, err := reader.ReadString('\n')
-	if err != nil {
-		return messages, fmt.Errorf("unable to read user input: %w", err)
+		userInput = strings.TrimSpace(userInput)
+
+		switch userInput {
+		case "":
+			continue
+
+		case "quit":
+			return nil, io.EOF
+		}
+
+		messages = append(messages, model.TextMessage("user", userInput))
+
+		return messages, nil
 	}
-
-	if userInput == "quit\n" {
-		return nil, io.EOF
-	}
-
-	messages = append(messages, model.TextMessage("user", userInput))
-
-	return messages, nil
 }
 
 // vectorSearch runs the retrieval and then prints what it missed. Only the
@@ -398,7 +407,7 @@ func modelResponse(krn *kronk.Kronk, ch <-chan model.ChatResponse) error {
 		case model.FinishReasonError:
 			return fmt.Errorf("error from model: %s", resp.Choices[0].Delta.Content)
 
-		case model.FinishReasonStop:
+		case model.FinishReasonStop, model.FinishReasonLength:
 			continue
 
 		default:
@@ -433,8 +442,8 @@ func modelResponse(krn *kronk.Kronk, ch <-chan model.ChatResponse) error {
 	fmt.Printf("\n\n\u001b[90mPrompt: %d  Reasoning: %d  Completion: %d  Window: %d (%.0f%% of %.0fK) TPS: %.2f\u001b[0m\n",
 		lr.Usage.PromptTokens, lr.Usage.CompletionTokensDetails.ReasoningTokens, lr.Usage.CompletionTokens, contextTokens, percentage, of, lr.Usage.TokensPerSecond)
 
-	// Hitting the cap ends the stream with a finish reason of "stop", exactly as a
-	// finished answer does, so truncation is invisible unless the count is checked.
+	// Hitting the cap ends the stream with a finish reason of "length" and no
+	// closing text, so the answer just stops. The count makes that visible.
 	if lr.Usage.CompletionTokens >= maxTokens {
 		fmt.Printf("\u001b[91mTruncated: hit the %d token cap\u001b[0m\n", maxTokens)
 	}

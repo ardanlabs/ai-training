@@ -26,7 +26,7 @@ import (
 
 var (
 	url   = "http://localhost:11435/v1/chat/completions"
-	model = "Qwen3.6-35B-A3B-UD-Q4_K_XL"
+	model = "unsloth/Qwen3.6-35B-A3B-UD-Q4_K_XL"
 )
 
 func init() {
@@ -63,6 +63,7 @@ func run() error {
 	fmt.Print("\nAsk a question about the garage sale system: ")
 
 	question, _ := reader.ReadString('\n')
+	question = strings.TrimSpace(question)
 	if question == "" {
 		return nil
 	}
@@ -73,20 +74,21 @@ func run() error {
 
 	llm := client.NewLLM(url, model)
 
-	query, err := llm.ChatCompletions(ctx, fmt.Sprintf(query, question))
+	sqlQuery, err := llm.ChatCompletions(ctx, fmt.Sprintf(query, question))
 	if err != nil {
 		return fmt.Errorf("chat completions: %w", err)
 	}
+	sqlQuery = cleanSQL(sqlQuery)
 
 	fmt.Println("QUERY:")
 	fmt.Print("-----------------------------------------------\n\n")
-	fmt.Println(query)
+	fmt.Println(sqlQuery)
 	fmt.Print("\n")
 
 	// -------------------------------------------------------------------------
 
 	data := []map[string]any{}
-	if err := sqldb.QueryMap(ctx, db, query, &data); err != nil {
+	if err := sqldb.QueryMap(ctx, db, sqlQuery, &data); err != nil {
 		return fmt.Errorf("execQuery: %w", err)
 	}
 
@@ -105,9 +107,9 @@ func run() error {
 
 	var builder strings.Builder
 	for i, m := range data {
-		builder.WriteString(fmt.Sprintf("RESULT: %d\n", i+1))
+		fmt.Fprintf(&builder, "RESULT: %d\n", i+1)
 		for k, v := range m {
-			builder.WriteString(fmt.Sprintf("KEY: %s, VAL: %v\n", k, v))
+			fmt.Fprintf(&builder, "KEY: %s, VAL: %v\n", k, v)
 		}
 		builder.WriteString("\n")
 	}

@@ -2,8 +2,8 @@
 // dumps the body to standard out, which is how the exfiltrated data becomes
 // visible in the room.
 //
-// All three security steps POST to http://localhost:9999/ when an injection
-// succeeds. Run this in a second terminal before running them; without it the
+// Every step that exfiltrates POSTs to http://localhost:9999/ when an
+// injection succeeds. Run this in a second terminal before running them; without it the
 // exfiltration still happens, it just has nowhere to land.
 //
 // # Running the example:
@@ -20,7 +20,11 @@ import (
 
 func main() {
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		body, _ := io.ReadAll(r.Body)
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 
 		fmt.Println("========================================")
 		fmt.Printf("Method: %s\n", r.Method)

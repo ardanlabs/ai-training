@@ -27,7 +27,7 @@ import (
 
 var (
 	urlModel      = "http://localhost:11435/v1/chat/completions"
-	model         = "Qwen3.6-35B-A3B-UD-Q4_K_XL"
+	model         = "unsloth/Qwen3.6-35B-A3B-UD-Q4_K_XL"
 	urlDocling    = "http://localhost:5001/v1/convert/file"
 	documentPath  = "zarf/samples/docs/dinner_menu.pdf"
 	contextWindow = 32 * 1024
@@ -92,14 +92,21 @@ func run() error {
 
 	fmt.Print("\n\nParsed CSV:\n\n")
 
-	reader := csv.NewReader(strings.NewReader(csvData))
+	// Models often wrap the output in a markdown code fence even when told
+	// not to, and the fence lines would break the CSV parser.
+	csvData = strings.TrimSpace(csvData)
+	csvData = strings.TrimPrefix(csvData, "```csv")
+	csvData = strings.TrimPrefix(csvData, "```")
+	csvData = strings.TrimSuffix(csvData, "```")
+
+	reader := csv.NewReader(strings.NewReader(strings.TrimSpace(csvData)))
 	records, err := reader.ReadAll()
 	if err != nil {
 		return fmt.Errorf("parse csv: %w", err)
 	}
 
 	for _, record := range records {
-		fmt.Printf("\u001b[93m%s\u001b[0m", record)
+		fmt.Printf("\u001b[93m%q\u001b[0m\n", record)
 	}
 
 	return nil

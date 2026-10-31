@@ -3,6 +3,7 @@ package harness
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"maps"
 	"net/http"
@@ -30,6 +31,11 @@ import (
 // maxToolTurns bounds the loop. A model that keeps asking for tools it is not
 // allowed to call would otherwise spin here.
 const maxToolTurns = 5
+
+// errInvalidToolCall marks a turn that ended because the model wrote a tool
+// call the server could not parse. That is a mistake by the model, not a
+// broken server, so Ask tells the model and lets it try again.
+var errInvalidToolCall = errors.New("invalid tool call")
 
 // maxAnswerTokens bounds one turn's generation.
 //
@@ -154,6 +160,17 @@ func (a *Agent) Ask(ctx context.Context, systemPrompt string, userPrompt string)
 
 	for range maxToolTurns {
 		text, toolCalls, err := a.streamTurn(ctx, conversation)
+		if errors.Is(err, errInvalidToolCall) {
+			// Sampling is greedy, so the same conversation would produce the
+			// same broken call. The note changes the conversation, and it
+			// costs one of the bounded turns like any other retry.
+			fmt.Printf("\n\u001b[93m↺ %v - asking the model to try again\u001b[0m\n", err)
+			conversation = append(conversation, client.D{
+				"role":    "user",
+				"content": "Your last tool call was malformed and was not run. Either make a valid tool call or answer in plain text.",
+			})
+			continue
+		}
 		if err != nil {
 			return Answer{}, err
 		}
@@ -191,6 +208,7 @@ type pending struct {
 	id   string
 	name string
 	args map[string]any
+	raw  strings.Builder
 }
 
 // streamTurn runs one model turn and returns either the assistant's text or the
@@ -230,13 +248,27 @@ func (a *Agent) streamTurn(ctx context.Context, conversation []client.D) (string
 
 	var chunks []string
 	var thinking bool
+	var finishReason string
 
+	// Read until the channel closes. The finish chunk is not the last event:
+	// the server can still send a usage chunk after it, and returning early
+	// would abandon the stream mid-read.
 	for resp := range ch {
 		if len(resp.Choices) == 0 {
 			continue
 		}
 
 		choice := resp.Choices[0]
+
+		// A mid-stream server error or a broken stream arrives as a choice with
+		// the "error" finish reason and the message as its content. Treating it
+		// as an ordinary chunk would turn a failure into an empty answer.
+		if choice.FinishReason == "error" {
+			if strings.Contains(choice.Delta.Content, "invalid tool call") {
+				return "", nil, fmt.Errorf("%w: %s", errInvalidToolCall, choice.Delta.Content)
+			}
+			return "", nil, fmt.Errorf("model reported: %s", choice.Delta.Content)
+		}
 
 		// Merge whatever this chunk knows into the call at its index. Any field
 		// may be absent from any given chunk, so nothing is overwritten with a
@@ -261,7 +293,7 @@ func (a *Agent) streamTurn(ctx context.Context, conversation []client.D) (string
 					fmt.Print("\n\n")
 				}
 
-				fmt.Printf("[93m↪ tool call requested(index:%d)[0m\n", tc.Index)
+				fmt.Printf("\u001b[93m↪ tool call requested(index:%d)\u001b[0m\n", tc.Index)
 			}
 
 			if tc.ID != "" {
@@ -273,23 +305,7 @@ func (a *Agent) streamTurn(ctx context.Context, conversation []client.D) (string
 			}
 
 			maps.Copy(p.args, tc.Function.Arguments)
-		}
-
-		switch choice.FinishReason {
-		case "error":
-			return "", nil, fmt.Errorf("model reported: %s", choice.Delta.Content)
-
-		case "stop", "tool_calls":
-			if thinking {
-				fmt.Print("\n")
-			}
-
-			assembled, err := assemble(calls)
-			if err != nil {
-				return "", nil, err
-			}
-
-			return strings.TrimLeft(strings.Join(chunks, ""), "\n"), assembled, nil
+			p.raw.WriteString(tc.Function.RawArguments)
 		}
 
 		switch {
@@ -310,10 +326,23 @@ func (a *Agent) streamTurn(ctx context.Context, conversation []client.D) (string
 			fmt.Print(choice.Delta.Content)
 			chunks = append(chunks, choice.Delta.Content)
 		}
+
+		if choice.FinishReason != "" {
+			finishReason = choice.FinishReason
+		}
 	}
 
-	// The stream ended without a finish reason. Whatever was accumulated is
-	// still the best answer available.
+	if thinking {
+		fmt.Print("\n")
+	}
+
+	// "length" means the turn hit maxAnswerTokens. Whatever was accumulated is
+	// still the best answer available, but say so rather than let a truncated
+	// answer pass for a complete one.
+	if finishReason == "length" {
+		fmt.Printf("\n[the turn hit the %d-token cap; the answer above is truncated]\n", maxAnswerTokens)
+	}
+
 	assembled, err := assemble(calls)
 	if err != nil {
 		return "", nil, err
@@ -328,9 +357,10 @@ func (a *Agent) streamTurn(ctx context.Context, conversation []client.D) (string
 // The completeness check earns its place. This server sends each argument
 // object in a single chunk, so merging by key is enough. A server that split
 // one argument object across several chunks would deliver JSON fragments that
-// do not individually parse, and the pieces would be dropped before they got
-// here - leaving a call with a name and no arguments. That would otherwise
-// reach a tool as a plausible-looking empty request. Better to say so.
+// do not individually parse, so the decoded map stays empty and only the raw
+// text survives. Those fragments are joined and decoded here. A call that
+// still has no arguments would otherwise reach a tool as a plausible-looking
+// empty request. Better to say so.
 func assemble(calls map[int]*pending) ([]client.ToolCall, error) {
 	if len(calls) == 0 {
 		return nil, nil
@@ -345,8 +375,14 @@ func assemble(calls map[int]*pending) ([]client.ToolCall, error) {
 			return nil, fmt.Errorf("tool call at index %d arrived with no function name", index)
 		}
 
+		if len(p.args) == 0 && p.raw.Len() > 0 {
+			if err := json.Unmarshal([]byte(p.raw.String()), &p.args); err != nil {
+				return nil, fmt.Errorf("tool call %q at index %d: decode arguments %q: %w", p.name, index, p.raw.String(), err)
+			}
+		}
+
 		if len(p.args) == 0 {
-			return nil, fmt.Errorf("tool call %q at index %d arrived with no arguments; the server may be splitting argument JSON across chunks", p.name, index)
+			return nil, fmt.Errorf("tool call %q at index %d arrived with no arguments", p.name, index)
 		}
 
 		toolCalls = append(toolCalls, client.ToolCall{
@@ -404,6 +440,11 @@ func (a *Agent) callTools(ctx context.Context, toolCalls []client.ToolCall) ([]c
 
 		resp := tool.Call(ctx, tc)
 
+		// Read the status before the sanitizer rewrites the content. The
+		// sanitizer wraps it in markers, which no longer parses as JSON, and a
+		// refused call would then be recorded as one that ran.
+		status, errText := readStatus(resp)
+
 		if a.SanitizeToolOutput != nil {
 			if content, ok := resp["content"].(string); ok {
 				resp["content"] = a.SanitizeToolOutput(content)
@@ -411,8 +452,6 @@ func (a *Agent) callTools(ctx context.Context, toolCalls []client.ToolCall) ([]c
 		}
 
 		responses = append(responses, resp)
-
-		status, errText := readStatus(resp)
 		invocations = append(invocations, Invocation{
 			Name:   tc.Function.Name,
 			Args:   tc.Function.Arguments,
@@ -438,10 +477,7 @@ func readStatus(resp client.D) (string, string) {
 	}
 
 	if err := json.Unmarshal([]byte(content), &parsed); err != nil {
-		// A sanitizer may have wrapped the content in markers, which makes it
-		// no longer parseable as JSON. It reached the model either way, so the
-		// call ran.
-		return "SUCCESS", ""
+		return "FAILED", "tool response was not valid JSON"
 	}
 
 	if parsed.Status == "SUCCESS" {

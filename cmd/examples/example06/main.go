@@ -1,6 +1,6 @@
 // This example shows you how to use MongoDB and Kronk to perform a vector
-// search for a user question. The search will return the top 5 chunks from
-// the database. Then these chunks are sent to the Llama model to create a
+// search for a user question. The search will return the top 2 chunks from
+// the database. Then these chunks are sent to the Qwen model to create a
 // coherent response. You must run example05 first.
 //
 // # Running the example:
@@ -33,8 +33,8 @@ import (
 var (
 	urlChat    = "http://localhost:11435/v1/chat/completions"
 	urlEmbed   = "http://localhost:11435/v1/embeddings"
-	modelChat  = "Qwen3-8B-Q8_0"
-	modelEmbed = "embeddinggemma-300m-qat-Q8_0"
+	modelChat  = "unsloth/Qwen3-8B-Q8_0"
+	modelEmbed = "ggml-org/embeddinggemma-300m-qat-Q8_0"
 
 	dbName  = "example06"
 	colName = "book"
@@ -74,6 +74,7 @@ func run() error {
 	fmt.Print("\nAsk Bill a question about Go: ")
 
 	question, _ := reader.ReadString('\n')
+	question = strings.TrimSpace(question)
 	if question == "" {
 		return nil
 	}
@@ -106,6 +107,7 @@ func vectorSearch(ctx context.Context, question string) ([]searchResult, error) 
 	if err != nil {
 		return nil, fmt.Errorf("mongodb.Connect: %w", err)
 	}
+	defer client.Disconnect(ctx)
 
 	col := client.Database(dbName).Collection(colName)
 

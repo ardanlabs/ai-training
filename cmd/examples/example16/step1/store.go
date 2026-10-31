@@ -352,9 +352,11 @@ var (
 	// The three signals that say which chapter a chunk belongs to, strongest
 	// first. A "Chapter N:" heading is exact but rare; half the chunks open with
 	// a section number instead, and "6.1 Scheduler Semantics" says chapter 6.
-	sectionTopRE = regexp.MustCompile(`^(\d{1,2})\.\d{1,2} [A-Z]`)
+	// Section numbers run three deep, so the whole number is matched: read from
+	// its last two parts, "1.8.9 Signaling" would say chapter 8.
+	sectionTopRE = regexp.MustCompile(`^(\d{1,2})(?:\.\d{1,2})+ [A-Z]`)
 	chapterRE    = regexp.MustCompile(`Chapter (\d+):`)
-	sectionRE    = regexp.MustCompile(`\b(\d{1,2})\.\d{1,2} [A-Z]`)
+	sectionRE    = regexp.MustCompile(`(?:^|[^\w.])(\d{1,2})(?:\.\d{1,2})+ [A-Z]`)
 )
 
 // chapterOf returns the chapter number a chunk announces, or "" if it announces

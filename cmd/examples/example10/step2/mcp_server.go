@@ -9,9 +9,9 @@ import (
 	"go/parser"
 	"go/token"
 	"io/fs"
+	"net"
 	"net/http"
 	"os"
-	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -19,30 +19,36 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-func init() {
-	// -------------------------------------------------------------------------
-	// Runs the MCP server locally for our example purposes. This could be
-	// replaced with a MCP server that is running in a different process.
+// mcpListenAndServe starts the MCP server for all the tooling we support. For
+// our example purposes the server runs locally, inside this program. This could
+// be replaced with a MCP server that is running in a different process.
+//
+// The listener is opened before returning, so the server is ready to accept
+// connections as soon as this function returns without an error, and a port
+// that is already in use is reported instead of the tool calls being sent to
+// whatever else is listening there.
+func mcpListenAndServe(host string) error {
+	ln, err := net.Listen("tcp", host)
+	if err != nil {
+		return fmt.Errorf("mcp server: %w", err)
+	}
 
-	go func() {
-		mcpListenAndServe(mcpHost)
-	}()
-}
-
-// mcpListenAndServe starts the MCP server for all the tooling we support.
-func mcpListenAndServe(host string) {
 	fmt.Printf("\nServer: MCP servers serving at %s\n", host)
 
 	fileOperations := mcp.NewServer(&mcp.Implementation{Name: "file_operations", Version: "v1.0.0"}, nil)
+
+	// Register the tools once, up front. Registering them inside the request
+	// handler below would add them again on every request.
+	readFile := RegisterReadFileTool(fileOperations)
+	searchFiles := RegisterSearchFilesTool(fileOperations)
+	createFile := RegisterCreateFileTool(fileOperations)
+	goCodeEditor := RegisterGoCodeEditorTool(fileOperations)
 
 	f := func(request *http.Request) *mcp.Server {
 		url := request.URL.Path
 
 		switch url {
-		case RegisterReadFileTool(fileOperations),
-			RegisterSearchFilesTool(fileOperations),
-			RegisterCreateFileTool(fileOperations),
-			RegisterGoCodeEditorTool(fileOperations):
+		case readFile, searchFiles, createFile, goCodeEditor:
 			return fileOperations
 
 		default:
@@ -51,7 +57,12 @@ func mcpListenAndServe(host string) {
 	}
 
 	handler := mcp.NewSSEHandler(f, &mcp.SSEOptions{})
-	fmt.Println(http.ListenAndServe(host, handler))
+
+	go func() {
+		fmt.Println(http.Serve(ln, handler))
+	}()
+
+	return nil
 }
 
 // =============================================================================
@@ -59,7 +70,7 @@ func mcpListenAndServe(host string) {
 // RegisterReadFileTool registers the read_file tool with the given MCP server.
 func RegisterReadFileTool(mcpServer *mcp.Server) string {
 	const toolName = "tool_read_file"
-	const tooDescription = "Read the contents of a given file path or search for files containing a pattern. When searching file contents, returns line numbers where the pattern is found."
+	const tooDescription = "Read the contents of a given relative file path. Use this when you want to see what's inside a file."
 
 	mcp.AddTool(mcpServer, &mcp.Tool{Name: toolName, Description: tooDescription}, ReadFileHandler)
 
@@ -73,12 +84,11 @@ type ReadFileToolParams struct {
 
 // ReadFileHandler reads the contents of a given file path.
 func ReadFileHandler(ctx context.Context, req *mcp.CallToolRequest, params ReadFileToolParams) (*mcp.CallToolResult, any, error) {
-	dir := "."
-	if params.Path != nil && *params.Path != "" {
-		dir = *params.Path
+	if params.Path == nil || *params.Path == "" {
+		return nil, nil, errors.New("the path argument is missing")
 	}
 
-	content, err := os.ReadFile(dir)
+	content, err := os.ReadFile(*params.Path)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -106,7 +116,7 @@ func ReadFileHandler(ctx context.Context, req *mcp.CallToolRequest, params ReadF
 // RegisterSearchFilesTool registers the search_files tool with the given MCP server.
 func RegisterSearchFilesTool(mcpServer *mcp.Server) string {
 	const toolName = "tool_search_files"
-	const tooDescription = "Read the contents of a given file path or search for files containing a pattern. When searching file contents, returns line numbers where the pattern is found."
+	const tooDescription = "Search a directory at a given path for files that match a given file name or contain a given string. If no path is provided, search files will look in the current directory."
 
 	mcp.AddTool(mcpServer, &mcp.Tool{Name: toolName, Description: tooDescription}, SearchFilesHandler)
 
@@ -116,7 +126,7 @@ func RegisterSearchFilesTool(mcpServer *mcp.Server) string {
 // SearchFilesToolParams represents the parameters for this tool call.
 type SearchFilesToolParams struct {
 	Path     *string `json:"path,omitempty" jsonschema:"Relative path to search files from. Defaults to current directory if not provided."`
-	Filter   *string `json:"filter,omitempty" jsonschema:"The filter to apply to the file names. It supports golang regex syntax. If not provided, will filtering with take place. If provided, only return files that match the filter."`
+	Filter   *string `json:"filter,omitempty" jsonschema:"The filter to apply to the file names. It supports golang regex syntax. If not provided, no filtering will take place. If provided, only return files that match the filter."`
 	Contains *string `json:"contains,omitempty" jsonschema:"A string to search for inside files. It supports golang regex syntax. If not provided, no search will be performed. If provided, only return files that contain the string."`
 }
 
@@ -136,13 +146,35 @@ func SearchFilesHandler(ctx context.Context, req *mcp.CallToolRequest, params Se
 		contains = *params.Contains
 	}
 
+	// Compile the expressions once, and tell the model when one is invalid
+	// instead of silently matching nothing.
+
+	var filterRE, containsRE *regexp.Regexp
+	if filter != "" {
+		re, err := regexp.Compile(filter)
+		if err != nil {
+			return nil, nil, fmt.Errorf("invalid filter regex: %w", err)
+		}
+		filterRE = re
+	}
+
+	if contains != "" {
+		re, err := regexp.Compile(contains)
+		if err != nil {
+			return nil, nil, fmt.Errorf("invalid contains regex: %w", err)
+		}
+		containsRE = re
+	}
+
 	var files []string
 	err := filepath.WalkDir(dir, func(path string, info fs.DirEntry, err error) error {
 		if err != nil {
-			if errors.Is(err, filepath.SkipDir) {
-				return nil
+			// A bad starting directory is an error the model needs to see.
+			// Anything below it that can't be read is skipped.
+			if path == dir {
+				return err
 			}
-			return err
+			return nil
 		}
 
 		relPath, err := filepath.Rel(dir, path)
@@ -167,19 +199,19 @@ func SearchFilesHandler(ctx context.Context, req *mcp.CallToolRequest, params Se
 			return nil
 		}
 
-		if filter != "" {
-			if matched, _ := regexp.MatchString(filter, relPath); !matched {
-				return nil
-			}
+		if filterRE != nil && !filterRE.MatchString(relPath) {
+			return nil
 		}
 
-		if contains != "" {
-			content, err := os.ReadFile(relPath)
+		if containsRE != nil {
+			// relPath is relative to dir, not to the working directory, so the
+			// file has to be read using path.
+			content, err := os.ReadFile(path)
 			if err != nil {
 				return nil
 			}
 
-			if matched, _ := regexp.MatchString(contains, string(content)); !matched {
+			if !containsRE.Match(content) {
 				return nil
 			}
 		}
@@ -219,7 +251,7 @@ func SearchFilesHandler(ctx context.Context, req *mcp.CallToolRequest, params Se
 
 // =============================================================================
 
-// RegisterCreateFileTool registers the search_files tool with the given MCP server.
+// RegisterCreateFileTool registers the create_file tool with the given MCP server.
 func RegisterCreateFileTool(mcpServer *mcp.Server) string {
 	const toolName = "tool_create_file"
 	const tooDescription = "Creates a new file"
@@ -236,18 +268,24 @@ type CreateFileToolParams struct {
 
 // CreateFileHandler creates a new file at the specified path.
 func CreateFileHandler(ctx context.Context, req *mcp.CallToolRequest, params CreateFileToolParams) (*mcp.CallToolResult, any, error) {
-	filePath := "."
-	if params.Path != nil && *params.Path != "" {
-		filePath = *params.Path
+	if params.Path == nil || *params.Path == "" {
+		return nil, nil, errors.New("the path argument is missing")
 	}
+	filePath := *params.Path
 
-	if _, err := os.Stat(filePath); !os.IsNotExist(err) {
+	switch _, err := os.Stat(filePath); {
+	case err == nil:
 		return nil, nil, errors.New("file already exists")
+
+	case !errors.Is(err, fs.ErrNotExist):
+		return nil, nil, err
 	}
 
-	dir := path.Dir(filePath)
+	dir := filepath.Dir(filePath)
 	if dir != "." {
-		os.MkdirAll(dir, 0755)
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return nil, nil, err
+		}
 	}
 
 	f, err := os.Create(filePath)
@@ -289,22 +327,22 @@ func RegisterGoCodeEditorTool(mcpServer *mcp.Server) string {
 // GoCodeEditorToolParams represents the parameters for this tool call.
 type GoCodeEditorToolParams struct {
 	Path       *string `json:"path,omitempty" jsonschema:"Relative path and name of the Golang file"`
-	LineNumber int    `json:"line_number" jsonschema:"The line number for the code change"`
+	LineNumber int     `json:"line_number" jsonschema:"The line number for the code change"`
 	TypeChange *string `json:"type_change,omitempty" jsonschema:"The type of change to make: add, replace, delete"`
 	LineChange *string `json:"line_change,omitempty" jsonschema:"The text to add, replace, delete"`
 }
 
 // GoCodeEditorHandler can make add, updates, and deletes to go code.
 func GoCodeEditorHandler(ctx context.Context, req *mcp.CallToolRequest, params GoCodeEditorToolParams) (*mcp.CallToolResult, any, error) {
-	filePath := "."
-	if params.Path != nil && *params.Path != "" {
-		filePath = *params.Path
+	if params.Path == nil || *params.Path == "" {
+		return nil, nil, errors.New("the path argument is missing")
 	}
+	filePath := *params.Path
 
 	lineNumber := params.LineNumber
 	var typeChange, lineChange string
 	if params.TypeChange != nil {
-		typeChange = strings.TrimSpace(*params.TypeChange)
+		typeChange = strings.ToLower(strings.TrimSpace(*params.TypeChange))
 	}
 	if params.LineChange != nil {
 		lineChange = strings.TrimSpace(*params.LineChange)

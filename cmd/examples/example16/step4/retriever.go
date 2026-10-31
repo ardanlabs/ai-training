@@ -306,7 +306,7 @@ func scoreChunks(ctx context.Context, db *sqlx.DB, embedding []float64, ids []in
 		chapter,
 		text,
 		1 - (embedding <=> ?::vector) AS similarity
-	FROM chunks
+	FROM public.chunks
 	WHERE id IN (?)
 	ORDER BY similarity DESC, id ASC
 	LIMIT ?`
@@ -341,7 +341,7 @@ func scoreChunks(ctx context.Context, db *sqlx.DB, embedding []float64, ids []in
 func vectorIDs(ctx context.Context, db *sqlx.DB, embedding []float64, topK int) ([]int, error) {
 	const q = `
 	SELECT id
-	FROM chunks
+	FROM public.chunks
 	ORDER BY embedding <=> $1::vector
 	LIMIT $2`
 
@@ -414,7 +414,7 @@ func graphStats(ctx context.Context, g *age.Graph, top int) (stats, error) {
 
 	// -------------------------------------------------------------------------
 
-	if err := g.DB().QueryRowContext(ctx, `SELECT count(*) FROM extracted`).Scan(&s.extracted); err != nil {
+	if err := g.DB().QueryRowContext(ctx, `SELECT count(*) FROM public.extracted`).Scan(&s.extracted); err != nil {
 		return stats{}, fmt.Errorf("count extracted: %w", err)
 	}
 

@@ -8,6 +8,7 @@ package vector
 
 import (
 	"math"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -92,8 +93,10 @@ const (
 	z
 )
 
-// Add calculates the addition of two vectors.
+// Add calculates the addition of two vectors. It returns a new vector and
+// leaves both arguments unchanged.
 func Add(a, b []float64) []float64 {
+	a = slices.Clone(a)
 	dimA, dimB := len(a), len(b)
 
 	if (dimA == 1 || dimA == 2 || dimA == 3) && dimB == 1 {
@@ -125,8 +128,10 @@ func Add(a, b []float64) []float64 {
 	return a
 }
 
-// Sub calculates the subtraction of two vectors.
+// Sub calculates the subtraction of two vectors. It returns a new vector and
+// leaves both arguments unchanged.
 func Sub(a, b []float64) []float64 {
+	a = slices.Clone(a)
 	dimA, dimB := len(a), len(b)
 
 	if (dimA == 1 || dimA == 2 || dimA == 3) && dimB == 1 {

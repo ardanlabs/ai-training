@@ -14,6 +14,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -29,8 +30,8 @@ import (
 var (
 	urlChat    = "http://localhost:11435/v1/chat/completions"
 	urlEmbed   = "http://localhost:11435/v1/embeddings"
-	modelChat  = "Qwen2.5-VL-3B-Instruct-Q8_0"
-	modelEmbed = "embeddinggemma-300m-qat-Q8_0"
+	modelChat  = "unsloth/Qwen2.5-VL-3B-Instruct-Q8_0"
+	modelEmbed = "ggml-org/embeddinggemma-300m-qat-Q8_0"
 
 	imagePath  = "zarf/samples/gallery/roseimg.png"
 	dbName     = "example8"
@@ -84,6 +85,7 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("mongodb.Connect: %w", err)
 	}
+	defer dbClient.Disconnect(ctx)
 
 	fmt.Println("Initializing Database")
 
@@ -95,12 +97,15 @@ func run() error {
 	// -------------------------------------------------------------------------
 
 	findRes := col.FindOne(ctx, bson.D{{Key: "file_name", Value: imagePath}})
-	if findRes.Err() == nil {
+	switch err := findRes.Err(); {
+	case err == nil:
 		fmt.Println("Deleting existing image from database")
 		_, err := col.DeleteOne(ctx, bson.D{{Key: "file_name", Value: imagePath}})
 		if err != nil {
 			return fmt.Errorf("col.DeleteOne: %w", err)
 		}
+	case !errors.Is(err, mongo.ErrNoDocuments):
+		return fmt.Errorf("col.FindOne: %w", err)
 	}
 
 	// -------------------------------------------------------------------------

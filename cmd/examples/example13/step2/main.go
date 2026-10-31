@@ -22,7 +22,7 @@ import (
 )
 
 const (
-	modelSource = "ggml-org/Qwen2.5-VL-3B-Instruct-Q8_0"
+	modelSource = "unsloth/Qwen2.5-VL-3B-Instruct-Q8_0"
 	imageFile   = "zarf/samples/gallery/giraffe.jpg"
 )
 
@@ -86,8 +86,9 @@ func installSystem() (models.Path, error) {
 	}
 
 	// -------------------------------------------------------------------------
-	// You could also download this model using the catalog system.
-	// mp, err := templates.Catalog().DownloadModel(ctx, kronk.FmtLogger, "Qwen2.5-VL-3B-Instruct-Q8_0")
+	// You could also download this model by naming the HuggingFace repo and
+	// the quantization you want, or by passing the full HuggingFace URL.
+	// mp, err := mdls.Download(ctx, kronk.FmtLogger, "unsloth/Qwen2.5-VL-3B-Instruct-GGUF:Q8_0")
 	// if err != nil {
 	// 	return models.Path{}, fmt.Errorf("unable to download model: %w", err)
 	// }

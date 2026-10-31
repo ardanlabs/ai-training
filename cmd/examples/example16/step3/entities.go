@@ -84,7 +84,10 @@ func buildEntities(ctx context.Context, g *age.Graph, krnChat *kronk.Kronk, chun
 				kind = "concept"
 			}
 
-			q := fmt.Sprintf(`MERGE (:Entity {name: %s, kind: %s})`,
+			// Merged on name alone. With kind in the pattern, a subject the model
+			// calls a type in one chunk and a concept in another becomes two nodes
+			// that never meet. The first kind seen sticks.
+			q := fmt.Sprintf(`MERGE (e:Entity {name: %s}) ON CREATE SET e.kind = %s`,
 				age.Quote(name), age.Quote(kind))
 
 			if err := g.Exec(ctx, q); err != nil {
@@ -215,10 +218,13 @@ func normalize(s string) string {
 // they mention and back down to other chunks mentioning the same subject. The
 // map says which subject carried each chunk in.
 func entityHop(ctx context.Context, g *age.Graph, ids []int, perEntity int) (map[int]string, error) {
+	// The hits are excluded so they cannot use up a subject's cap on chunks the
+	// prompt already has, and the order makes which chunks fill it repeatable.
 	q := fmt.Sprintf(`
 		MATCH (c:Chunk)-[:MENTIONS]->(e:Entity)<-[:MENTIONS]-(n:Chunk)
-		WHERE c.id IN [%s]
-		RETURN n.id, e.name`, age.Ints(ids))
+		WHERE c.id IN [%[1]s] AND NOT n.id IN [%[1]s]
+		RETURN n.id, e.name
+		ORDER BY n.id, e.name`, age.Ints(ids))
 
 	rows, err := g.Query(ctx, q, "id agtype", "name agtype")
 	if err != nil {

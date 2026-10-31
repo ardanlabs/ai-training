@@ -53,7 +53,9 @@ func initDB(ctx context.Context, client *mongo.Client) (*mongo.Collection, error
 		Keys:    bson.D{{Key: "video", Value: 1}, {Key: "chunk", Value: 1}},
 		Options: options.Index().SetUnique(true),
 	}
-	col.Indexes().CreateOne(ctx, indexModel)
+	if _, err := col.Indexes().CreateOne(ctx, indexModel); err != nil {
+		return nil, fmt.Errorf("createIndex (video, chunk): %w", err)
+	}
 
 	return col, nil
 }
@@ -61,19 +63,19 @@ func initDB(ctx context.Context, client *mongo.Client) (*mongo.Collection, error
 func existsDocument(ctx context.Context, col *mongo.Collection, videoFileName string, videoChunkFile string) (bool, error) {
 	sRes := col.FindOne(ctx, bson.D{{Key: "video", Value: videoFileName}, {Key: "chunk", Value: filepath.Base(videoChunkFile)}})
 
+	switch err := sRes.Err(); {
+
 	// If there is no error, the document already exists.
-	if sRes.Err() == nil {
+	case err == nil:
 		return true, nil
-	}
 
-	// If the error is anything other than not exist, return the error.
-	if sRes.Err() != nil {
-		if !errors.Is(sRes.Err(), mongo.ErrNoDocuments) {
-			return false, fmt.Errorf("find one: %w", sRes.Err())
-		}
-	}
+	// No document found is the only error that means it doesn't exist.
+	case errors.Is(err, mongo.ErrNoDocuments):
+		return false, nil
 
-	return false, nil
+	default:
+		return false, fmt.Errorf("find one: %w", err)
+	}
 }
 
 func insertDocument(ctx context.Context, col *mongo.Collection, embed []float64, input string, videoFileName string, videoChunkFile string, startingVideoTime float64, duration float64) error {

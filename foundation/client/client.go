@@ -12,6 +12,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -25,7 +26,6 @@ var defaultClient = http.Client{
 		DialContext: (&net.Dialer{
 			Timeout:   10 * time.Second,
 			KeepAlive: 15 * time.Second,
-			DualStack: true,
 		}).DialContext,
 		ForceAttemptHTTP2:     true,
 		MaxIdleConns:          100,
@@ -42,11 +42,18 @@ type Logger func(context.Context, string, ...any)
 var NoopLogger = func(ctx context.Context, msg string, v ...any) {}
 
 var StdoutLogger = func(ctx context.Context, msg string, v ...any) {
-	s := fmt.Sprintf("msg: %s", msg)
-	for i := 0; i < len(v); i = i + 2 {
-		s = s + fmt.Sprintf(", %s: %v", v[i], v[i+1])
+	var b strings.Builder
+	fmt.Fprintf(&b, "msg: %s", msg)
+
+	for i := 0; i < len(v); i += 2 {
+		if i+1 == len(v) {
+			fmt.Fprintf(&b, ", %v", v[i])
+			break
+		}
+		fmt.Fprintf(&b, ", %s: %v", v[i], v[i+1])
 	}
-	log.Println(s)
+
+	log.Println(b.String())
 }
 
 // =============================================================================
@@ -118,6 +125,18 @@ func NewSSE[T any](log Logger, options ...func(cln *Client)) *SSEClient[T] {
 	}
 }
 
+// streamErrorSetter is implemented by SSE event types that can carry a
+// failure of the stream itself. When the stream breaks, the SSE client sends
+// one such value so the caller sees the error instead of a stream that simply
+// ended early, which is otherwise indistinguishable from a normal finish.
+type streamErrorSetter interface {
+	setStreamError(err error)
+}
+
+// maxSSELineSize bounds a single SSE line. The bufio.Scanner default is 64KB,
+// and a large tool-call argument or a long chunk can exceed that.
+const maxSSELineSize = 16 * 1024 * 1024
+
 func (cln *SSEClient[T]) Do(ctx context.Context, method string, endpoint string, body D, ch chan T) error {
 	resp, err := do(ctx, cln.Client, method, endpoint, body)
 	if err != nil {
@@ -130,32 +149,60 @@ func (cln *SSEClient[T]) Do(ctx context.Context, method string, endpoint string,
 			close(ch)
 		}()
 
+		send := func(v T) bool {
+			select {
+			case ch <- v:
+				return true
+
+			case <-ctx.Done():
+				cln.log(ctx, "sseclient: rawRequest:", "Context", ctx.Err().Error())
+				return false
+			}
+		}
+
+		// sendErr reports a broken stream to the caller when T can carry it.
+		sendErr := func(err error) {
+			var v T
+			if s, ok := any(&v).(streamErrorSetter); ok {
+				s.setStreamError(err)
+				send(v)
+			}
+		}
+
 		scanner := bufio.NewScanner(resp.Body)
+		scanner.Buffer(make([]byte, 0, 64*1024), maxSSELineSize)
+
 		for scanner.Scan() {
 			line := scanner.Text()
 
-			if line == "" || line == "data: [DONE]" {
+			// Only "data:" lines carry events. Blank lines separate events and
+			// lines starting with ":" are comments, such as keep-alives. The
+			// space after the colon is optional in the SSE format.
+			data, ok := strings.CutPrefix(line, "data:")
+			if !ok {
 				continue
 			}
+			data = strings.TrimPrefix(data, " ")
 
-			// Skip lines that don't start with "data: " (e.g., keep-alive lines like "-alive")
-			if len(line) < 6 || line[:5] != "data:" {
+			if data == "[DONE]" {
 				continue
 			}
 
 			var v T
-			if err := json.Unmarshal([]byte(line[6:]), &v); err != nil {
-				cln.log(ctx, "sseclient: rawRequest:", "Unmarshal", err, "line", line[6:])
+			if err := json.Unmarshal([]byte(data), &v); err != nil {
+				cln.log(ctx, "sseclient: rawRequest:", "Unmarshal", err, "line", data)
+				sendErr(fmt.Errorf("sseclient: decoding event: %w", err))
 				return
 			}
 
-			select {
-			case ch <- v:
-
-			case <-ctx.Done():
-				cln.log(ctx, "sseclient: rawRequest:", "Context", ctx.Err().Error())
+			if !send(v) {
 				return
 			}
+		}
+
+		if err := scanner.Err(); err != nil && ctx.Err() == nil {
+			cln.log(ctx, "sseclient: rawRequest:", "Scanner", err)
+			sendErr(fmt.Errorf("sseclient: reading stream: %w", err))
 		}
 	}(ctx)
 
@@ -207,12 +254,15 @@ func do(ctx context.Context, cln *Client, method string, endpoint string, body a
 			return nil, ErrUnauthorized
 
 		default:
-			var err Error
-			if err := json.Unmarshal(data, &err); err != nil {
-				return nil, fmt.Errorf("decoding: response: %s, error: %w ", string(data), err)
+			// Prefer the structured error message, but a body that is not the
+			// expected JSON (a proxy page, plain text) still has to report the
+			// status code rather than a decoding failure.
+			var apiErr Error
+			if err := json.Unmarshal(data, &apiErr); err != nil || apiErr.Err.Message == "" {
+				return nil, fmt.Errorf("error: status: %d response: %s", statusCode, bytes.TrimSpace(data))
 			}
 
-			return nil, fmt.Errorf("error: status: %d response: %s", statusCode, err.Err.Message)
+			return nil, fmt.Errorf("error: status: %d response: %s", statusCode, apiErr.Err.Message)
 		}
 	}
 }

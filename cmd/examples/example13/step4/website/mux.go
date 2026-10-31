@@ -47,7 +47,7 @@ func corsMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-func sendError(w http.ResponseWriter, traceID string, context string, err error) {
+func sendError(w http.ResponseWriter, traceID string, context string, err error, status int) {
 	fmt.Printf("traceID: %s: chat: %s: ERROR: %s\n", traceID, context, err)
-	http.Error(w, err.Error(), http.StatusInternalServerError)
+	http.Error(w, err.Error(), status)
 }

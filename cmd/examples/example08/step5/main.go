@@ -1,6 +1,5 @@
 // This example takes step4 and shows you how to process a set of images
-// from a location on disk and provide search capabilities by text or similar
-// image.
+// from a location on disk and provide search capabilities by text.
 //
 // # Running the example:
 //
@@ -17,7 +16,9 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
 	"log"
 	"net/http"
 	"os"
@@ -34,8 +35,8 @@ import (
 var (
 	urlChat    = "http://localhost:11435/v1/chat/completions"
 	urlEmbed   = "http://localhost:11435/v1/embeddings"
-	modelChat  = "Qwen2.5-VL-3B-Instruct-Q8_0"
-	modelEmbed = "embeddinggemma-300m-qat-Q8_0"
+	modelChat  = "unsloth/Qwen2.5-VL-3B-Instruct-Q8_0"
+	modelEmbed = "ggml-org/embeddinggemma-300m-qat-Q8_0"
 
 	dbName      = "example8"
 	colName     = "images-5"
@@ -93,6 +94,7 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("mongodb.Connect: %w", err)
 	}
+	defer dbClient.Disconnect(ctx)
 
 	fmt.Println("Initializing Database")
 
@@ -106,24 +108,27 @@ func run() error {
 	fmt.Println("Saving images in DB")
 
 	if err := saveImagesInDB(ctx, llmChat, embedLLM, col); err != nil {
-		return fmt.Errorf("loadImages: %w", err)
+		return fmt.Errorf("saveImagesInDB: %w", err)
 	}
 
 	// -------------------------------------------------------------------------
 
-	fmt.Print("\nAsk questions about images (use 'ctrl-c' to quit)\n")
-	fmt.Print("Hint: You can paste a filename to search for a similar image\n")
-	fmt.Print("      E.g. zarf/samples/gallery/roseimg.png\n\n")
+	fmt.Print("\nAsk questions about images (use 'ctrl-c' to quit)\n\n")
+
+	reader := bufio.NewReader(os.Stdin)
 
 	for {
-		reader := bufio.NewReader(os.Stdin)
 		fmt.Print("Question: ")
 
-		question, _ := reader.ReadString('\n')
-		if question == "" {
+		question, err := reader.ReadString('\n')
+		if err != nil && question == "" {
 			return nil
 		}
+
 		question = strings.TrimSpace(question)
+		if question == "" {
+			continue
+		}
 
 		// -------------------------------------------------------------------------
 
@@ -134,7 +139,7 @@ func run() error {
 
 		searchResults, err = textVectorSearch(ctx, embedLLM, col, question)
 		if err != nil {
-			return fmt.Errorf("vectorSearch: %w", err)
+			return fmt.Errorf("textVectorSearch: %w", err)
 		}
 
 		// -------------------------------------------------------------------------
@@ -175,9 +180,12 @@ func saveImagesInDB(ctx context.Context, llm *client.LLM, embedLLM *client.LLM, 
 		fmt.Printf("\nProcessing image: %s\n", fileName)
 
 		findRes := col.FindOne(ctx, bson.D{{Key: "file_name", Value: fileName}})
-		if findRes.Err() == nil {
+		switch err := findRes.Err(); {
+		case err == nil:
 			fmt.Println("  - Image already exists")
 			continue
+		case !errors.Is(err, mongo.ErrNoDocuments):
+			return fmt.Errorf("col.FindOne: %w", err)
 		}
 
 		image, mimeType, err := readImage(fileName)
@@ -227,13 +235,20 @@ func saveImagesInDB(ctx context.Context, llm *client.LLM, embedLLM *client.LLM, 
 func getFilesFromDirectory(directoryPath string) ([]string, error) {
 	var files []string
 
-	err := filepath.Walk(directoryPath, func(path string, info os.FileInfo, err error) error {
+	err := filepath.WalkDir(directoryPath, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
-		if !info.IsDir() && (filepath.Ext(info.Name()) == ".jpg" || filepath.Ext(info.Name()) == ".jpeg" || filepath.Ext(info.Name()) == ".png") {
+
+		if d.IsDir() {
+			return nil
+		}
+
+		switch strings.ToLower(filepath.Ext(path)) {
+		case ".jpg", ".jpeg", ".png":
 			files = append(files, path)
 		}
+
 		return nil
 	})
 	if err != nil {
@@ -268,7 +283,7 @@ func questionResponse(ctx context.Context, llm *client.LLM, question string, sco
 	var finalResults []searchResult
 
 	for _, result := range results {
-		if result.Score > scorePass {
+		if result.Score >= scorePass {
 			fmt.Printf("FileName[%s] Score[%.2f]\n", result.FileName, result.Score)
 			finalResults = append(finalResults, searchResult{
 				FileName:    result.FileName,
@@ -364,11 +379,10 @@ func questionResponse(ctx context.Context, llm *client.LLM, question string, sco
 // =============================================================================
 
 type searchResult struct {
-	FileName       string    `bson:"file_name" json:"file_name"`
-	Description    string    `bson:"description" json:"image_description"`
-	Embedding      []float64 `bson:"embedding" json:"-"`
-	ImageEmbedding []float64 `bson:"image_embedding" json:"-"`
-	Score          float64   `bson:"score" json:"-"`
+	FileName    string    `bson:"file_name" json:"file_name"`
+	Description string    `bson:"description" json:"image_description"`
+	Embedding   []float64 `bson:"embedding" json:"-"`
+	Score       float64   `bson:"score" json:"-"`
 }
 
 func initDB(ctx context.Context, client *mongo.Client) (*mongo.Collection, error) {
@@ -418,10 +432,9 @@ func vectorSearch(ctx context.Context, col *mongo.Collection, vector []float64, 
 		{{
 			Key: "$project",
 			Value: bson.M{
-				"file_name":       1,
-				"description":     1,
-				"embedding":       1,
-				"image_embedding": 1,
+				"file_name":   1,
+				"description": 1,
+				"embedding":   1,
 				"score": bson.M{
 					"$meta": "vectorSearchScore",
 				},

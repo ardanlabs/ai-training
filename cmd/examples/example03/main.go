@@ -38,7 +38,7 @@ const (
 
 var (
 	url   = "http://localhost:11435/v1/embeddings"
-	model = "embeddinggemma-300m-qat-Q8_0"
+	model = "ggml-org/embeddinggemma-300m-qat-Q8_0"
 )
 
 // =============================================================================
@@ -112,14 +112,17 @@ func run() error {
 
 		results, err := vectorSearch(ctx, col, llm, searchDocument, 10)
 		if err != nil {
-			fmt.Printf("error while searching: %v", fmt.Errorf("storeDocuments: %w", err))
+			fmt.Printf("error while searching: %v\n\n", fmt.Errorf("vectorSearch: %w", err))
+			return
 		}
 
+		// The vectorSearchScore for cosine similarity is normalized into the
+		// range [0, 1], so scale it to display a percentage.
 		for _, result := range results {
 			fmt.Printf("%s -> %s: %.2f%% similar\n",
 				result.Name,
 				result.Text,
-				result.Score)
+				result.Score*100)
 		}
 
 		fmt.Printf("\n\n")

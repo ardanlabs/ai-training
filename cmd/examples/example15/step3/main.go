@@ -55,7 +55,7 @@ func run() error {
 		},
 		{
 			"Input sanitization",
-			"Redact known injection phrases from the untrusted text with a regex blocklist.",
+			"Reject untrusted text that matches a regex blocklist of known injection phrases.",
 			attacks.Defenses{InputSanitizer: true},
 		},
 		{

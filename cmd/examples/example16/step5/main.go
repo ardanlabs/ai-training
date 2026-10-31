@@ -150,10 +150,13 @@ func run() error {
 
 	fmt.Printf("Try something like: %q\n", "How does the scheduler handle blocking system calls?")
 
-	var messages []model.D
+	reader := bufio.NewReader(os.Stdin)
 
 	for {
-		messages, err = userInput(messages)
+		// Every question retrieves on its own, so every turn starts a new
+		// conversation. Earlier questions sent without their answers or their
+		// context would only confuse the model.
+		messages, err := userInput(reader, nil)
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				return nil
@@ -291,31 +294,37 @@ func newKronk(mp models.Path, opts ...model.Option) (*kronk.Kronk, error) {
 	return krn, nil
 }
 
-func userInput(messages []model.D) ([]model.D, error) {
-	fmt.Print("\nUSER> ")
+func userInput(reader *bufio.Reader, messages []model.D) ([]model.D, error) {
+	for {
+		fmt.Print("\nUSER> ")
 
-	reader := bufio.NewReader(os.Stdin)
+		userInput, err := reader.ReadString('\n')
+		if err != nil {
+			return messages, fmt.Errorf("unable to read user input: %w", err)
+		}
 
-	userInput, err := reader.ReadString('\n')
-	if err != nil {
-		return messages, fmt.Errorf("unable to read user input: %w", err)
+		userInput = strings.TrimSpace(userInput)
+
+		switch userInput {
+		case "":
+			continue
+
+		case "quit":
+			return nil, io.EOF
+		}
+
+		messages = append(messages, model.TextMessage("user", userInput))
+
+		return messages, nil
 	}
-
-	if userInput == "quit\n" {
-		return nil, io.EOF
-	}
-
-	messages = append(messages, model.TextMessage("user", userInput))
-
-	return messages, nil
 }
 
 // graphSearch runs the pipeline and prints the table that explains the context.
 // Hop column: "vector" matched the question, "NEXT of n" was split off a chunk
 // that did, "via <subject>" arrived through the entity graph.
 //
-// The move column is the lesson: where the chunk sat under step4's cosine
-// ordering against where it sits now. A chunk that climbs ten places is one the
+// The move column is the lesson: where the chunk sat in cosine order against
+// where it sits now. A chunk that climbs ten places is one the
 // embeddings could not see; one that falls out of the budget is one they oversold.
 func graphSearch(ctx context.Context, ret *retriever, messages []model.D) ([]document, error) {
 	fmt.Print("\n--- Retrieval ---\n")
@@ -328,7 +337,7 @@ func graphSearch(ctx context.Context, ret *retriever, messages []model.D) ([]doc
 	}
 
 	for i, doc := range docs {
-		fmt.Printf("  #%-3d %-20s rel=%.4f sim=%.4f %-9s %-24s %s\n",
+		fmt.Printf("  #%-3d %-20s rel=%.4f sim=%.4f %s %-24s %s\n",
 			doc.ID, doc.Hop, doc.Score, doc.Similarity, move(doc.VectorRank, i+1),
 			truncate(doc.Chapter, 24), preview(doc.Text, 50))
 	}
@@ -337,14 +346,15 @@ func graphSearch(ctx context.Context, ret *retriever, messages []model.D) ([]doc
 }
 
 // move renders how far the reranker carried a chunk from where cosine had it.
+// Padded inside the color codes, which a %-9s would count as width.
 func move(was int, now int) string {
 	switch {
 	case was == now:
-		return "--"
+		return fmt.Sprintf("%-9s", "--")
 	case was > now:
-		return fmt.Sprintf("\u001b[92m^%d (%d)\u001b[0m", was-now, was)
+		return fmt.Sprintf("\u001b[92m%-9s\u001b[0m", fmt.Sprintf("^%d (%d)", was-now, was))
 	default:
-		return fmt.Sprintf("\u001b[91mv%d (%d)\u001b[0m", now-was, was)
+		return fmt.Sprintf("\u001b[91m%-9s\u001b[0m", fmt.Sprintf("v%d (%d)", now-was, was))
 	}
 }
 
@@ -434,7 +444,7 @@ func modelResponse(krn *kronk.Kronk, ch <-chan model.ChatResponse) error {
 		case model.FinishReasonError:
 			return fmt.Errorf("error from model: %s", resp.Choices[0].Delta.Content)
 
-		case model.FinishReasonStop:
+		case model.FinishReasonStop, model.FinishReasonLength:
 			continue
 
 		default:
@@ -469,8 +479,8 @@ func modelResponse(krn *kronk.Kronk, ch <-chan model.ChatResponse) error {
 	fmt.Printf("\n\n\u001b[90mPrompt: %d  Reasoning: %d  Completion: %d  Window: %d (%.0f%% of %.0fK) TPS: %.2f\u001b[0m\n",
 		lr.Usage.PromptTokens, lr.Usage.CompletionTokensDetails.ReasoningTokens, lr.Usage.CompletionTokens, contextTokens, percentage, of, lr.Usage.TokensPerSecond)
 
-	// Hitting the cap ends the stream with a finish reason of "stop", exactly as a
-	// finished answer does, so truncation is invisible unless the count is checked.
+	// Hitting the cap ends the stream with a finish reason of "length" and no
+	// closing text, so the answer just stops. The count makes that visible.
 	if lr.Usage.CompletionTokens >= maxTokens {
 		fmt.Printf("\u001b[91mTruncated: hit the %d token cap\u001b[0m\n", maxTokens)
 	}

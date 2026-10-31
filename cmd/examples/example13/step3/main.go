@@ -32,7 +32,7 @@ const (
 	modelEmbedSource = "ggml-org/embeddinggemma-300m-qat-Q8_0"
 	dbPath           = "zarf/data/duck-ex13-step3.db" // ":memory:"
 	chunksFile       = "zarf/data/book.chunks"
-	dimentions       = 768
+	dimensions       = 768
 )
 
 func main() {
@@ -72,7 +72,7 @@ func run() error {
 
 	// -------------------------------------------------------------------------
 
-	db, err := duck.LoadData(dbPath, krnEmbed, dimentions, chunksFile)
+	db, err := duck.LoadData(dbPath, krnEmbed, dimensions, chunksFile)
 	if err != nil {
 		return fmt.Errorf("error connecting to database: %w", err)
 	}
@@ -82,8 +82,10 @@ func run() error {
 
 	var messages []model.D
 
+	reader := bufio.NewReader(os.Stdin)
+
 	for {
-		messages, err = userInput(messages)
+		messages, err = userInput(reader, messages)
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				return nil
@@ -170,12 +172,12 @@ func installSystem() (models.Path, models.Path, error) {
 		return models.Path{}, models.Path{}, fmt.Errorf("unable to create models api: %w", err)
 	}
 
-	infoEmbed, err := mdls.Download(context.Background(), kronk.FmtLogger, modelEmbedSource)
+	infoEmbed, err := mdls.Download(ctx, kronk.FmtLogger, modelEmbedSource)
 	if err != nil {
 		return models.Path{}, models.Path{}, fmt.Errorf("unable to install model: %w", err)
 	}
 
-	infoChat, err := mdls.Download(context.Background(), kronk.FmtLogger, modelChatSource)
+	infoChat, err := mdls.Download(ctx, kronk.FmtLogger, modelChatSource)
 	if err != nil {
 		return models.Path{}, models.Path{}, fmt.Errorf("unable to install model: %w", err)
 	}
@@ -209,23 +211,29 @@ func newKronk(mp models.Path) (*kronk.Kronk, error) {
 	return krn, nil
 }
 
-func userInput(messages []model.D) ([]model.D, error) {
-	fmt.Print("\nUSER> ")
+func userInput(reader *bufio.Reader, messages []model.D) ([]model.D, error) {
+	for {
+		fmt.Print("\nUSER> ")
 
-	reader := bufio.NewReader(os.Stdin)
+		userInput, err := reader.ReadString('\n')
+		if err != nil {
+			return messages, fmt.Errorf("unable to read user input: %w", err)
+		}
 
-	userInput, err := reader.ReadString('\n')
-	if err != nil {
-		return messages, fmt.Errorf("unable to read user input: %w", err)
+		userInput = strings.TrimSpace(userInput)
+
+		switch userInput {
+		case "":
+			continue
+
+		case "quit":
+			return nil, io.EOF
+		}
+
+		messages = append(messages, model.TextMessage("user", userInput))
+
+		return messages, nil
 	}
-
-	if userInput == "quit\n" {
-		return nil, io.EOF
-	}
-
-	messages = append(messages, model.TextMessage("user", userInput))
-
-	return messages, nil
 }
 
 func vectorSearch(ctx context.Context, krnEmbed *kronk.Kronk, db *sql.DB, messages []model.D) ([]duck.Document, error) {
@@ -240,7 +248,7 @@ func vectorSearch(ctx context.Context, krnEmbed *kronk.Kronk, db *sql.DB, messag
 		return nil, fmt.Errorf("embed: %w", err)
 	}
 
-	if len(resp.Data[0].Embedding) == 0 {
+	if len(resp.Data) == 0 || len(resp.Data[0].Embedding) == 0 {
 		return nil, fmt.Errorf("empty query vector")
 	}
 
@@ -250,7 +258,8 @@ func vectorSearch(ctx context.Context, krnEmbed *kronk.Kronk, db *sql.DB, messag
 	}
 
 	for _, doc := range docs {
-		fmt.Printf("Doc: %f: %s\n", doc.Similarity, strings.ReplaceAll(doc.Text, "\n", " ")[:100])
+		text := strings.ReplaceAll(doc.Text, "\n", " ")
+		fmt.Printf("Doc: %f: %s\n", doc.Similarity, text[:min(len(text), 100)])
 	}
 
 	return docs, nil
@@ -274,7 +283,7 @@ func addContextPrompt(documents []duck.Document, messages []model.D) []model.D {
 	var count int
 	var content strings.Builder
 	for _, doc := range documents {
-		content.WriteString(fmt.Sprintf("%s\n%s\n", doc.Text, doc.Text))
+		content.WriteString(fmt.Sprintf("%s\n", doc.Text))
 		count++
 		if count == 2 {
 			break
@@ -319,7 +328,15 @@ func modelResponse(krn *kronk.Kronk, messages []model.D, ch <-chan model.ChatRes
 		case model.FinishReasonError:
 			return messages, fmt.Errorf("error from model: %s", resp.Choices[0].Delta.Content)
 
-		case model.FinishReasonStop:
+		case model.FinishReasonStop, model.FinishReasonLength:
+
+			// The final response carries the complete answer on the message.
+			// Keep it in the history so the model can see its own replies on
+			// the next turn.
+			if msg := resp.Choices[0].Message; msg != nil && msg.Content != "" {
+				messages = append(messages, model.TextMessage("assistant", msg.Content))
+			}
+
 			continue
 
 		case model.FinishReasonTool:
@@ -333,7 +350,7 @@ func modelResponse(krn *kronk.Kronk, messages []model.D, ch <-chan model.ChatRes
 			}
 
 			for _, tool := range resp.Choices[0].Message.ToolCalls {
-				fmt.Printf("\u001b[92mModel Asking For Tool Call:\nToolID[%s]: %s(%s)\u001b[0m\n",
+				fmt.Printf("\u001b[92mModel Asking For Tool Call:\nToolID[%s]: %s(%v)\u001b[0m\n",
 					tool.ID,
 					tool.Function.Name,
 					tool.Function.Arguments,

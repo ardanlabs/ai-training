@@ -47,9 +47,9 @@ const (
 // Every one is overridable so a room with a different endpoint is not stuck.
 var (
 	llmURL     = "http://localhost:11435/v1/chat/completions"
-	llmModel   = "Qwen3-8B-Q8_0"
+	llmModel   = "unsloth/Qwen3-8B-Q8_0"
 	embedURL   = "http://localhost:11435/v1/embeddings"
-	embedModel = "embeddinggemma-300m-qat-Q8_0"
+	embedModel = "ggml-org/embeddinggemma-300m-qat-Q8_0"
 
 	// The detection classifier's model. Empty means the answering model, which
 	// init resolves after the LLM_MODEL override; CLASSIFIER_MODEL overrides it.
@@ -317,7 +317,10 @@ func (h *Harness) Search(ctx context.Context, query string, topK int, access str
 // trimmed answer with any reasoning block removed. The detection classifier in
 // a step is built on this.
 func (h *Harness) Classify(ctx context.Context, prompt string) (string, error) {
-	answer, err := h.classifyLLM.ChatCompletions(ctx, prompt)
+	// Greedy sampling, so the same text always gets the same verdict. The
+	// default temperature of 1.0 let a step flip between BLOCKED and BYPASSED
+	// from one run to the next with nothing changed.
+	answer, err := h.classifyLLM.ChatCompletions(ctx, prompt, client.WithParams(0, 1, 1))
 	if err != nil {
 		return "", fmt.Errorf("classify: %w", err)
 	}

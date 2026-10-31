@@ -6,6 +6,7 @@ import (
 	_ "embed"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/ardanlabs/ai-training/foundation/sqldb"
 	"github.com/jmoiron/sqlx"
@@ -65,12 +66,23 @@ func dbConnection() (*sqlx.DB, error) {
 	return db, nil
 }
 
-func dbExecute(ctx context.Context, db *sqlx.DB, query string) error {
+// cleanSQL strips the markdown code fence a model often wraps around the
+// SQL it generates, so the statement can be executed as is.
+func cleanSQL(s string) string {
+	s = strings.TrimSpace(s)
+	s = strings.TrimPrefix(s, "```sql")
+	s = strings.TrimPrefix(s, "```")
+	s = strings.TrimSuffix(s, "```")
+
+	return strings.TrimSpace(s)
+}
+
+func dbExecute(ctx context.Context, db *sqlx.DB, query string) (err error) {
 	if err := sqldb.StatusCheck(ctx, db); err != nil {
 		return fmt.Errorf("status check database: %w", err)
 	}
 
-	tx, err := db.Begin()
+	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
@@ -81,12 +93,12 @@ func dbExecute(ctx context.Context, db *sqlx.DB, query string) error {
 				return
 			}
 
-			err = fmt.Errorf("rollback: %w", errTx)
+			err = errors.Join(err, fmt.Errorf("rollback: %w", errTx))
 			return
 		}
 	}()
 
-	if _, err := tx.Exec(query); err != nil {
+	if _, err := tx.ExecContext(ctx, query); err != nil {
 		return fmt.Errorf("exec: %w", err)
 	}
 

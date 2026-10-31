@@ -5,6 +5,10 @@
 // text out of hand-built Cypher and the graph small.
 //
 // Connecting, running Cypher and reading agtype live in foundation/age.
+//
+// foundation/age puts ag_catalog first on the search_path, so an unqualified
+// CREATE TABLE would land in AGE's own schema, beside a public.chunks step1
+// wrote. Tables are named with their schema so every step shares one.
 
 package main
 
@@ -75,7 +79,7 @@ func loadData(ctx context.Context, g *age.Graph, krnEmbed *kronk.Kronk, chunksFi
 	db := g.DB()
 
 	const create = `
-	CREATE TABLE IF NOT EXISTS chunks (
+	CREATE TABLE IF NOT EXISTS public.chunks (
 		id        INT PRIMARY KEY,
 		text      TEXT NOT NULL,
 		embedding VECTOR(%d) NOT NULL
@@ -86,13 +90,16 @@ func loadData(ctx context.Context, g *age.Graph, krnEmbed *kronk.Kronk, chunksFi
 	}
 
 	var rowCount int
-	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM chunks`).Scan(&rowCount); err != nil {
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM public.chunks`).Scan(&rowCount); err != nil {
 		return fmt.Errorf("count chunks: %w", err)
 	}
 
 	if rowCount > 0 {
 		fmt.Printf("- table exists with %d rows\n", rowCount)
-		return nil
+
+		// Step1 fills the same table and builds no graph, so a full table does
+		// not mean the graph is there.
+		return ensureStructure(ctx, g, chunksFile)
 	}
 
 	// -------------------------------------------------------------------------
@@ -120,7 +127,7 @@ func loadData(ctx context.Context, g *age.Graph, krnEmbed *kronk.Kronk, chunksFi
 			return fmt.Errorf("embed chunk %d: %w", c.id, err)
 		}
 
-		const insert = `INSERT INTO chunks (id, text, embedding) VALUES ($1, $2, $3::vector)`
+		const insert = `INSERT INTO public.chunks (id, text, embedding) VALUES ($1, $2, $3::vector)`
 		if _, err := db.ExecContext(ctx, insert, c.id, c.text, vector.FormatPGVector(embedding)); err != nil {
 			return fmt.Errorf("insert chunk %d: %w", c.id, err)
 		}
@@ -131,7 +138,7 @@ func loadData(ctx context.Context, g *age.Graph, krnEmbed *kronk.Kronk, chunksFi
 	// -------------------------------------------------------------------------
 
 	const index = `
-	CREATE INDEX IF NOT EXISTS chunks_embedding_idx ON chunks
+	CREATE INDEX IF NOT EXISTS chunks_embedding_idx ON public.chunks
 	USING hnsw (embedding vector_cosine_ops)`
 
 	if _, err := db.ExecContext(ctx, index); err != nil {
@@ -145,6 +152,26 @@ func loadData(ctx context.Context, g *age.Graph, krnEmbed *kronk.Kronk, chunksFi
 	}
 
 	return nil
+}
+
+// ensureStructure builds the graph over a table another step embedded. A
+// graph with any Chunk node in it is taken as built.
+func ensureStructure(ctx context.Context, g *age.Graph, chunksFile string) error {
+	nodes, err := g.Count(ctx, `MATCH (c:Chunk) RETURN count(c)`)
+	if err != nil {
+		return fmt.Errorf("count chunk nodes: %w", err)
+	}
+
+	if nodes > 0 {
+		return nil
+	}
+
+	chunks, err := parseChunks(chunksFile)
+	if err != nil {
+		return fmt.Errorf("parse chunks: %w", err)
+	}
+
+	return buildStructure(ctx, g, chunks)
 }
 
 // buildStructure writes the edges plain chunking throws away: which chunk
@@ -281,7 +308,7 @@ func vectorSearch(ctx context.Context, db *sqlx.DB, embedding []float64, topK in
 		id,
 		text,
 		1 - (embedding <=> $1::vector) AS similarity
-	FROM chunks
+	FROM public.chunks
 	ORDER BY embedding <=> $1::vector
 	LIMIT $2`
 
@@ -356,7 +383,7 @@ func chapterNames(ctx context.Context, g *age.Graph, ids []int) (map[int]string,
 }
 
 func chunksByID(ctx context.Context, db *sqlx.DB, ids []int) ([]document, error) {
-	q, args, err := sqlx.In(`SELECT id, text FROM chunks WHERE id IN (?)`, ids)
+	q, args, err := sqlx.In(`SELECT id, text FROM public.chunks WHERE id IN (?)`, ids)
 	if err != nil {
 		return nil, fmt.Errorf("build in clause: %w", err)
 	}
@@ -397,9 +424,11 @@ var (
 	// The three signals that say which chapter a chunk belongs to, strongest
 	// first. A "Chapter N:" heading is exact but rare; half the chunks open with
 	// a section number instead, and "6.1 Scheduler Semantics" says chapter 6.
-	sectionTopRE = regexp.MustCompile(`^(\d{1,2})\.\d{1,2} [A-Z]`)
+	// Section numbers run three deep, so the whole number is matched: read from
+	// its last two parts, "1.8.9 Signaling" would say chapter 8.
+	sectionTopRE = regexp.MustCompile(`^(\d{1,2})(?:\.\d{1,2})+ [A-Z]`)
 	chapterRE    = regexp.MustCompile(`Chapter (\d+):`)
-	sectionRE    = regexp.MustCompile(`\b(\d{1,2})\.\d{1,2} [A-Z]`)
+	sectionRE    = regexp.MustCompile(`(?:^|[^\w.])(\d{1,2})(?:\.\d{1,2})+ [A-Z]`)
 )
 
 // chapterOf returns the chapter number a chunk announces, or "" if it announces

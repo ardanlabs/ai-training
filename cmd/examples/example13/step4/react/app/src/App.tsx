@@ -4,7 +4,19 @@ import "./App.css";
 interface ToolCall {
   id: string;
   name: string;
-  arguments: Record<string, unknown>;
+  arguments: string;
+}
+
+// Tool calls stream in pieces using the OpenAI shape. The first piece carries
+// the id and name, later pieces with the same index add to the arguments.
+interface ToolCallDelta {
+  index: number;
+  id?: string;
+  type?: string;
+  function?: {
+    name?: string;
+    arguments?: string;
+  };
 }
 
 interface Message {
@@ -16,10 +28,11 @@ interface Message {
 }
 
 interface Usage {
-  input_tokens: number;
-  reasoning_tokens: number;
+  prompt_tokens: number;
   completion_tokens: number;
-  output_tokens: number;
+  completion_tokens_details?: {
+    reasoning_tokens: number;
+  };
   tokens_per_second: number;
 }
 
@@ -34,15 +47,13 @@ interface ChatRequest {
 
 interface Choice {
   index: number;
-  delta: {
+  delta?: {
     role?: string;
     content?: string;
-    reasoning?: string;
-    tool_calls?: ToolCall[];
+    reasoning_content?: string;
+    tool_calls?: ToolCallDelta[];
   };
-  finish_reason?: string;
-  generated_text?: string;
-  GeneratedText?: string;
+  finish_reason?: string | null;
 }
 
 interface Response {
@@ -50,7 +61,9 @@ interface Response {
   created?: number;
   model?: string;
   choices?: Choice[];
-  error?: string;
+  error?: {
+    message: string;
+  };
   usage?: Usage;
 }
 
@@ -122,14 +135,20 @@ function App() {
 
       let accumulatedContent = "";
       let accumulatedReasoning = "";
-      let toolCall: ToolCall | undefined = undefined;
+      // The cast stops TypeScript narrowing toolCall to undefined, which it
+      // otherwise does because the only assignment is deeper in the loop.
+      let toolCall = undefined as ToolCall | undefined;
+      let buffer = "";
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
-        const chunk = decoder.decode(value, { stream: true });
-        const lines = chunk.split("\n");
+        // A read can end in the middle of a line, so keep the last partial
+        // line in the buffer until the rest of it arrives.
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
 
         for (const line of lines) {
           if (line.startsWith("data: ")) {
@@ -144,32 +163,29 @@ function App() {
 
               if (parsed.error) {
                 console.error("Error from server:", parsed.error);
-                accumulatedContent += `\n[Error: ${parsed.error}]`;
+                accumulatedContent += `\n[Error: ${parsed.error.message}]`;
               } else if (parsed.choices && parsed.choices.length > 0) {
-                const choice = parsed.choices[0];
+                const delta = parsed.choices[0].delta;
 
-                if (choice.finish_reason === "error") {
-                  const errorText =
-                    choice.GeneratedText ||
-                    choice.generated_text ||
-                    "Unknown Error";
-                  accumulatedContent += `\n[Error: ${errorText}]`;
-                } else if (choice.finish_reason === "tool_calls") {
-                  if (
-                    choice.delta?.tool_calls &&
-                    choice.delta.tool_calls.length > 0
-                  ) {
-                    toolCall = choice.delta.tool_calls[0];
-                  }
-                } else {
-                  if (choice.finish_reason !== "stop") {
-                    if (choice.delta?.content) {
-                      accumulatedContent += choice.delta.content;
-                    }
-                    if (choice.delta?.reasoning) {
-                      accumulatedReasoning += choice.delta.reasoning;
-                    }
-                  }
+                if (delta?.content) {
+                  accumulatedContent += delta.content;
+                }
+                if (delta?.reasoning_content) {
+                  accumulatedReasoning += delta.reasoning_content;
+                }
+
+                // The tool call arrives before the chunk with the
+                // "tool_calls" finish reason, whose delta is empty. Only the
+                // first tool call is shown.
+                const tc = delta?.tool_calls?.find((t) => t.index === 0);
+                if (tc) {
+                  toolCall = {
+                    id: tc.id || toolCall?.id || "",
+                    name: tc.function?.name || toolCall?.name || "",
+                    arguments:
+                      (toolCall?.arguments || "") +
+                      (tc.function?.arguments || ""),
+                  };
                 }
               }
 
@@ -308,7 +324,7 @@ function App() {
                     Model Asking For Tool Call:
                     <br />
                     ToolID[{msg.toolCall.id}]: {msg.toolCall.name}(
-                    {JSON.stringify(msg.toolCall.arguments)})
+                    {msg.toolCall.arguments})
                   </div>
                 )}
                 {msg.usage && (
@@ -322,8 +338,8 @@ function App() {
                       borderTop: "1px solid #eee",
                     }}
                   >
-                    Input: {msg.usage.input_tokens} | Output:{" "}
-                    {msg.usage.output_tokens} | Speed:{" "}
+                    Input: {msg.usage.prompt_tokens} | Output:{" "}
+                    {msg.usage.completion_tokens} | Speed:{" "}
                     {msg.usage.tokens_per_second.toFixed(2)} t/s
                   </div>
                 )}

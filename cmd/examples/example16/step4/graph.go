@@ -8,6 +8,10 @@
 // per chunk. A ctrl-c costs one chunk, not the run.
 //
 // Connecting, running Cypher and reading agtype live in foundation/age.
+//
+// foundation/age puts ag_catalog first on the search_path, so an unqualified
+// CREATE TABLE would land in AGE's own schema, beside a public.chunks step1
+// wrote. Tables are named with their schema so every step shares one.
 
 package main
 
@@ -87,7 +91,7 @@ func openGraph(ctx context.Context) (*age.Graph, error) {
 func createTables(ctx context.Context, db *sqlx.DB) error {
 	stmts := []string{
 		fmt.Sprintf(`
-		CREATE TABLE IF NOT EXISTS chunks (
+		CREATE TABLE IF NOT EXISTS public.chunks (
 			id        INT PRIMARY KEY,
 			chapter   TEXT NOT NULL,
 			text      TEXT NOT NULL,
@@ -96,15 +100,15 @@ func createTables(ctx context.Context, db *sqlx.DB) error {
 
 		// Step2 and step3 create this table without a chapter column. If one of
 		// them ingested first the CREATE above is a no-op and reads would fail.
-		`ALTER TABLE chunks ADD COLUMN IF NOT EXISTS chapter TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE public.chunks ADD COLUMN IF NOT EXISTS chapter TEXT NOT NULL DEFAULT ''`,
 
-		`CREATE TABLE IF NOT EXISTS extracted (
+		`CREATE TABLE IF NOT EXISTS public.extracted (
 			chunk_id   INT PRIMARY KEY,
 			entities   INT NOT NULL,
 			extracted_at TIMESTAMPTZ NOT NULL DEFAULT now()
 		)`,
 
-		`CREATE INDEX IF NOT EXISTS chunks_embedding_idx ON chunks
+		`CREATE INDEX IF NOT EXISTS chunks_embedding_idx ON public.chunks
 		 USING hnsw (embedding vector_cosine_ops)`,
 	}
 
@@ -120,7 +124,7 @@ func createTables(ctx context.Context, db *sqlx.DB) error {
 // =============================================================================
 
 // loadData brings the database up to date. Every stage skips work already done,
-// so an ingested database costs three lookup queries and nothing else.
+// so an ingested database costs four lookup queries and nothing else.
 func loadData(ctx context.Context, g *age.Graph, krnEmbed *kronk.Kronk, krnChat *kronk.Kronk, chunksFile string) error {
 	chunks, err := parseChunks(chunksFile)
 	if err != nil {
@@ -129,6 +133,10 @@ func loadData(ctx context.Context, g *age.Graph, krnEmbed *kronk.Kronk, krnChat 
 
 	if err := embedChunks(ctx, g.DB(), krnEmbed, chunks); err != nil {
 		return fmt.Errorf("embed chunks: %w", err)
+	}
+
+	if err := backfillChapters(ctx, g.DB(), chunks); err != nil {
+		return fmt.Errorf("backfill chapters: %w", err)
 	}
 
 	if err := buildStructure(ctx, g, chunks); err != nil {
@@ -144,7 +152,7 @@ func loadData(ctx context.Context, g *age.Graph, krnEmbed *kronk.Kronk, krnChat 
 
 // embedChunks vectorizes and stores every chunk that is not already stored.
 func embedChunks(ctx context.Context, db *sqlx.DB, krnEmbed *kronk.Kronk, chunks []chunk) error {
-	done, err := storedIDs(ctx, db, `SELECT id FROM chunks`)
+	done, err := storedIDs(ctx, db, `SELECT id FROM public.chunks`)
 	if err != nil {
 		return fmt.Errorf("stored ids: %w", err)
 	}
@@ -165,7 +173,7 @@ func embedChunks(ctx context.Context, db *sqlx.DB, krnEmbed *kronk.Kronk, chunks
 
 	// Prepared once because the insert runs once per chunk.
 	const insert = `
-	INSERT INTO chunks (id, chapter, text, embedding)
+	INSERT INTO public.chunks (id, chapter, text, embedding)
 	VALUES ($1, $2, $3, $4::vector)
 	ON CONFLICT (id) DO NOTHING`
 
@@ -193,6 +201,34 @@ func embedChunks(ctx context.Context, db *sqlx.DB, krnEmbed *kronk.Kronk, chunks
 	}
 
 	fmt.Printf("\nVectorized in %v\n", time.Since(t))
+
+	return nil
+}
+
+// backfillChapters fills the chapter column for rows step2 or step3 inserted.
+// Neither stores one, and every chunk read here prints and cites its chapter.
+func backfillChapters(ctx context.Context, db *sqlx.DB, chunks []chunk) error {
+	blank, err := storedIDs(ctx, db, `SELECT id FROM public.chunks WHERE chapter = ''`)
+	if err != nil {
+		return fmt.Errorf("stored ids: %w", err)
+	}
+
+	if len(blank) == 0 {
+		return nil
+	}
+
+	for _, c := range chunks {
+		if !blank[c.id] {
+			continue
+		}
+
+		const update = `UPDATE public.chunks SET chapter = $1 WHERE id = $2`
+		if _, err := db.ExecContext(ctx, update, c.chapter, c.id); err != nil {
+			return fmt.Errorf("update chapter %d: %w", c.id, err)
+		}
+	}
+
+	fmt.Printf("- filled in the chapter for %d rows\n", len(blank))
 
 	return nil
 }
@@ -260,37 +296,6 @@ func buildStructure(ctx context.Context, g *age.Graph, chunks []chunk) error {
 
 // =============================================================================
 
-// chunksByID fetches text and chapter for the ids a traversal handed back.
-func chunksByID(ctx context.Context, db *sqlx.DB, ids []int) ([]document, error) {
-	if len(ids) == 0 {
-		return nil, nil
-	}
-
-	q, args, err := sqlx.In(`SELECT id, chapter, text FROM chunks WHERE id IN (?)`, ids)
-	if err != nil {
-		return nil, fmt.Errorf("build in clause: %w", err)
-	}
-
-	rows, err := db.QueryContext(ctx, db.Rebind(q), args...)
-	if err != nil {
-		return nil, fmt.Errorf("query: %w", err)
-	}
-	defer rows.Close()
-
-	var docs []document
-
-	for rows.Next() {
-		var d document
-		if err := rows.Scan(&d.ID, &d.Chapter, &d.Text); err != nil {
-			return nil, fmt.Errorf("scan: %w", err)
-		}
-
-		docs = append(docs, d)
-	}
-
-	return docs, rows.Err()
-}
-
 // storedIDs collects a query's id column into the set of work already done.
 func storedIDs(ctx context.Context, db *sqlx.DB, query string) (map[int]bool, error) {
 	rows, err := db.QueryContext(ctx, query)
@@ -329,9 +334,11 @@ var (
 	// The three signals that say which chapter a chunk belongs to, strongest
 	// first. A "Chapter N:" heading is exact but rare; half the chunks open with
 	// a section number instead, and "6.1 Scheduler Semantics" says chapter 6.
-	sectionTopRE = regexp.MustCompile(`^(\d{1,2})\.\d{1,2} [A-Z]`)
+	// Section numbers run three deep, so the whole number is matched: read from
+	// its last two parts, "1.8.9 Signaling" would say chapter 8.
+	sectionTopRE = regexp.MustCompile(`^(\d{1,2})(?:\.\d{1,2})+ [A-Z]`)
 	chapterRE    = regexp.MustCompile(`Chapter (\d+):`)
-	sectionRE    = regexp.MustCompile(`\b(\d{1,2})\.\d{1,2} [A-Z]`)
+	sectionRE    = regexp.MustCompile(`(?:^|[^\w.])(\d{1,2})(?:\.\d{1,2})+ [A-Z]`)
 )
 
 // chapterOf returns the chapter number a chunk announces, or "" if it announces

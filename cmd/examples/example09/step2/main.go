@@ -24,7 +24,7 @@ import (
 
 var (
 	url   = "http://localhost:11435/v1/chat/completions"
-	model = "Qwen3.6-35B-A3B-UD-Q4_K_XL"
+	model = "unsloth/Qwen3.6-35B-A3B-UD-Q4_K_XL"
 )
 
 func init() {
@@ -108,7 +108,7 @@ func weatherQuestion(ctx context.Context) error {
 	}
 
 	// -------------------------------------------------------------------------
-	// The model will respond asking us to make the get_current_weather function
+	// The model will respond asking us to make the tool_get_weather function
 	// call. We will make the call and then send the response back to the model.
 
 	fmt.Print("\n")
@@ -283,7 +283,7 @@ func GetWeatherTool(ctx context.Context, toolCall client.ToolCall) (resp client.
 			"temperature": 28,
 			"humidity":    80,
 			"wind_speed":  10,
-			"description": fmt.Sprintln("The weather in", location, "is hot and humid"),
+			"description": fmt.Sprintf("The weather in %s is hot and humid", location),
 		},
 	}
 

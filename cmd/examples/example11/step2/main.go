@@ -7,7 +7,9 @@
 //
 // # This requires running the following commands:
 //
-//	$ make kronk-up  // This starts the Kronk service.
+//	$ make kronk-up        // This starts the Kronk service.
+//	$ make compose-up      // This starts Mongo service.
+//	$ make example11-step1 // This loads the video into Mongo.
 
 package main
 
@@ -32,19 +34,30 @@ import (
 
 var (
 	urlTextEmbed   = "http://localhost:11435/v1/embeddings"
-	modelTextEmbed = "embeddinggemma-300m-qat-Q8_0"
+	modelTextEmbed = "ggml-org/embeddinggemma-300m-qat-Q8_0"
 	urlChat        = "http://localhost:11435/v1/chat/completions"
-	modelChat      = "Qwen3.6-35B-A3B-UD-Q4_K_XL"
+	modelChat      = "unsloth/Qwen3.6-35B-A3B-UD-Q4_K_XL"
 	contextWindow  = 32 * 1024
 )
 
 func init() {
-	if v := os.Getenv("LLM_CHATSERVER"); v != "" {
+	if v := os.Getenv("LLM_CHAT_SERVER"); v != "" {
 		urlChat = v
 	}
 
-	if v := os.Getenv("LLM_CHATMODEL"); v != "" {
+	if v := os.Getenv("LLM_CHAT_MODEL"); v != "" {
 		modelChat = v
+	}
+
+	// The question has to be embedded with the same model step1 used to
+	// embed the video, so these match the overrides in step1.
+
+	if v := os.Getenv("LLM_TEXT_EMBED_SERVER"); v != "" {
+		urlTextEmbed = v
+	}
+
+	if v := os.Getenv("LLM_TEXT_EMBED_MODEL"); v != "" {
+		modelTextEmbed = v
 	}
 }
 
@@ -66,7 +79,7 @@ func run() error {
 		if !scanner.Scan() {
 			return "", false
 		}
-		return scanner.Text(), true
+		return strings.TrimSpace(scanner.Text()), true
 	}
 
 	// -------------------------------------------------------------------------
@@ -77,7 +90,10 @@ func run() error {
 		return fmt.Errorf("failed to create agent: %w", err)
 	}
 
-	return agent.Run(context.TODO())
+	ctx := context.Background()
+	defer agent.dbClient.Disconnect(ctx)
+
+	return agent.Run(ctx)
 }
 
 // =============================================================================
@@ -94,6 +110,7 @@ type Agent struct {
 	chatClient      *client.LLM
 	textEmbedClient *client.LLM
 	sseClient       *client.SSEClient[client.ChatSSE]
+	dbClient        *mongo.Client
 	col             *mongo.Collection
 	getUserMessage  func() (string, bool)
 	tke             *tiktoken.Tiktoken
@@ -114,6 +131,7 @@ func NewAgent(getUserMessage func() (string, bool)) (*Agent, error) {
 
 	col, err := initDB(ctx, dbClient)
 	if err != nil {
+		dbClient.Disconnect(ctx)
 		return nil, fmt.Errorf("initDB: %w", err)
 	}
 
@@ -134,6 +152,7 @@ func NewAgent(getUserMessage func() (string, bool)) (*Agent, error) {
 		chatClient:      client.NewLLM(urlChat, modelChat),
 		textEmbedClient: client.NewLLM(urlTextEmbed, modelTextEmbed),
 		sseClient:       client.NewSSE[client.ChatSSE](client.StdoutLogger),
+		dbClient:        dbClient,
 		col:             col,
 		getUserMessage:  getUserMessage,
 		tke:             tke,
@@ -149,10 +168,10 @@ const systemPrompt = `
 You are a helpful coding assistant that has tools to assist you in coding.
 
 After you request a tool call, you will receive a JSON document with two fields,
-"status" and "data". Always check the "status" field to know if the call "SUCCEED"
-or "FAILED". The information you need to respond will be provided under the "data"
-field. If the called "FAILED", just inform the user and don't try using the tool
-again for the current response.
+"status" and "data". Always check the "status" field to know if the call
+returned "SUCCESS" or "FAILED". The information you need to respond will be
+provided under the "data" field. If the call "FAILED", just inform the user and
+don't try using the tool again for the current response.
 
 When reading Go source code always start counting lines of code from the top of
 the source code file.
@@ -187,6 +206,10 @@ func (a *Agent) Run(ctx context.Context) error {
 			userInput, ok := a.getUserMessage()
 			if !ok {
 				break
+			}
+
+			if userInput == "" {
+				continue
 			}
 
 			userInput, err := a.injectContext(ctx, conversation, userInput)
@@ -249,6 +272,8 @@ func (a *Agent) Run(ctx context.Context) error {
 		ctx, cancelDoCall := context.WithTimeout(ctx, time.Minute*5)
 
 		if err := a.sseClient.Do(ctx, http.MethodPost, urlChat, d, ch); err != nil {
+			cancelTimer()
+			wg.Wait()
 			fmt.Printf("\n\n\u001b[91mERROR:%s\u001b[0m\n\n", err)
 			inToolCall = false
 			cancelDoCall()
@@ -356,6 +381,13 @@ func (a *Agent) Run(ctx context.Context) error {
 			}
 		}
 
+		// If the stream closed without a single choice, the G displaying the
+		// latency is still running and must be shut down.
+		if waitingForResponse {
+			cancelTimer()
+			wg.Wait()
+		}
+
 		// ---------------------------------------------------------------------
 		// The stream is done, so any tool calls the model asked for are now
 		// complete and can be executed. This runs before the call context is
@@ -437,18 +469,19 @@ func (a *Agent) injectContext(ctx context.Context, conversation []client.D, user
 		return "", fmt.Errorf("failed to search for context: %w", err)
 	}
 
-	var extraContext string
+	var extraContext strings.Builder
 	for _, result := range results {
-		fmt.Printf("\u001b[95m\nScore: %.2f\u001b[0m:\n", result.Score)
+		fmt.Printf("\u001b[95m\nScore: %.2f Chunk: %s Start: %.0fs\u001b[0m:\n", result.Score, result.Chunk, result.StartTime)
 		fmt.Printf("\u001b[95m%v\u001b[0m:\n", result.Text)
 		if result.Score >= .70 {
-			extraContext += result.Text + "\n"
+			extraContext.WriteString(result.Text)
+			extraContext.WriteString("\n")
 		}
 	}
 
-	if extraContext != "" {
+	if extraContext.Len() > 0 {
 		const prompt = "please answer the following question only using the context provided."
-		userInput = fmt.Sprintf("%s\nCONTEXT: %s\nQUESTION:%s", prompt, extraContext, userInput)
+		userInput = fmt.Sprintf("%s\nCONTEXT: %s\nQUESTION:%s", prompt, extraContext.String(), userInput)
 	}
 
 	return userInput, nil
@@ -482,13 +515,16 @@ func (a *Agent) isQuestionRelevant(ctx context.Context, conversation []client.D,
 	Respond with only "RELEVANT" or "NOT RELEVANT" followed by a brief reason.
 `
 
-	var history string
-	start := max(len(conversation)-2, 0)
+	// Use the last two messages as the history, skipping the system prompt
+	// at index 0 since it's not part of the conversation.
+	var history strings.Builder
+	start := max(len(conversation)-2, 1)
 	for _, msg := range conversation[start:] {
-		history += msg["content"].(string) + "\n"
+		history.WriteString(msg["content"].(string))
+		history.WriteString("\n")
 	}
 
-	text := fmt.Sprintf(prompt, history, userInput)
+	text := fmt.Sprintf(prompt, history.String(), userInput)
 
 	result, err := a.chatClient.ChatCompletions(ctx, text)
 	if err != nil {
@@ -543,7 +579,6 @@ func (a *Agent) addToConversation(reasoning []string, conversation []client.D, n
 	return conversation
 }
 
-// callTools will lookup a requested tool by name and call it.
 // pendingCall accumulates one streaming tool call as its pieces arrive.
 type pendingCall struct {
 	id   string

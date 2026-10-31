@@ -31,7 +31,7 @@ import (
 
 var (
 	url   = "http://localhost:11435/v1/chat/completions"
-	model = "Qwen3.6-35B-A3B-UD-Q4_K_XL"
+	model = "unsloth/Qwen3.6-35B-A3B-UD-Q4_K_XL"
 )
 
 func init() {
@@ -163,6 +163,9 @@ func (a *Agent) streamModelTurn(ctx context.Context, conversation []client.D) (s
 		"top_p":       0.1,
 		"top_k":       1,
 		"stream":      true,
+		"stream_options": client.D{
+			"include_usage": true,
+		},
 	}
 
 	fmt.Printf("\u001b[93m\n%s\u001b[0m: 0.000", a.modelInfo.id)
@@ -181,12 +184,17 @@ func (a *Agent) streamModelTurn(ctx context.Context, conversation []client.D) (s
 	defer stopPrinter()
 
 	var chunks []string
-	var lastResp client.ChatSSE
+	var usage *client.Usage
 	reasonFirstChunk := true
 	reasonThinking := false
 
+	// The chunk carrying the "stop" finish reason is not the last one. The
+	// usage we asked for with "include_usage" follows it in a chunk with no
+	// choices, so the stream is read until the server closes it.
 	for resp := range ch {
-		lastResp = resp
+		if resp.Usage != nil {
+			usage = resp.Usage
+		}
 
 		if len(resp.Choices) == 0 {
 			continue
@@ -197,11 +205,7 @@ func (a *Agent) streamModelTurn(ctx context.Context, conversation []client.D) (s
 
 		switch resp.Choices[0].FinishReason {
 		case "error":
-			return "", lastResp.Usage, fmt.Errorf("error from model: %s", resp.Choices[0].Delta.Content)
-
-		case "stop":
-			text := strings.TrimLeft(strings.Join(chunks, ""), "\n")
-			return text, lastResp.Usage, nil
+			return "", usage, fmt.Errorf("error from model: %s", resp.Choices[0].Delta.Content)
 
 		default:
 			delta := resp.Choices[0].Delta
@@ -229,9 +233,8 @@ func (a *Agent) streamModelTurn(ctx context.Context, conversation []client.D) (s
 		}
 	}
 
-	// Stream ended without an explicit finish reason.
 	text := strings.TrimLeft(strings.Join(chunks, ""), "\n")
-	return text, lastResp.Usage, nil
+	return text, usage, nil
 }
 
 // startLatencyPrinter starts a goroutine that displays elapsed time while

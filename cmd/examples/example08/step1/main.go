@@ -24,7 +24,7 @@ import (
 
 var (
 	url   = "http://localhost:11435/v1/chat/completions"
-	model = "Qwen2.5-VL-3B-Instruct-Q8_0"
+	model = "unsloth/Qwen2.5-VL-3B-Instruct-Q8_0"
 
 	imagePath = "zarf/samples/gallery/roseimg.png"
 )

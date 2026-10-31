@@ -70,7 +70,7 @@ func RegisterGetWeather(tools map[string]Tool) client.D {
 	return gw.toolDocument()
 }
 
-// ToolDocument defines the metadata for the tool that is provided to the model.
+// toolDocument defines the metadata for the tool that is provided to the model.
 func (gw *GetWeather) toolDocument() client.D {
 	return client.D{
 		"type": "function",

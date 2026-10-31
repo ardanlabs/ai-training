@@ -10,9 +10,9 @@ import (
 	"go/token"
 	"io/fs"
 	"os"
-	"path"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/ardanlabs/ai-training/foundation/client"
@@ -80,19 +80,19 @@ func RegisterReadFile(tools map[string]Tool) client.D {
 	return rf.toolDocument()
 }
 
-// ToolDocument defines the metadata for the tool that is provied to the model.
+// toolDocument defines the metadata for the tool that is provided to the model.
 func (rf *ReadFile) toolDocument() client.D {
 	return client.D{
 		"type": "function",
 		"function": client.D{
 			"name":        rf.name,
-			"description": "Read the contents of a given file path or search for files containing a pattern. When searching file contents, returns line numbers where the pattern is found.",
+			"description": "Read the contents of a given relative file path. Use this when you want to see what's inside a file.",
 			"parameters": client.D{
 				"type": "object",
 				"properties": client.D{
 					"path": client.D{
 						"type":        "string",
-						"description": "The relative path of a file in the working directory. If pattern is provided, this can be a directory path to search in.",
+						"description": "The relative path of a file in the working directory.",
 					},
 				},
 				"required": []string{"path"},
@@ -112,7 +112,7 @@ func (rf *ReadFile) Call(ctx context.Context, toolCall client.ToolCall) (resp cl
 
 	path, _ := toolCall.Function.Arguments["path"].(string)
 	if path == "" {
-		path = "."
+		return toolErrorResponse(toolCall.ID, errors.New("the path argument is missing or not a string"))
 	}
 
 	content, err := os.ReadFile(path)
@@ -142,7 +142,7 @@ func RegisterSearchFiles(tools map[string]Tool) client.D {
 	return sf.toolDocument()
 }
 
-// toolDocument defines the metadata for the tool that is provied to the model.
+// toolDocument defines the metadata for the tool that is provided to the model.
 func (sf *SearchFiles) toolDocument() client.D {
 	return client.D{
 		"type": "function",
@@ -158,7 +158,7 @@ func (sf *SearchFiles) toolDocument() client.D {
 					},
 					"filter": client.D{
 						"type":        "string",
-						"description": "The filter to apply to the file names. It supports golang regex syntax. If not provided, will filtering with take place. If provided, only return files that match the filter.",
+						"description": "The filter to apply to the file names. It supports golang regex syntax. If not provided, no filtering will take place. If provided, only return files that match the filter.",
 					},
 					"contains": client.D{
 						"type":        "string",
@@ -197,13 +197,35 @@ func (sf *SearchFiles) Call(ctx context.Context, toolCall client.ToolCall) (resp
 	filter, _ := arg("filter")
 	contains, _ := arg("contains")
 
+	// Compile the expressions once, and tell the model when one is invalid
+	// instead of silently matching nothing.
+
+	var filterRE, containsRE *regexp.Regexp
+	if filter != "" {
+		re, err := regexp.Compile(filter)
+		if err != nil {
+			return toolErrorResponse(toolCall.ID, fmt.Errorf("invalid filter regex: %w", err))
+		}
+		filterRE = re
+	}
+
+	if contains != "" {
+		re, err := regexp.Compile(contains)
+		if err != nil {
+			return toolErrorResponse(toolCall.ID, fmt.Errorf("invalid contains regex: %w", err))
+		}
+		containsRE = re
+	}
+
 	var files []string
 	err := filepath.WalkDir(dir, func(path string, info fs.DirEntry, err error) error {
 		if err != nil {
-			if errors.Is(err, filepath.SkipDir) {
-				return nil
+			// A bad starting directory is an error the model needs to see.
+			// Anything below it that can't be read is skipped.
+			if path == dir {
+				return err
 			}
-			return err
+			return nil
 		}
 
 		relPath, err := filepath.Rel(dir, path)
@@ -228,19 +250,19 @@ func (sf *SearchFiles) Call(ctx context.Context, toolCall client.ToolCall) (resp
 			return nil
 		}
 
-		if filter != "" {
-			if matched, _ := regexp.MatchString(filter, relPath); !matched {
-				return nil
-			}
+		if filterRE != nil && !filterRE.MatchString(relPath) {
+			return nil
 		}
 
-		if contains != "" {
-			content, err := os.ReadFile(relPath)
+		if containsRE != nil {
+			// relPath is relative to dir, not to the working directory, so the
+			// file has to be read using path.
+			content, err := os.ReadFile(path)
 			if err != nil {
 				return nil
 			}
 
-			if matched, _ := regexp.MatchString(contains, string(content)); !matched {
+			if !containsRE.Match(content) {
 				return nil
 			}
 		}
@@ -282,7 +304,7 @@ func RegisterCreateFile(tools map[string]Tool) client.D {
 	return cf.toolDocument()
 }
 
-// toolDocument defines the metadata for the tool that is provied to the model.
+// toolDocument defines the metadata for the tool that is provided to the model.
 func (cf *CreateFile) toolDocument() client.D {
 	return client.D{
 		"type": "function",
@@ -313,14 +335,23 @@ func (cf *CreateFile) Call(ctx context.Context, toolCall client.ToolCall) (resp 
 	}()
 
 	filePath, _ := toolCall.Function.Arguments["path"].(string)
-
-	if _, err := os.Stat(filePath); !os.IsNotExist(err) {
-		return toolErrorResponse(toolCall.ID, errors.New("file already exists"))
+	if filePath == "" {
+		return toolErrorResponse(toolCall.ID, errors.New("the path argument is missing or not a string"))
 	}
 
-	dir := path.Dir(filePath)
+	switch _, err := os.Stat(filePath); {
+	case err == nil:
+		return toolErrorResponse(toolCall.ID, errors.New("file already exists"))
+
+	case !errors.Is(err, fs.ErrNotExist):
+		return toolErrorResponse(toolCall.ID, err)
+	}
+
+	dir := filepath.Dir(filePath)
 	if dir != "." {
-		os.MkdirAll(dir, 0755)
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return toolErrorResponse(toolCall.ID, err)
+		}
 	}
 
 	f, err := os.Create(filePath)
@@ -351,7 +382,7 @@ func RegisterGoCodeEditor(tools map[string]Tool) client.D {
 	return gce.toolDocument()
 }
 
-// toolDocument defines the metadata for the tool that is provied to the model.
+// toolDocument defines the metadata for the tool that is provided to the model.
 func (gce *GoCodeEditor) toolDocument() client.D {
 	return client.D{
 		"type": "function",
@@ -405,13 +436,25 @@ func (gce *GoCodeEditor) Call(ctx context.Context, toolCall client.ToolCall) (re
 	path, _ := arg("path")
 	typeChange, _ := arg("type_change")
 	lineChange, _ := arg("line_change")
-	number, ok := toolCall.Function.Arguments["line_number"].(float64)
-	if !ok {
+	// JSON numbers decode as float64, but models sometimes send the line
+	// number as a string, so accept both.
+	var lineNumber int
+	switch v := toolCall.Function.Arguments["line_number"].(type) {
+	case float64:
+		lineNumber = int(v)
+
+	case string:
+		n, err := strconv.Atoi(strings.TrimSpace(v))
+		if err != nil {
+			return toolErrorResponse(toolCall.ID, fmt.Errorf("the line_number argument is not a number: %q", v))
+		}
+		lineNumber = n
+
+	default:
 		return toolErrorResponse(toolCall.ID, fmt.Errorf("the line_number argument is missing or not a number"))
 	}
-	lineNumber := int(number)
 
-	typeChange = strings.TrimSpace(typeChange)
+	typeChange = strings.ToLower(strings.TrimSpace(typeChange))
 	lineChange = strings.TrimSpace(lineChange)
 
 	content, err := os.ReadFile(path)

@@ -5,8 +5,10 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 
 	"github.com/ardanlabs/ai-training/foundation/client"
@@ -80,7 +82,7 @@ AWS_SECRET_ACCESS_KEY=AKIA-REDACTED-EXAMPLE
 `
 
 // fixedDate keeps repeated runs comparable.
-const fixedDate = "Mon, 29 Apr 2026 10:00:00 UTC"
+const fixedDate = "Wed, 29 Apr 2026 10:00:00 UTC"
 
 // simulateCommand returns believable output for the handful of commands the
 // workshop prompts actually reach for.
@@ -174,7 +176,7 @@ func RegisterBrowse(d Defenses) func(map[string]fntools.Tool) client.D {
 
 // Call sends the request, which is what makes the exfiltration real rather than
 // reported.
-func (t *Browse) Call(_ context.Context, tc client.ToolCall) client.D {
+func (t *Browse) Call(ctx context.Context, tc client.ToolCall) client.D {
 	target, _ := tc.Function.Arguments["url"].(string)
 	if target == "" {
 		return fntools.ErrorResponse(tc.ID, fmt.Errorf("missing 'url' argument"))
@@ -209,7 +211,7 @@ func (t *Browse) Call(_ context.Context, tc client.ToolCall) client.D {
 	fmt.Printf("    Method: %s\n", method)
 	fmt.Printf("    Body:   %.300s\n", body)
 
-	req, err := http.NewRequest(method, target, bytes.NewBufferString(body))
+	req, err := http.NewRequestWithContext(ctx, method, target, bytes.NewBufferString(body))
 	if err != nil {
 		return fntools.ErrorResponse(tc.ID, fmt.Errorf("build request: %w", err))
 	}
@@ -423,10 +425,9 @@ func RegisterShell(d Defenses) func(map[string]fntools.Tool) client.D {
 		t := &HardenedShell{defenses: d}
 		tools[ShellName] = t
 
-		verbs := make([]string, 0, len(allowedVerbs))
-		for v := range allowedVerbs {
-			verbs = append(verbs, v)
-		}
+		// Sorted, so the tool document - and therefore the prompt - is the same
+		// on every run. Map order would reshuffle the enum each time.
+		verbs := slices.Sorted(maps.Keys(allowedVerbs))
 
 		return client.D{
 			"type": "function",

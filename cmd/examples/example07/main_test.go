@@ -27,6 +27,7 @@ func TestValidSQL(t *testing.T) {
 	llm := client.NewLLM(url, model)
 
 	sql, err := llm.ChatCompletions(t.Context(), fmt.Sprintf(query, question))
+	sql = cleanSQL(sql)
 	if err != nil {
 		t.Fatalf("LLM query: %v", err)
 	}

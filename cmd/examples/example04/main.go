@@ -23,7 +23,7 @@ import (
 
 var (
 	url   = "http://localhost:11435/v1/chat/completions"
-	model = "Qwen3-8B-Q8_0"
+	model = "unsloth/Qwen3-8B-Q8_0"
 )
 
 func init() {

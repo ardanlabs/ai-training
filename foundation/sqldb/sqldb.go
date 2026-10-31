@@ -5,7 +5,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"fmt"
 	"net/url"
 	"strings"
 	"time"
@@ -55,12 +54,15 @@ func Open(cfg Config) (*sqlx.DB, error) {
 		q.Set("search_path", cfg.Schema)
 	}
 
+	// url.Values encodes a space as "+", which pgx passes through literally, so
+	// a search_path like `ag_catalog, "$user", public` arrived as
+	// `ag_catalog,+"$user",+public` and public was no longer on the path.
 	u := url.URL{
 		Scheme:   "postgres",
 		User:     url.UserPassword(cfg.User, cfg.Password),
 		Host:     cfg.Host,
 		Path:     cfg.Name,
-		RawQuery: q.Encode(),
+		RawQuery: strings.ReplaceAll(q.Encode(), "+", "%20"),
 	}
 
 	db, err := sqlx.Open("pgx", u.String())
@@ -193,6 +195,13 @@ func namedQuerySlice[T any](ctx context.Context, db sqlx.ExtContext, query strin
 		}
 		slice = append(slice, *v)
 	}
+
+	// Next returns false on a failure while reading rows as well as at the
+	// end, so without this check a broken query looks like a short result.
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
 	*dest = slice
 
 	return nil
@@ -251,6 +260,9 @@ func namedQueryStruct(ctx context.Context, db sqlx.ExtContext, query string, dat
 	defer rows.Close()
 
 	if !rows.Next() {
+		if err := rows.Err(); err != nil {
+			return err
+		}
 		return ErrDBNotFound
 	}
 
@@ -285,31 +297,9 @@ func QueryMap(ctx context.Context, db sqlx.ExtContext, query string, dest *[]map
 		*dest = append(*dest, m)
 	}
 
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
 	return nil
-}
-
-// queryString provides a pretty print version of the query and parameters.
-func queryString(query string, args any) string {
-	query, params, err := sqlx.Named(query, args)
-	if err != nil {
-		return err.Error()
-	}
-
-	for _, param := range params {
-		var value string
-		switch v := param.(type) {
-		case string:
-			value = fmt.Sprintf("'%s'", v)
-		case []byte:
-			value = fmt.Sprintf("'%s'", string(v))
-		default:
-			value = fmt.Sprintf("%v", v)
-		}
-		query = strings.Replace(query, "?", value, 1)
-	}
-
-	query = strings.ReplaceAll(query, "\t", "")
-	query = strings.ReplaceAll(query, "\n", " ")
-
-	return strings.Trim(query, " ")
 }

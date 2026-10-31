@@ -31,7 +31,7 @@ import (
 
 var (
 	url   = "http://localhost:11435/v1/embeddings"
-	model = "embeddinggemma-300m-qat-Q8_0"
+	model = "ggml-org/embeddinggemma-300m-qat-Q8_0"
 )
 
 func init() {
@@ -131,7 +131,7 @@ func run() error {
 
 	// -------------------------------------------------------------------------
 
-	// Perform the same vector math as in example2 using the LLM vector embedding.
+	// Perform the same vector math as in example01 using the LLM vector embedding.
 
 	// You can perform vector math by adding and subtracting vectors.
 	kingSubMan := vector.Sub(dataPoints[3].Vector(), dataPoints[1].Vector())

@@ -203,7 +203,28 @@ func Encoded(ctx context.Context, h *harness.Harness, d Defenses) (Outcome, erro
 // input-side defenses are placed - one screening pass per document, at the
 // retrieval boundary.
 func Indirect(ctx context.Context, h *harness.Harness, d Defenses) (Outcome, error) {
-	if err := SeedCorpus(ctx, h, PoisonedCorpus); err != nil {
+	return indirect(ctx, h, d, PoisonedDoc)
+}
+
+// EncodedIndirect is the punchline: step 2's indirect attack with the poisoned
+// document's directive written in Morse code. The filters screen every
+// retrieved document and find nothing - no keyword for the blocklist, no
+// English sentence for the classifier - while the model, which reads its
+// context carefully and is told to act on directives it finds there, decodes
+// it and acts.
+func EncodedIndirect(ctx context.Context, h *harness.Harness, d Defenses) (Outcome, error) {
+	fmt.Printf("\nThe attacker's directive, in plain English (NEVER stored):\n%s\n", PlainDocPayload)
+	fmt.Printf("\nThe document actually written to the store:\n%s\n", EncodedPoisonedDoc())
+
+	return indirect(ctx, h, d, EncodedPoisonedDoc())
+}
+
+// indirect runs the RAG vector with the given poisoned document added to the
+// clean corpus.
+func indirect(ctx context.Context, h *harness.Harness, d Defenses, poison string) (Outcome, error) {
+	corpus := append(slices.Clone(CleanCorpus), poison)
+
+	if err := SeedCorpus(ctx, h, corpus); err != nil {
 		return "", err
 	}
 
@@ -219,14 +240,21 @@ func Indirect(ctx context.Context, h *harness.Harness, d Defenses) (Outcome, err
 		fmt.Println("\n🔒 Access filter active - retrieval is limited to public documents.")
 	}
 
-	// Screen each document. Documents the classifier flags are dropped;
-	// documents the input sanitizer touches are kept in redacted form.
+	// Screen each document. Documents the input sanitizer matches or the
+	// classifier flags are dropped.
 	var kept []string
 
 	for _, doc := range docs {
+		isPoison := doc.Text == poison
+
 		text, redacted := ApplyInputSanitizer(d, doc.Text)
 		if redacted {
-			fmt.Printf("\n🧹 SANITIZED doc (patterns redacted): %.80s...\n", doc.Text)
+			fmt.Printf("\n✅ REJECTED doc (known injection patterns): %.80s...\n", doc.Text)
+			continue
+		}
+
+		if d.InputSanitizer && isPoison {
+			fmt.Println("\n⛔ BYPASSED - input sanitizer matched 0 patterns in the poisoned document.")
 		}
 
 		flagged, err := ApplyClassifier(ctx, h, d, text)
@@ -235,8 +263,12 @@ func Indirect(ctx context.Context, h *harness.Harness, d Defenses) (Outcome, err
 		}
 
 		if flagged {
-			fmt.Printf("\n⛔ REJECTED doc (injection detected): %.80s...\n", doc.Text)
+			fmt.Printf("\n✅ REJECTED doc (injection detected): %.80s...\n", doc.Text)
 			continue
+		}
+
+		if d.Classifier && isPoison {
+			fmt.Println("\n⛔ BYPASSED - classifier ruled the poisoned document benign.")
 		}
 
 		kept = append(kept, text)
@@ -256,7 +288,7 @@ func Indirect(ctx context.Context, h *harness.Harness, d Defenses) (Outcome, err
 	var clean, poisoned []string
 
 	for _, text := range kept {
-		if strings.Contains(strings.ToLower(text), BrowseName) {
+		if text == poison {
 			poisoned = append(poisoned, text)
 			continue
 		}

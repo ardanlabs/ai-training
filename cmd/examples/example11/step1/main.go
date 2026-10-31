@@ -1,6 +1,7 @@
-// This example provides a proof of concept for extracting transcriptions and,
-// code examples from videos using the Kronk and a vision model. It then stores
-// the extracted data in a MongoDB database for vector search and RAG functionality.
+// This example provides a proof of concept for extracting transcriptions and
+// code examples from videos using ffmpeg (with the whisper filter) and a vision
+// model served by Kronk. It then stores the extracted data in a MongoDB database
+// for vector search and RAG functionality.
 //
 // # Running the example:
 //
@@ -10,10 +11,14 @@
 //
 //	$ make kronk-up    // This starts the Kronk service.
 //	$ make compose-up   // This starts Mongo service.
+//
+// It also needs an ffmpeg built with whisper support (see make install) and
+// the whisper model at zarf/models/ggml-tiny.bin.
 
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -25,7 +30,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-
 	"strconv"
 	"strings"
 	"time"
@@ -38,9 +42,9 @@ import (
 
 var (
 	urlVision        = "http://localhost:11435/v1/chat/completions"
-	modelVision      = "Qwen2.5-VL-3B-Instruct-Q8_0"
+	modelVision      = "unsloth/Qwen2.5-VL-3B-Instruct-Q8_0"
 	urlTextEmbed     = "http://localhost:11435/v1/embeddings"
-	modelTextEmbed   = "embeddinggemma-300m-qat-Q8_0"
+	modelTextEmbed   = "ggml-org/embeddinggemma-300m-qat-Q8_0"
 	chunkSize        = 60
 	frameDescTimeout = time.Second * 300
 	frameWidth       = 640
@@ -87,7 +91,7 @@ const promptKeyFrameDesc = `
 
 		{
 			"description": "<image description>",
-			"classification": "<image classification>"
+			"classification": "<image classification>",
 			"text": "<text extraction>"
 		}
 
@@ -102,7 +106,6 @@ type keyFrame struct {
 	description    string
 	classification string
 	text           string
-	embedding      []float64
 }
 
 // =============================================================================
@@ -131,6 +134,7 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("mongodb.Connect: %w", err)
 	}
+	defer dbClient.Disconnect(ctx)
 
 	fmt.Println("Initializing Database")
 
@@ -143,7 +147,7 @@ func run() error {
 
 	videoPath := filepath.Join(videoDir, videoFileName)
 
-	if err := splitVideoIntoChunks(videoPath); err != nil {
+	if err := splitVideoIntoChunks(ctx, videoPath); err != nil {
 		return fmt.Errorf("splitting video into chunks: %w", err)
 	}
 
@@ -163,7 +167,7 @@ func run() error {
 			return nil
 		}
 
-		if !strings.HasSuffix(path, ".mp4") {
+		if !strings.EqualFold(filepath.Ext(path), ".mp4") {
 			return nil
 		}
 
@@ -172,7 +176,7 @@ func run() error {
 		fmt.Print("\n=================================================\n\n")
 		fmt.Printf("Processing chunk file: %s\n", videoChunkFile)
 
-		duration, err := getVideoDuration(videoChunkFile)
+		duration, err := getVideoDuration(ctx, videoChunkFile)
 		if err != nil {
 			return fmt.Errorf("get video duration: %w", err)
 		}
@@ -211,18 +215,18 @@ func processChunk(ctx context.Context, col *mongo.Collection, llmVision *client.
 		return nil
 	}
 
-	transcription, err := extractAudioTranscription(videoChunkFile)
+	transcription, err := extractAudioTranscription(ctx, videoChunkFile)
 	if err != nil {
 		return fmt.Errorf("extract audio transcription: %w", err)
 	}
 
-	if err := createKeyFrameFiles(videoChunkFile); err != nil {
+	if err := createKeyFrameFiles(ctx, videoChunkFile); err != nil {
 		return fmt.Errorf("create key frame files: %w %w", ErrFFMPEG, err)
 	}
 
 	chunkName := filepath.Base(videoChunkFile)
 
-	keyFrames, err := processKeyFrameFiles(chunkName, videoDir, llmVision)
+	keyFrames, err := processKeyFrameFiles(ctx, chunkName, videoDir, llmVision)
 	if err != nil {
 		return fmt.Errorf("process key frame files: %w", err)
 	}
@@ -274,11 +278,18 @@ func processChunk(ctx context.Context, col *mongo.Collection, llmVision *client.
 
 // =============================================================================
 
-func splitVideoIntoChunks(videoPath string) error {
+func splitVideoIntoChunks(ctx context.Context, videoPath string) error {
 	fmt.Printf("Splitting video into chunks: %s\n", videoPath)
 
-	ffmpegCommand := fmt.Sprintf("ffmpeg -i %s -c copy -map 0 -f segment -segment_time %d -reset_timestamps 1 -loglevel error zarf/samples/videos/chunks/output_%%05d.mp4", videoPath, chunkSize)
-	out, err := exec.Command("/bin/sh", "-c", ffmpegCommand).CombinedOutput()
+	// The arguments are passed straight to ffmpeg, not through a shell, so a
+	// path with spaces or shell characters in it is still a single argument.
+	output := filepath.Join(videoDir, "chunks", "output_%05d.mp4")
+
+	cmd := exec.CommandContext(ctx, "ffmpeg", "-i", videoPath, "-c", "copy", "-map", "0",
+		"-f", "segment", "-segment_time", strconv.Itoa(chunkSize), "-reset_timestamps", "1",
+		"-loglevel", "error", output)
+
+	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("error while running ffmpeg: %s, %w: %s", videoPath, err, string(out))
 	}
@@ -286,15 +297,19 @@ func splitVideoIntoChunks(videoPath string) error {
 	return nil
 }
 
-func getVideoDuration(videoChunkFile string) (float64, error) {
+func getVideoDuration(ctx context.Context, videoChunkFile string) (float64, error) {
 	fmt.Println("Getting video duration")
 
-	cmd := exec.Command("ffprobe", "-v", "quiet", "-print_format", "json",
+	cmd := exec.CommandContext(ctx, "ffprobe", "-v", "error", "-print_format", "json",
 		"-show_entries", "format=duration", videoChunkFile)
+
+	// Stdout carries the JSON document, stderr carries the reason for a failure.
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
 
 	output, err := cmd.Output()
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("error while running ffprobe: %w: %s", err, stderr.String())
 	}
 
 	var probe struct {
@@ -304,32 +319,41 @@ func getVideoDuration(videoChunkFile string) (float64, error) {
 	}
 
 	if err := json.Unmarshal(output, &probe); err != nil {
-		return 0, err
+		return 0, fmt.Errorf("unmarshal ffprobe output: %w", err)
 	}
 
 	duration, err := strconv.ParseFloat(probe.Format.Duration, 64)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("parse duration: %w", err)
 	}
 
 	return duration, nil
 }
 
-func extractAudioTranscription(videoChunkFile string) (string, error) {
+func extractAudioTranscription(ctx context.Context, videoChunkFile string) (string, error) {
 	fmt.Println("Extracting audio transcription")
 
 	queue := chunkSize + 5
 
-	ffmpegCommand := fmt.Sprintf("ffmpeg -i %s -vn -af \"whisper=model=zarf/models/ggml-tiny.bin :destination=- :format=text :queue=%d\" -loglevel error -f null -", videoChunkFile, queue)
-	out, err := exec.Command("/bin/sh", "-c", ffmpegCommand).CombinedOutput()
+	filter := fmt.Sprintf("whisper=model=zarf/models/ggml-tiny.bin:destination=-:format=text:queue=%d", queue)
+
+	cmd := exec.CommandContext(ctx, "ffmpeg", "-i", videoChunkFile, "-vn", "-af", filter,
+		"-loglevel", "error", "-f", "null", "-")
+
+	// The whisper filter writes the transcription to stdout. Anything ffmpeg
+	// logs goes to stderr and must not end up in the transcription.
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+
+	out, err := cmd.Output()
 	if err != nil {
-		return "", fmt.Errorf("error while running ffmpeg: %w: %s", err, string(out))
+		return "", fmt.Errorf("error while running ffmpeg: %w: %s", err, stderr.String())
 	}
 
 	return string(out), nil
 }
 
-func processKeyFrameFiles(chunkName string, videoDir string, llmVision *client.LLM) ([]keyFrame, error) {
+func processKeyFrameFiles(ctx context.Context, chunkName string, videoDir string, llmVision *client.LLM) ([]keyFrame, error) {
 	fmt.Println("Processing key frames")
 
 	fullpath := filepath.Join(videoDir, framesDir, chunkName)
@@ -359,29 +383,34 @@ func processKeyFrameFiles(chunkName string, videoDir string, llmVision *client.L
 		}
 	}
 
-	if err := createKeyFrameDescriptions(keyFrames, llmVision); err != nil {
+	if err := createKeyFrameDescriptions(ctx, keyFrames, llmVision); err != nil {
 		return nil, fmt.Errorf("create key frame descriptions: %w", err)
 	}
 
 	return keyFrames, nil
 }
 
-func createKeyFrameFiles(videoChunkFile string) error {
+func createKeyFrameFiles(ctx context.Context, videoChunkFile string) error {
 	fmt.Println("Creating key frame files")
 
 	chunkName := filepath.Base(videoChunkFile)
+	chunkFramesDir := filepath.Join(videoDir, framesDir, chunkName)
 
-	if err := os.RemoveAll(videoDir + "/" + framesDir + "/" + chunkName); err != nil {
+	if err := os.RemoveAll(chunkFramesDir); err != nil {
 		return fmt.Errorf("remove past work files: %w", err)
 	}
 
-	if err := os.MkdirAll(videoDir+"/"+framesDir+"/"+chunkName, 0755); err != nil {
+	if err := os.MkdirAll(chunkFramesDir, 0755); err != nil {
 		return fmt.Errorf("mkdirall: %w", err)
 	}
 
-	ffmpegCommand := fmt.Sprintf("ffmpeg -skip_frame nokey -i %s -vf \"scale='if(gt(iw,ih),%d,-1)':'if(gt(ih,iw),%d,-1)'\" -fps_mode vfr -frame_pts true -loglevel error zarf/samples/videos/%s/%s/%%05d.png", videoChunkFile, frameWidth, frameHeight, framesDir, chunkName)
+	scale := fmt.Sprintf("scale='if(gt(iw,ih),%d,-1)':'if(gt(ih,iw),%d,-1)'", frameWidth, frameHeight)
+	output := filepath.Join(chunkFramesDir, "%05d.png")
 
-	out, err := exec.Command("/bin/sh", "-c", ffmpegCommand).CombinedOutput()
+	cmd := exec.CommandContext(ctx, "ffmpeg", "-skip_frame", "nokey", "-i", videoChunkFile,
+		"-vf", scale, "-fps_mode", "vfr", "-frame_pts", "true", "-loglevel", "error", output)
+
+	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("error while running ffmpeg: %w: %s", err, string(out))
 	}
@@ -389,30 +418,23 @@ func createKeyFrameFiles(videoChunkFile string) error {
 	return nil
 }
 
-func createKeyFrameDescriptions(keyFrames []keyFrame, llmVision *client.LLM) error {
+func createKeyFrameDescriptions(ctx context.Context, keyFrames []keyFrame, llmVision *client.LLM) error {
 	fmt.Printf("Creating key frame descriptions: %d\n", len(keyFrames))
 
-	semaphore := 1
-
-	ch := make(chan bool, semaphore)
-
+	// Limit how many frames are sent to the vision model at the same time.
 	var g errgroup.Group
+	g.SetLimit(1)
 
-	for i, keyFrame := range keyFrames {
+	for i, kf := range keyFrames {
 		g.Go(func() error {
-			ch <- true
-			defer func() {
-				<-ch
-			}()
+			fmt.Printf("\t- Creating key frame description: %s\n", filepath.Base(kf.fileName))
 
-			fmt.Printf("\t- Creating key frame description: %s\n", filepath.Base(keyFrame.fileName))
-
-			image, mimeType, err := readImage(keyFrame.fileName)
+			image, mimeType, err := readImage(kf.fileName)
 			if err != nil {
 				return fmt.Errorf("read image: %w", err)
 			}
 
-			ctx, cancel := context.WithTimeout(context.Background(), frameDescTimeout)
+			ctx, cancel := context.WithTimeout(ctx, frameDescTimeout)
 			defer cancel()
 
 			p1 := client.WithImage(mimeType, image)
@@ -424,8 +446,14 @@ func createKeyFrameDescriptions(keyFrames []keyFrame, llmVision *client.LLM) err
 				return fmt.Errorf("chat completions: %w", err)
 			}
 
-			jsonDoc := strings.Trim(response, "`")
-			jsonDoc = strings.TrimPrefix(jsonDoc, "json")
+			// Models often wrap the JSON in a markdown code fence even when
+			// told not to, and the fence would break the JSON parser.
+			jsonDoc := strings.TrimSpace(response)
+			jsonDoc = strings.TrimPrefix(jsonDoc, "```json")
+			jsonDoc = strings.TrimPrefix(jsonDoc, "```")
+			jsonDoc = strings.TrimSuffix(jsonDoc, "```")
+			jsonDoc = strings.TrimSpace(jsonDoc)
+
 			jsonDoc = escapeInvalidCharsInStrings(jsonDoc)
 			jsonDoc = encodeTextFieldToBase64(jsonDoc)
 
@@ -445,7 +473,7 @@ func createKeyFrameDescriptions(keyFrames []keyFrame, llmVision *client.LLM) err
 
 			keyFrames[i].description = descr.Description
 			keyFrames[i].classification = descr.Classification
-			keyFrames[i].text = string(textBytes)
+			keyFrames[i].text = unescapeJSONString(string(textBytes))
 
 			return nil
 		})
@@ -466,12 +494,17 @@ func createKeyFrameDescriptions(keyFrames []keyFrame, llmVision *client.LLM) err
 func getFilesFromDirectory(directoryPath string) ([]string, error) {
 	var files []string
 
-	err := filepath.Walk(directoryPath, func(path string, info os.FileInfo, err error) error {
+	err := filepath.WalkDir(directoryPath, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 
-		if !info.IsDir() && (filepath.Ext(info.Name()) == ".png" || filepath.Ext(info.Name()) == ".jpg" || filepath.Ext(info.Name()) == ".jpeg" || filepath.Ext(info.Name()) == ".png") {
+		if d.IsDir() {
+			return nil
+		}
+
+		switch strings.ToLower(filepath.Ext(path)) {
+		case ".jpg", ".jpeg", ".png":
 			files = append(files, path)
 		}
 
@@ -573,8 +606,10 @@ func encodeTextFieldToBase64(jsonDoc string) string {
 		return jsonDoc[:afterColon] + `""` + rest
 	}
 
-	// Check if text field ends properly with "}
-	if strings.HasSuffix(strings.TrimRight(jsonDoc, " \t\n\r"), `"}`) {
+	// Check if text field ends properly with " and } (whitespace allowed
+	// between them, as in a pretty printed document).
+	body, closed := strings.CutSuffix(strings.TrimRight(jsonDoc, " \t\n\r"), "}")
+	if closed && strings.HasSuffix(strings.TrimRight(body, " \t\n\r"), `"`) {
 		// Find the text value boundaries.
 		startQuote := strings.Index(jsonDoc[colonIdx:], `"`) + colonIdx
 		endQuote := strings.LastIndex(jsonDoc, `"`)
@@ -588,12 +623,29 @@ func encodeTextFieldToBase64(jsonDoc string) string {
 	// Text field is malformed. Extract what we can and fix it.
 	startQuote := strings.Index(jsonDoc[colonIdx:], `"`) + colonIdx
 
-	// Take everything after the opening quote as the text value.
-	textValue := jsonDoc[startQuote+1:]
-	textValue = strings.TrimRight(textValue, " \t\n\r\"}")
+	// Take everything after the opening quote as the text value. Only a
+	// trailing closing brace and quote are removed, so a brace or quote that
+	// belongs to the extracted text (like the end of a Go function) is kept.
+	textValue := strings.TrimRight(jsonDoc[startQuote+1:], " \t\n\r")
+	textValue = strings.TrimSuffix(textValue, "}")
+	textValue = strings.TrimRight(textValue, " \t\n\r")
+	textValue = strings.TrimSuffix(textValue, `"`)
 	encoded := base64.StdEncoding.EncodeToString([]byte(textValue))
 
 	return jsonDoc[:startQuote+1] + encoded + `"}`
+}
+
+// unescapeJSONString turns the JSON escape sequences (\n, \t, \") the model
+// wrote inside the text field back into the characters they represent. The
+// text field is base64 encoded as it was written, escapes included. If the
+// text isn't a valid JSON string body, it is returned as is.
+func unescapeJSONString(s string) string {
+	var out string
+	if err := json.Unmarshal([]byte(`"`+s+`"`), &out); err != nil {
+		return s
+	}
+
+	return out
 }
 
 func readImage(fileName string) ([]byte, string, error) {

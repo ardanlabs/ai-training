@@ -1,4 +1,4 @@
-// This example shows you how to use the program from cmd/examples/example10/step4/main.go
+// This example shows you how to use the program from cmd/examples/example09/step4/main.go
 // and move the tooling to a MCP service that is called by the tooling.
 //
 // # Running the example:
@@ -30,7 +30,7 @@ import (
 
 var (
 	url     = "http://localhost:11435/v1/chat/completions"
-	model   = "Qwen3.6-35B-A3B-UD-Q4_K_XL"
+	model   = "unsloth/Qwen3.6-35B-A3B-UD-Q4_K_XL"
 	mcpHost = "localhost:8082"
 )
 
@@ -57,6 +57,16 @@ func main() {
 }
 
 func run() error {
+
+	// -------------------------------------------------------------------------
+	// Start the MCP server that provides the tooling.
+
+	if err := mcpListenAndServe(mcpHost); err != nil {
+		return err
+	}
+
+	// -------------------------------------------------------------------------
+
 	scanner := bufio.NewScanner(os.Stdin)
 	getUserMessage := func() (string, bool) {
 		if !scanner.Scan() {
@@ -129,10 +139,10 @@ func NewAgent(getUserMessage func() (string, bool)) (*Agent, error) {
 const systemPrompt = `You are a helpful coding assistant that has tools to assist you in coding.
 
 After you request a tool call, you will receive a JSON document with two fields,
-"status" and "data". Always check the "status" field to know if the call "SUCCEED"
-or "FAILED". The information you need to respond will be provided under the "data"
-field. If the called "FAILED", just inform the user and don't try using the tool
-again for the current response.
+"status" and "data". Always check the "status" field to know if the call
+returned "SUCCESS" or "FAILED". The information you need to respond will be
+provided under the "data" field. If the call "FAILED", just inform the user and
+don't try using the tool again for the current response.
 
 When reading Go source code always start counting lines of code from the top of
 the source code file.
@@ -144,8 +154,6 @@ Reasoning: high
 
 // Run starts the agent and runs the chat loop.
 func (a *Agent) Run(ctx context.Context) error {
-	time.Sleep(time.Second)
-
 	conversation := []client.D{
 		{"role": "system", "content": systemPrompt},
 	}
@@ -231,6 +239,9 @@ func (a *Agent) streamModelTurn(ctx context.Context, conversation []client.D) (s
 		"stream":      true,
 		"tools":       a.toolDocuments,
 		"tool_choice": "auto",
+		"stream_options": client.D{
+			"include_usage": true,
+		},
 	}
 
 	fmt.Printf("\u001b[93m\n%s\u001b[0m: 0.000", a.modelInfo.id)
@@ -249,7 +260,7 @@ func (a *Agent) streamModelTurn(ctx context.Context, conversation []client.D) (s
 	defer stopPrinter()
 
 	var chunks []string
-	var lastResp client.ChatSSE
+	var usage *client.Usage
 	reasonFirstChunk := true
 	reasonThinking := false
 
@@ -261,8 +272,13 @@ func (a *Agent) streamModelTurn(ctx context.Context, conversation []client.D) (s
 	// way out.
 	pending := make(map[int]*pendingCall)
 
+	// The chunk carrying the "stop" or "tool_calls" finish reason is not the
+	// last one. The usage we asked for with "include_usage" follows it in a
+	// chunk with no choices, so the stream is read until the server closes it.
 	for resp := range ch {
-		lastResp = resp
+		if resp.Usage != nil {
+			usage = resp.Usage
+		}
 
 		if len(resp.Choices) == 0 {
 			continue
@@ -291,14 +307,7 @@ func (a *Agent) streamModelTurn(ctx context.Context, conversation []client.D) (s
 
 		switch resp.Choices[0].FinishReason {
 		case "error":
-			return "", nil, lastResp.Usage, fmt.Errorf("error from model: %s", resp.Choices[0].Delta.Content)
-
-		case "stop":
-			text := strings.TrimLeft(strings.Join(chunks, ""), "\n")
-			return text, nil, lastResp.Usage, nil
-
-		case "tool_calls":
-			return "", assembleToolCalls(pending), lastResp.Usage, nil
+			return "", nil, usage, fmt.Errorf("error from model: %s", resp.Choices[0].Delta.Content)
 
 		default:
 			delta := resp.Choices[0].Delta
@@ -326,9 +335,14 @@ func (a *Agent) streamModelTurn(ctx context.Context, conversation []client.D) (s
 		}
 	}
 
-	// Stream ended without an explicit finish reason.
+	// Any tool calls the model asked for take priority over its text.
+
+	if len(pending) > 0 {
+		return "", assembleToolCalls(pending), usage, nil
+	}
+
 	text := strings.TrimLeft(strings.Join(chunks, ""), "\n")
-	return text, assembleToolCalls(pending), lastResp.Usage, nil
+	return text, nil, usage, nil
 }
 
 // pendingCall accumulates one streaming tool call as its pieces arrive.
@@ -456,8 +470,13 @@ func (a *Agent) callTools(ctx context.Context, toolCalls []client.ToolCall) []cl
 	resps := make([]client.D, 0, len(toolCalls))
 
 	for _, toolCall := range toolCalls {
+		// Every tool call the model made needs an answer in the conversation,
+		// even the ones we can't service, or the model is left waiting on a
+		// result that never arrives.
+
 		tool, exists := a.tools[toolCall.Function.Name]
 		if !exists {
+			resps = append(resps, toolErrorResponse(toolCall.ID, fmt.Errorf("tool %q is not registered", toolCall.Function.Name)))
 			continue
 		}
 

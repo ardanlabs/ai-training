@@ -24,10 +24,12 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
 	"os/signal"
+	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -47,9 +49,9 @@ func run(host string, port string) error {
 	// -------------------------------------------------------------------------
 	// Start a MCP Server and listen for requests.
 
-	go func() {
-		mcpListenAndServe(host, port)
-	}()
+	if err := mcpListenAndServe(host, port); err != nil {
+		return err
+	}
 
 	fmt.Println("\nTesting MCP Client coded against the MCP Server on Port:", port)
 
@@ -87,7 +89,9 @@ func run(host string, port string) error {
 // =============================================================================
 // Basic MCP server implementation
 
-func mcpListenAndServe(host string, port string) {
+// mcpListenAndServe opens the listener before returning, so the server is
+// ready to accept connections when the client calls below are made.
+func mcpListenAndServe(host string, port string) error {
 	fileOperations := mcp.NewServer(&mcp.Implementation{Name: "file operations", Version: "v1.0.0"}, nil)
 	mcp.AddTool(fileOperations, &mcp.Tool{Name: "tool_list_files", Description: "lists files"}, ListFilesMCPHandler)
 	mcp.AddTool(fileOperations, &mcp.Tool{Name: "tool_read_files", Description: "reads a file"}, ReadFilesMCPHandler)
@@ -95,7 +99,13 @@ func mcpListenAndServe(host string, port string) {
 
 	// -------------------------------------------------------------------------
 
-	addr := fmt.Sprintf("%s:%s", host, port)
+	addr := net.JoinHostPort(host, port)
+
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		return fmt.Errorf("mcp server: %w", err)
+	}
+
 	log.Printf("Server: MCP servers serving at %s", addr)
 
 	// -------------------------------------------------------------------------
@@ -120,7 +130,12 @@ func mcpListenAndServe(host string, port string) {
 	}
 
 	handler := mcp.NewSSEHandler(f, &mcp.SSEOptions{})
-	log.Fatal(http.ListenAndServe(addr, handler))
+
+	go func() {
+		log.Fatal(http.Serve(ln, handler))
+	}()
+
+	return nil
 }
 
 // =============================================================================
@@ -196,11 +211,16 @@ type ShellCommandParams struct {
 // things like list files, read files, etc, but you need some way to limit the
 // commands that can be executed with a level of security.
 func ShellCommandMCPHandler(ctx context.Context, req *mcp.CallToolRequest, params ShellCommandParams) (*mcp.CallToolResult, any, error) {
-	var out bytes.Buffer
-	cmd := exec.Command(params.Command[0], params.Command[1:]...)
+	if len(params.Command) == 0 {
+		return nil, nil, fmt.Errorf("no command provided")
+	}
+
+	var out, stderr bytes.Buffer
+	cmd := exec.CommandContext(ctx, params.Command[0], params.Command[1:]...)
 	cmd.Stdout = &out
+	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("%w: %s", err, strings.TrimSpace(stderr.String()))
 	}
 
 	data := struct {
@@ -266,13 +286,21 @@ func mcpClientCall(host string, port string, tool string, arguments map[string]a
 	// -------------------------------------------------------------------------
 	// Check for errors and display the result.
 
-	if res.IsError {
-		return fmt.Errorf("tool call failed: %s", res.Content)
+	// A tool that fails returns the reason as text content, so the text is
+	// pulled out of the content either way. Printing res.Content directly
+	// would only show pointer addresses.
+	var text strings.Builder
+	for _, c := range res.Content {
+		if tc, ok := c.(*mcp.TextContent); ok {
+			text.WriteString(tc.Text)
+		}
 	}
 
-	for _, c := range res.Content {
-		fmt.Print(c.(*mcp.TextContent).Text)
+	if res.IsError {
+		return fmt.Errorf("tool call failed: %s", text.String())
 	}
+
+	fmt.Print(text.String())
 	fmt.Print("\n")
 
 	return nil

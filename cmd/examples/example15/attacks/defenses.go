@@ -170,6 +170,12 @@ var patterns = func() []*regexp.Regexp {
 // active. It reports whether anything was actually redacted, which is the
 // measurement that matters: a sanitizer that matched nothing did not defend,
 // it abstained, and the scenarios print that distinction, not a win.
+//
+// Callers reject untrusted text that matched rather than passing the redacted
+// version on. Blanking out a few words does not remove the intent: with
+// "tool_browse" redacted, the model still read the URL and "POST" in what was
+// left and rebuilt the call. A match is evidence of an attack, so the whole
+// message or document goes.
 func ApplyInputSanitizer(d Defenses, text string) (string, bool) {
 	if !d.InputSanitizer {
 		return text, false
@@ -384,10 +390,11 @@ func ScreenUserMessage(ctx context.Context, h *harness.Harness, d Defenses, untr
 		harness.SubBanner("Input sanitizer (regex blocklist)")
 
 		if redacted {
-			fmt.Printf("\n✅ Input sanitizer altered the input. Sanitized version:\n%s\n", text)
-		} else {
-			fmt.Println("\n⛔ BYPASSED - input sanitizer matched 0 patterns; input passes through unchanged.")
+			fmt.Printf("\n✅ PASSED - input sanitizer matched known injection patterns. Request rejected. What it matched:\n%s\n", text)
+			return "", true, nil
 		}
+
+		fmt.Println("\n⛔ BYPASSED - input sanitizer matched 0 patterns; input passes through unchanged.")
 	}
 
 	flagged, err := ApplyClassifier(ctx, h, d, text)

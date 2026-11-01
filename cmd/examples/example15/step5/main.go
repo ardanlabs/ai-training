@@ -6,10 +6,13 @@
 // The payloads are step 2's plain-English injection and step 4's poisoned tool
 // output, both already seen to land. Step 3 also stopped the plain-English one,
 // so the claim here is not that these succeed where content filters failed - it
-// is about why they hold, which step 6 tests.
+// is about why they hold, which step 6 shows by contrast: it re-encodes the
+// payload and only content-side filters are in play.
 //
 // REFUSED in the outcomes means the model asked for the tool and the system
-// declined: the injection worked perfectly and did not matter.
+// declined: the injection worked perfectly and did not matter. ANSWERED means
+// the model never asked, so the defense in that cell was never exercised - read
+// it as untested, not as a win.
 //
 // # Running the example:
 //
@@ -163,6 +166,7 @@ func run() error {
 		"OUTCOMES - structural defenses vs the plain-English payload",
 		"REFUSED     = the model asked and the system said no.",
 		"NEUTRALIZED = the call went through and carried nothing.",
+		"ANSWERED    = the model never asked; the defense was never exercised.",
 	)
 
 	for _, name := range []string{

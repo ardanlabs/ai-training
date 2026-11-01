@@ -120,6 +120,13 @@ type Agent struct {
 	tools         map[string]fntools.Tool
 	toolDocuments []client.D
 
+	// DisableThinking asks the chat model to skip its reasoning block for every
+	// turn (enable_thinking false). Off by default so the earlier steps keep the
+	// request they were verified with. Step 6 turns it on: the 8B model decodes
+	// a dotted payload directly, and reasoning only adds a path for it to
+	// drift off.
+	DisableThinking bool
+
 	// SanitizeToolOutput, when non-nil, rewrites the content of every tool
 	// response before it re-enters the conversation. This is a defense on the
 	// tool-to-model edge.
@@ -236,6 +243,10 @@ func (a *Agent) streamTurn(ctx context.Context, conversation []client.D) (string
 		// is not a field any OpenAI-compatible server knows, so it was dropped
 		// on arrival - harmless only because "auto" is the default anyway.
 		"tool_choice": "auto",
+	}
+
+	if a.DisableThinking {
+		d["enable_thinking"] = false
 	}
 
 	ch := make(chan client.ChatSSE, 100)

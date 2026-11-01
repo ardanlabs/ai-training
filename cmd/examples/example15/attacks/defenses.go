@@ -33,7 +33,8 @@ type Defenses struct {
 	ToolOutputSanitizer bool
 	Classifier          bool
 
-	// Structural. Not defeated in step 6, and the closing shows why.
+	// Structural. Never reads the payload text, so re-encoding it (step 6) gives
+	// a text filter nothing to catch.
 	AccessFilter  bool
 	ToolAllowlist bool
 	Authz         bool

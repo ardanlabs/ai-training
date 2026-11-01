@@ -293,6 +293,9 @@ example15-step5:
 example15-step6:
 	go run ./cmd/examples/example15/step6
 
+example15-step7:
+	go run ./cmd/examples/example15/step7
+
 ws-ragpipeline-step1:
 	go run ./cmd/examples/example16/step1
 

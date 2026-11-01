@@ -55,8 +55,7 @@ var (
 	// init resolves after the LLM_MODEL override; CLASSIFIER_MODEL overrides it.
 	//
 	// A small guard was the default and measured NO on step 2's plain-English
-	// payload, so it blocked nothing in any step. The 8B flags that payload and
-	// is still walked past by the same request in Morse.
+	// payload, so it blocked nothing in any step.
 	classifierModel = ""
 )
 
@@ -105,6 +104,14 @@ type Harness struct {
 	classifyLLM *client.LLM
 	embedLLM    *client.LLM
 	db          *sqlx.DB
+
+	// classifierModelName is set only by WithClassifierModel; empty means the
+	// package default is in use.
+	classifierModelName string
+
+	// ThinkingOff is copied onto every agent built for this harness. See
+	// Agent.DisableThinking.
+	ThinkingOff bool
 }
 
 // New builds a Harness with the configured endpoints. No network or database
@@ -117,11 +124,25 @@ func New() *Harness {
 	}
 }
 
+// WithClassifierModel points this harness's detection classifier at a different
+// model than the package default. Only the classifier moves; the answering model
+// and the embedder are unchanged. A scenario that never calls it keeps the
+// default classifier.
+func (h *Harness) WithClassifierModel(model string) {
+	h.classifyLLM = client.NewLLM(llmURL, model)
+	h.classifierModelName = model
+}
+
 // Config prints the endpoints in use, so a run that behaves oddly can be
 // traced to the model that produced it.
 func (h *Harness) Config() {
+	cm := classifierModel
+	if h.classifierModelName != "" {
+		cm = h.classifierModelName
+	}
+
 	fmt.Printf("\nChat:       %s (%s)\n", llmURL, llmModel)
-	fmt.Printf("Classifier: %s (%s)\n", llmURL, classifierModel)
+	fmt.Printf("Classifier: %s (%s)\n", llmURL, cm)
 	fmt.Printf("Embed:      %s (%s)\n", embedURL, embedModel)
 }
 

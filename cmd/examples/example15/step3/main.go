@@ -5,6 +5,13 @@
 //
 // Expect this step to look like a success. That is the setup for step 6.
 //
+// Read the hardened-prompt row carefully. The blocklist and the classifier
+// reject the request before the model is called, and score BLOCKED. The
+// hardened prompt cannot reject anything: it is more text in the model's
+// context, and if the model declines, the outcome is ANSWERED - the same label
+// an undefended model gets for declining on its own, because within one run the
+// two are indistinguishable.
+//
 // # Running the example:
 //
 //	$ make example15-step3
@@ -83,7 +90,11 @@ func run() error {
 		results[c.name] = out
 	}
 
-	harness.Banner("OUTCOMES - direct injection vs each content-side defense")
+	harness.Banner(
+		"OUTCOMES - direct injection vs each content-side defense",
+		"BLOCKED  = a filter rejected the request before the model saw it.",
+		"ANSWERED = the request reached the model and the model declined on its own.",
+	)
 
 	for _, c := range configs {
 		fmt.Printf("  %-28s %s\n", c.name, results[c.name])
@@ -92,6 +103,13 @@ func run() error {
 	// The blocklist and the classifier both had something to work with here:
 	// the payload says "ignore all previous instructions" and names tool_browse
 	// in plain English. A regex can match that. A classifier can read it.
+	//
+	// The hardened prompt works differently. It does not stop a request; it asks
+	// the model to stop itself, so the most it can ever produce is ANSWERED.
+	// Whether the rule is why the model declined cannot be read from that row -
+	// only from comparing it against step 2's undefended run - and either way it
+	// rests on the model's judgment, which is what step 6 goes after. The "All
+	// three together" row is BLOCKED by the blocklist, the first layer to fire.
 	//
 	// The question the session turns on: what is each of these keyed on?
 	//
